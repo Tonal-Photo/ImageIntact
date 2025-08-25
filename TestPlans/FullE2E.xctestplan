@@ -1,0 +1,87 @@
+{
+  "configurations" : [
+    {
+      "id" : "F1E2D3C4-B5A6-9780-1234-567890ABCDEF",
+      "name" : "Full E2E",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "TEST_MODE",
+            "value" : "E2E"
+          },
+          {
+            "key" : "FULL_COVERAGE",
+            "value" : "1"
+          }
+        ],
+        "maximumTestExecutionTimeAllowance" : 1800,
+        "testExecutionOrdering" : "alphabetical",
+        "threadSanitizerEnabled" : true,
+        "uiTestingScreenshotsLifetime" : "keepAlways",
+        "addressSanitizerEnabled" : true,
+        "undefinedBehaviorSanitizerEnabled" : true
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : {
+      "targets" : [
+        {
+          "containerPath" : "container:ImageIntact.xcodeproj",
+          "identifier" : "ImageIntact",
+          "name" : "ImageIntact"
+        }
+      ]
+    },
+    "commandLineArgumentEntries" : [
+      {
+        "argument" : "--e2e-test-mode"
+      },
+      {
+        "argument" : "--uitest"
+      },
+      {
+        "argument" : "--enable-all-features"
+      }
+    ],
+    "environmentVariableEntries" : [
+      {
+        "key" : "E2E_TEST",
+        "value" : "1"
+      },
+      {
+        "key" : "LOG_LEVEL",
+        "value" : "DEBUG"
+      }
+    ],
+    "language" : "en",
+    "maximumTestRepetitions" : 3,
+    "region" : "US",
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:ImageIntact.xcodeproj",
+      "identifier" : "ImageIntact",
+      "name" : "ImageIntact"
+    },
+    "testRepetitionMode" : "retryOnFailure",
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactTests",
+        "name" : "ImageIntactTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactUITests",
+        "name" : "ImageIntactUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

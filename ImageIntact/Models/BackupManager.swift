@@ -152,6 +152,12 @@ class BackupManager {
     
     // MARK: - Initialization
     init() {
+        // Check for UI test mode and load test paths
+        if BackupManager.isRunningTests && ProcessInfo.processInfo.arguments.contains("--uitest") {
+            loadUITestPaths()
+            return
+        }
+        
         // Check if we should restore last session
         if PreferencesManager.shared.restoreLastSession {
             // Load destinations from saved bookmarks
@@ -544,6 +550,54 @@ class BackupManager {
         destinationURLs = newURLs
         
         logInfo("Removed destination at index \(index), new count: \(destinationItems.count)")
+    }
+    
+    // MARK: - UI Test Support
+    private func loadUITestPaths() {
+        logInfo("Loading UI test paths")
+        
+        // Load test source path
+        if let testSourcePath = UserDefaults.standard.string(forKey: "TestSourcePath") {
+            let sourceURL = URL(fileURLWithPath: testSourcePath)
+            self.sourceURL = sourceURL
+            self.organizationName = extractSmartFolderName(from: sourceURL)
+            logInfo("UI Test: Set source to \(testSourcePath)")
+        }
+        
+        // Load test destination paths
+        var testDestinations: [URL?] = []
+        
+        if let testDest1Path = UserDefaults.standard.string(forKey: "TestDest1Path") {
+            testDestinations.append(URL(fileURLWithPath: testDest1Path))
+            logInfo("UI Test: Added destination 1: \(testDest1Path)")
+        }
+        
+        if let testDest2Path = UserDefaults.standard.string(forKey: "TestDest2Path") {
+            testDestinations.append(URL(fileURLWithPath: testDest2Path))
+            logInfo("UI Test: Added destination 2: \(testDest2Path)")
+        }
+        
+        // If we have destinations, set them up
+        if !testDestinations.isEmpty {
+            self.destinationURLs = testDestinations
+            self.destinationItems = testDestinations.map { DestinationItem(url: $0) }
+        } else {
+            // Start with one empty destination slot even in test mode
+            self.destinationURLs = [nil]
+            self.destinationItems = [DestinationItem(url: nil)]
+        }
+        
+        // Load test organization name if provided
+        if let testOrgName = UserDefaults.standard.string(forKey: "TestOrganizationName") {
+            self.organizationName = testOrgName
+            logInfo("UI Test: Set organization name to \(testOrgName)")
+        }
+        
+        // Clear test values from UserDefaults after loading
+        UserDefaults.standard.removeObject(forKey: "TestSourcePath")
+        UserDefaults.standard.removeObject(forKey: "TestDest1Path")
+        UserDefaults.standard.removeObject(forKey: "TestDest2Path")
+        UserDefaults.standard.removeObject(forKey: "TestOrganizationName")
     }
     
     func canRunBackup() -> Bool {

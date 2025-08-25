@@ -1,0 +1,66 @@
+{
+  "configurations" : [
+    {
+      "id" : "D0F0C8B4-5E23-4A89-B123-456789ABCDEF",
+      "name" : "Fast",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "TEST_MODE",
+            "value" : "FAST"
+          }
+        ],
+        "maximumTestExecutionTimeAllowance" : 60,
+        "testExecutionOrdering" : "random",
+        "threadSanitizerEnabled" : false,
+        "uiTestingScreenshotsLifetime" : "keepNever"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : {
+      "targets" : [
+        {
+          "containerPath" : "container:ImageIntact.xcodeproj",
+          "identifier" : "ImageIntact",
+          "name" : "ImageIntact"
+        }
+      ]
+    },
+    "commandLineArgumentEntries" : [
+      {
+        "argument" : "--fast-test-mode"
+      }
+    ],
+    "environmentVariableEntries" : [
+      {
+        "key" : "FAST_TEST",
+        "value" : "1"
+      }
+    ],
+    "maximumTestRepetitions" : 1,
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "skippedTests" : [
+        "ImageIntactUITests",
+        "MigrationUITests",
+        "BackupIntegrationTests/testLargeFileBackup",
+        "BackupIntegrationTests/testStressTest",
+        "ChecksumPerformanceTests",
+        "OptimizedChecksumPerformanceTests",
+        "ConcurrencyStressTests",
+        "MemoryOptimizationTests",
+        "QueueMemoryOptimizationTests"
+      ],
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactTests",
+        "name" : "ImageIntactTests"
+      }
+    }
+  ],
+  "version" : 1
+}

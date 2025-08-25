@@ -1,0 +1,76 @@
+{
+  "configurations" : [
+    {
+      "id" : "A1B2C3D4-5E6F-7890-ABCD-EF1234567890",
+      "name" : "Comprehensive",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "TEST_MODE",
+            "value" : "COMPREHENSIVE"
+          }
+        ],
+        "maximumTestExecutionTimeAllowance" : 300,
+        "testExecutionOrdering" : "random",
+        "threadSanitizerEnabled" : true,
+        "uiTestingScreenshotsLifetime" : "keepOnFailure"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : {
+      "targets" : [
+        {
+          "containerPath" : "container:ImageIntact.xcodeproj",
+          "identifier" : "ImageIntact",
+          "name" : "ImageIntact"
+        }
+      ]
+    },
+    "commandLineArgumentEntries" : [
+      {
+        "argument" : "--comprehensive-test-mode"
+      },
+      {
+        "argument" : "--uitest"
+      }
+    ],
+    "environmentVariableEntries" : [
+      {
+        "key" : "COMPREHENSIVE_TEST",
+        "value" : "1"
+      }
+    ],
+    "maximumTestRepetitions" : 1,
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "skippedTests" : [
+        "ConcurrencyStressTests/testExtremeStress",
+        "MemoryOptimizationTests/testGiantFileSet"
+      ],
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactTests",
+        "name" : "ImageIntactTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "selectedTests" : [
+        "ImageIntactUITests/testHappyPath_SelectSourceAndDestinations_RunBackup",
+        "ImageIntactUITests/testErrorHandling_NoSourceSelected",
+        "ImageIntactUITests/testOrganizationSection_AppearsAfterSourceSelection",
+        "MigrationUITests/testMigrationDialog_AppearsWhenNeeded"
+      ],
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactUITests",
+        "name" : "ImageIntactUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
