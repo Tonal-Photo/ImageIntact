@@ -19,7 +19,7 @@ struct ImageIntactApp: App {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--uitest") {
             ApplicationLogger.shared.info("🧪 UI Test mode detected", category: .app)
-            BackupManager.isRunningTests = true
+            // Note: BackupManager.isRunningTests is automatically true when running tests
             
             // Setup test environment if needed
             setupTestEnvironment()

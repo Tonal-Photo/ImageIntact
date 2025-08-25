@@ -3,8 +3,8 @@ import Foundation
 /// Protocol abstraction for notification operations
 protocol NotificationProtocol {
     func sendBackupCompletionNotification(filesCopied: Int, destinations: Int, duration: TimeInterval)
-    func requestNotificationPermission()
-    func scheduleNotification(title: String, body: String, delay: TimeInterval)
+    func sendBackupFailureNotification(error: String)
+    func sendWarningNotification(title: String, message: String)
 }
 
 /// Real implementation using NotificationManager
@@ -18,13 +18,12 @@ final class RealNotificationService: NotificationProtocol {
         )
     }
     
-    func requestNotificationPermission() {
-        NotificationManager.shared.requestNotificationPermission()
+    func sendBackupFailureNotification(error: String) {
+        NotificationManager.shared.sendBackupFailureNotification(error: error)
     }
     
-    func scheduleNotification(title: String, body: String, delay: TimeInterval) {
-        // Would implement if NotificationManager had this method
-        // For now, just use the completion notification
+    func sendWarningNotification(title: String, message: String) {
+        NotificationManager.shared.sendWarningNotification(title: title, message: message)
     }
 }
 
@@ -41,7 +40,6 @@ final class MockNotificationService: NotificationProtocol {
     }
     
     var sentNotifications: [Notification] = []
-    var permissionRequested = false
     var shouldFailToSend = false
     
     func sendBackupCompletionNotification(filesCopied: Int, destinations: Int, duration: TimeInterval) {
@@ -62,19 +60,30 @@ final class MockNotificationService: NotificationProtocol {
         ))
     }
     
-    func requestNotificationPermission() {
-        permissionRequested = true
+    func sendBackupFailureNotification(error: String) {
+        if shouldFailToSend {
+            return
+        }
+        
+        sentNotifications.append(Notification(
+            title: "Backup Failed",
+            body: error,
+            timestamp: Date(),
+            filesCopied: nil,
+            destinations: nil,
+            duration: nil
+        ))
     }
     
-    func scheduleNotification(title: String, body: String, delay: TimeInterval) {
+    func sendWarningNotification(title: String, message: String) {
         if shouldFailToSend {
             return
         }
         
         sentNotifications.append(Notification(
             title: title,
-            body: body,
-            timestamp: Date().addingTimeInterval(delay),
+            body: message,
+            timestamp: Date(),
             filesCopied: nil,
             destinations: nil,
             duration: nil
@@ -84,7 +93,6 @@ final class MockNotificationService: NotificationProtocol {
     // Test helper methods
     func reset() {
         sentNotifications.removeAll()
-        permissionRequested = false
         shouldFailToSend = false
     }
     
