@@ -174,7 +174,7 @@ extension BackupManager {
         if !shouldCancel {
             // Send notification if enabled
             if PreferencesManager.shared.showNotificationOnComplete {
-                NotificationManager.shared.sendBackupCompletionNotification(
+                notificationService.sendBackupCompletionNotification(
                     filesCopied: progressTracker.processedFiles,
                     destinations: destinations.count,
                     duration: statistics.duration ?? 0

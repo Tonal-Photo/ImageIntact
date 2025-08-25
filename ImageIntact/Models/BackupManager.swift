@@ -32,6 +32,11 @@ class BackupManager {
         return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
     
+    // MARK: - Dependencies (for testing)
+    internal let fileSystem: FileSystemProtocol
+    internal let hasher: HashingProtocol
+    internal let notificationService: NotificationProtocol
+    
     // MARK: - Published Properties
     var sourceURL: URL? = nil
     var destinationURLs: [URL?] = []
@@ -151,7 +156,16 @@ class BackupManager {
     var currentOrchestrator: BackupOrchestrator?  // New orchestrator for refactored backup
     
     // MARK: - Initialization
-    init() {
+    init(
+        fileSystem: FileSystemProtocol? = nil,
+        hasher: HashingProtocol? = nil,
+        notificationService: NotificationProtocol? = nil
+    ) {
+        // Use provided dependencies or create real implementations
+        self.fileSystem = fileSystem ?? RealFileSystem()
+        self.hasher = hasher ?? RealHasher()
+        self.notificationService = notificationService ?? RealNotificationService()
+        
         // Check for UI test mode and load test paths
         if BackupManager.isRunningTests && ProcessInfo.processInfo.arguments.contains("--uitest") {
             loadUITestPaths()
@@ -169,7 +183,8 @@ class BackupManager {
             for (index, url) in loadedURLs.enumerated() where url != nil {
                 if let url = url, index < self.destinationItems.count {
                     let itemID = self.destinationItems[index].id
-                    Task {
+                    Task { [weak self] in
+                        guard let self = self else { return }
                         if let driveInfo = DriveAnalyzer.analyzeDrive(at: url) {
                             await MainActor.run { [weak self] in
                                 self?.destinationDriveInfo[itemID] = driveInfo
@@ -223,7 +238,8 @@ class BackupManager {
         for (index, item) in destinationItems.enumerated() {
             if let url = item.url {
                 let itemID = item.id
-                Task {
+                Task { [weak self] in
+                    guard let self = self else { return }
                     // First check if the destination is still accessible
                     let accessing = url.startAccessingSecurityScopedResource()
                     defer {
@@ -249,7 +265,7 @@ class BackupManager {
                     }
                     
                     // Check if the path exists and is accessible
-                    let isAccessible = FileManager.default.fileExists(atPath: url.path)
+                    let isAccessible = self.fileSystem.fileExists(at: url)
                     
                     if isAccessible {
                         // Destination is accessible, analyze it
@@ -436,7 +452,7 @@ class BackupManager {
                 }
             }
             
-            let isAccessible = FileManager.default.fileExists(atPath: url.path)
+            let isAccessible = self.fileSystem.fileExists(at: url)
             
             // Do an immediate space check if we know the backup size
             if totalBytesToCopy > 0 {
@@ -914,24 +930,25 @@ class BackupManager {
         }
         """
         
-        do {
-            try tagContent.write(to: tagFile, atomically: true, encoding: .utf8)
-            // Hide the tag file
-            try FileManager.default.setAttributes([.extensionHidden: true], ofItemAtPath: tagFile.path)
-        } catch {
-            logError("Failed to tag source folder: \(error)")
+        let success = fileSystem.createFile(
+            atPath: tagFile.path,
+            contents: Data(tagContent.utf8),
+            attributes: [.extensionHidden: true]
+        )
+        if !success {
+            logError("Failed to tag source folder")
         }
     }
     
-    private func checkForSourceTag(at url: URL) -> Bool {
+    internal func checkForSourceTag(at url: URL) -> Bool {
         let tagFile = url.appendingPathComponent(".imageintact_source")
-        return FileManager.default.fileExists(atPath: tagFile.path)
+        return fileSystem.fileExists(at: tagFile)
     }
     
     private func removeSourceTag(at url: URL) {
         let tagFile = url.appendingPathComponent(".imageintact_source")
         do {
-            try FileManager.default.removeItem(at: tagFile)
+            try fileSystem.removeItem(at: tagFile)
             logInfo("Removed source tag from: \(url.path)")
         } catch {
             logError("Failed to remove source tag: \(error)")
