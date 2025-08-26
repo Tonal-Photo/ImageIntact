@@ -12,8 +12,9 @@ struct SourceFolderSection: View {
             
             // Inner content - indented
             VStack(alignment: .leading, spacing: 12) {
-                // Backup configuration (presets and filters) - show above the source field
-                if backupManager.sourceURL != nil && !backupManager.sourceFileTypes.isEmpty && !backupManager.isScanning {
+                // Backup configuration (presets and filters) - always show for custom presets
+                // Only hide during scanning
+                if !backupManager.isScanning {
                     BackupConfigurationView(backupManager: backupManager)
                 }
                 
@@ -44,9 +45,10 @@ struct SourceFolderSection: View {
                 
                 // File type summary and filter results - indented further
                 if backupManager.sourceURL != nil {
-                    VStack(alignment: .leading, spacing: 8) {
-                        // File type summary - what was found
-                        HStack(spacing: 4) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            // File type summary - what was found
+                            HStack(spacing: 4) {
                             if backupManager.isScanning {
                                 ProgressView()
                                     .scaleEffect(0.7)
@@ -92,8 +94,32 @@ struct SourceFolderSection: View {
                                 )
                             }
                         }
+                        }
+                        
+                        Spacer()
+                        
+                        // Save as Preset button - only show if we have valid configuration
+                        let hasValidConfiguration = backupManager.sourceURL != nil && 
+                            backupManager.destinationItems.contains { $0.url != nil }
+                        let isDuplicatePreset = BackupPresetManager.shared.currentConfigurationMatchesExistingPreset(backupManager: backupManager)
+                        
+                        if hasValidConfiguration && !backupManager.isScanning {
+                            Button(action: {
+                                // We need to trigger the CreatePresetSheet
+                                // For now, we'll use NotificationCenter to communicate with BackupConfigurationView
+                                NotificationCenter.default.post(name: NSNotification.Name("ShowCreatePreset"), object: nil)
+                            }) {
+                                Text("Save as Preset")
+                                    .font(.caption)
+                                    .foregroundColor(isDuplicatePreset ? .secondary : .accentColor)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isDuplicatePreset)
+                            .help(isDuplicatePreset ? "This configuration already exists as a preset" : "Save current configuration as a preset")
+                        }
                     }
                     .padding(.leading, 20)
+                    .padding(.trailing, 20)
                 }
             }
             .padding(.leading, 20)

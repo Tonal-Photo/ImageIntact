@@ -411,7 +411,7 @@ extension BackupManager {
         let detector = BackupMigrationDetector()
         
         // Check each destination for migration needs
-        for (index, destination) in destinations.enumerated() {
+        for (_, destination) in destinations.enumerated() {
             if let plan = await detector.checkForMigrationNeeded(
                 source: source,
                 destination: destination,

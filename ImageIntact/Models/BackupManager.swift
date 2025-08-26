@@ -36,6 +36,7 @@ class BackupManager {
     internal let fileSystem: FileSystemProtocol
     internal let hasher: HashingProtocol
     internal let notificationService: NotificationProtocol
+    internal let driveAnalyzer: DriveAnalyzerProtocol
     
     // MARK: - Published Properties
     var sourceURL: URL? = nil
@@ -159,12 +160,14 @@ class BackupManager {
     init(
         fileSystem: FileSystemProtocol? = nil,
         hasher: HashingProtocol? = nil,
-        notificationService: NotificationProtocol? = nil
+        notificationService: NotificationProtocol? = nil,
+        driveAnalyzer: DriveAnalyzerProtocol? = nil
     ) {
         // Use provided dependencies or create real implementations
         self.fileSystem = fileSystem ?? RealFileSystem()
         self.hasher = hasher ?? RealHasher()
         self.notificationService = notificationService ?? RealNotificationService()
+        self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
         
         // Check for UI test mode and load test paths
         if BackupManager.isRunningTests && ProcessInfo.processInfo.arguments.contains("--uitest") {
@@ -185,7 +188,7 @@ class BackupManager {
                     let itemID = self.destinationItems[index].id
                     Task { [weak self] in
                         guard let self = self else { return }
-                        if let driveInfo = DriveAnalyzer.analyzeDrive(at: url) {
+                        if let driveInfo = self.driveAnalyzer.analyzeDrive(at: url) {
                             await MainActor.run { [weak self] in
                                 self?.destinationDriveInfo[itemID] = driveInfo
                                 logInfo("Drive analyzed on restore: \(driveInfo.deviceName)")
@@ -198,6 +201,7 @@ class BackupManager {
             // Start with one empty destination slot
             self.destinationURLs = [nil]
             self.destinationItems = [DestinationItem(url: nil)]
+            logInfo("Initialized with single empty destination slot")
         }
         
         // Initialize file type filter from preferences
@@ -250,16 +254,17 @@ class BackupManager {
                     
                     // If we can't access the bookmark, clear it
                     if !accessing {
-                        await MainActor.run {
+                        await MainActor.run { [weak self] in
+                            guard let self = self else { return }
                             logWarning("Destination bookmark at index \(index) is invalid, clearing...")
-                            if index < destinationURLs.count {
-                                destinationURLs[index] = nil
+                            if index < self.destinationURLs.count {
+                                self.destinationURLs[index] = nil
                             }
-                            if index < destinationKeys.count {
-                                UserDefaults.standard.removeObject(forKey: destinationKeys[index])
+                            if index < self.destinationKeys.count {
+                                UserDefaults.standard.removeObject(forKey: self.destinationKeys[index])
                             }
                             // Update the item to have no URL
-                            destinationItems[index] = DestinationItem(url: nil)
+                            self.destinationItems[index] = DestinationItem(url: nil)
                         }
                         return
                     }
@@ -269,15 +274,17 @@ class BackupManager {
                     
                     if isAccessible {
                         // Destination is accessible, analyze it
-                        if let driveInfo = DriveAnalyzer.analyzeDrive(at: url) {
-                            await MainActor.run {
-                                destinationDriveInfo[itemID] = driveInfo
+                        if let driveInfo = self.driveAnalyzer.analyzeDrive(at: url) {
+                            await MainActor.run { [weak self] in
+                                guard let self = self else { return }
+                                self.destinationDriveInfo[itemID] = driveInfo
                                 logInfo("Initial drive analysis: \(driveInfo.deviceName) - \(driveInfo.connectionType.displayName)", category: .performance)
                             }
                         }
                     } else {
                         // Destination is not accessible (drive disconnected, etc.)
-                        await MainActor.run {
+                        await MainActor.run { [weak self] in
+                            guard let self = self else { return }
                             // Store a special marker to indicate unavailable destination
                             logInfo("Destination not accessible: \(url.lastPathComponent)")
                             // We'll create a special DriveInfo to indicate unavailable
@@ -296,7 +303,7 @@ class BackupManager {
                                 freeSpace: 0,
                                 driveType: .generic
                             )
-                            destinationDriveInfo[itemID] = unavailableInfo
+                            self.destinationDriveInfo[itemID] = unavailableInfo
                         }
                     }
                 }
@@ -475,7 +482,7 @@ class BackupManager {
             }
             
             if isAccessible {
-                if let driveInfo = DriveAnalyzer.analyzeDrive(at: url) {
+                if let driveInfo = driveAnalyzer.analyzeDrive(at: url) {
                     await MainActor.run {
                         destinationDriveInfo[itemID] = driveInfo
                         logInfo("Drive analyzed: \(driveInfo.deviceName) - \(driveInfo.connectionType.displayName) - Write: \(driveInfo.estimatedWriteSpeed) MB/s", category: .performance)
@@ -890,8 +897,16 @@ class BackupManager {
     
     static func loadBookmark(forKey key: String) -> URL? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return loadBookmark(from: data)
+    }
+    
+    static func loadBookmark(from data: Data) -> URL? {
         var isStale = false
         return try? URL(resolvingBookmarkData: data, options: [.withoutUI, .withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale)
+    }
+    
+    static func createBookmark(for url: URL) -> Data? {
+        return try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil)
     }
     
     static func loadDestinationBookmarks() -> [URL?] {

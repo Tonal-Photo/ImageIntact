@@ -16,6 +16,9 @@ import Combine
 class DriveMonitor: ObservableObject {
     static let shared = DriveMonitor()
     
+    // MARK: - Dependencies (injectable for testing)
+    var driveAnalyzer: DriveAnalyzerProtocol = RealDriveAnalyzer()
+    
     // MARK: - Published Properties
     @Published var connectedDrives: [DriveAnalyzer.DriveInfo] = []
     @Published var recentlyDisconnected: [DriveAnalyzer.DriveInfo] = []
@@ -84,7 +87,7 @@ class DriveMonitor: ObservableObject {
     
     /// Get detailed information about a specific drive
     func getDriveDetails(_ url: URL) -> DriveAnalyzer.DriveInfo? {
-        return DriveAnalyzer.analyzeDrive(at: url)
+        return driveAnalyzer.analyzeDrive(at: url)
     }
     
     /// Set a custom name for a drive
@@ -216,7 +219,7 @@ class DriveMonitor: ObservableObject {
         
         DispatchQueue.main.async { [weak self] in
             self?.connectedDrives = volumes.compactMap { url in
-                DriveAnalyzer.analyzeDrive(at: url)
+                self?.driveAnalyzer.analyzeDrive(at: url)
             }
         }
     }
@@ -323,7 +326,7 @@ private func driveAppearedCallback(disk: DADisk?, context: UnsafeMutableRawPoint
     }
     
     // Analyze drive
-    if let driveInfo = DriveAnalyzer.analyzeDrive(at: path) {
+    if let driveInfo = monitor.driveAnalyzer.analyzeDrive(at: path) {
         DispatchQueue.main.async {
             monitor.connectedDrives.append(driveInfo)
             monitor.driveConnected.send(driveInfo)
@@ -383,7 +386,7 @@ private func driveChangedCallback(disk: DADisk?, keys: CFArray?, context: Unsafe
         return
     }
     
-    if let updatedInfo = DriveAnalyzer.analyzeDrive(at: path) {
+    if let updatedInfo = monitor.driveAnalyzer.analyzeDrive(at: path) {
         DispatchQueue.main.async {
             if let index = monitor.connectedDrives.firstIndex(where: { $0.mountPath == path }) {
                 monitor.connectedDrives[index] = updatedInfo

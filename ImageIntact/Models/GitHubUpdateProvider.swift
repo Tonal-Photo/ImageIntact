@@ -109,7 +109,7 @@ class GitHubUpdateProvider: UpdateProvider {
         print("📥 GitHubUpdateProvider: Starting download from \(update.downloadURL)")
         
         // Use URLSession's built-in download with delegate for progress
-        let request = URLRequest(url: update.downloadURL)
+        let _ = URLRequest(url: update.downloadURL)
         
         // Download using standard URLSession (simpler approach)
         let (localURL, response) = try await URLSession.shared.download(from: update.downloadURL)

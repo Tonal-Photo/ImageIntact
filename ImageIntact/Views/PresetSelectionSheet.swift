@@ -14,6 +14,7 @@ struct PresetSelectionSheet: View {
     
     @State private var selectedPresetID: UUID?
     @State private var hoveredPresetID: UUID?
+    @State private var showingManagePresets = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -117,7 +118,7 @@ struct PresetSelectionSheet: View {
             // Footer
             HStack {
                 Button("Manage Presets...") {
-                    // TODO: Open preset management
+                    showingManagePresets = true
                 }
                 .buttonStyle(.plain)
                 
@@ -145,6 +146,11 @@ struct PresetSelectionSheet: View {
         .onAppear {
             // Pre-select current preset if any
             selectedPresetID = presetManager.selectedPreset?.id
+        }
+        .alert("Manage Presets", isPresented: $showingManagePresets) {
+            Button("OK") { }
+        } message: {
+            Text("Preset management will be available in a future update.")
         }
     }
 }

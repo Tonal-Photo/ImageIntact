@@ -142,6 +142,10 @@ struct BackupPreset: Codable, Identifiable, Equatable {
     var destinationCount: Int
     var preferredDriveUUIDs: [String]
     
+    // Source and Destination Bookmarks (for custom presets)
+    var sourceBookmark: Data?
+    var destinationBookmarks: [Data?]
+    
     // Metadata
     var createdDate: Date
     var lastUsedDate: Date?
@@ -162,6 +166,8 @@ struct BackupPreset: Codable, Identifiable, Equatable {
         showNotification: Bool = true,
         destinationCount: Int = 1,
         preferredDriveUUIDs: [String] = [],
+        sourceBookmark: Data? = nil,
+        destinationBookmarks: [Data?] = [],
         createdDate: Date = Date(),
         lastUsedDate: Date? = nil,
         useCount: Int = 0
@@ -180,6 +186,8 @@ struct BackupPreset: Codable, Identifiable, Equatable {
         self.showNotification = showNotification
         self.destinationCount = destinationCount
         self.preferredDriveUUIDs = preferredDriveUUIDs
+        self.sourceBookmark = sourceBookmark
+        self.destinationBookmarks = destinationBookmarks
         self.createdDate = createdDate
         self.lastUsedDate = lastUsedDate
         self.useCount = useCount
@@ -320,6 +328,40 @@ class BackupPresetManager: ObservableObject {
     }
     
     func applyPreset(_ preset: BackupPreset, to backupManager: BackupManager) {
+        // Apply source bookmark if available (for custom presets)
+        if let sourceBookmark = preset.sourceBookmark {
+            if let url = BackupManager.loadBookmark(from: sourceBookmark) {
+                backupManager.setSource(url)
+                ApplicationLogger.shared.info("Restored source from preset: \(url.lastPathComponent)", category: .app)
+            }
+        }
+        
+        // Clear existing destinations and apply preset destinations
+        backupManager.clearAllSelections()
+        
+        // Apply destination bookmarks if available
+        if !preset.destinationBookmarks.isEmpty {
+            for (index, bookmarkData) in preset.destinationBookmarks.enumerated() {
+                if let data = bookmarkData,
+                   let url = BackupManager.loadBookmark(from: data) {
+                    if index == 0 {
+                        // First destination - update the existing one
+                        backupManager.setDestination(url, at: 0)
+                    } else {
+                        // Additional destinations - add new ones
+                        backupManager.addDestination()
+                        backupManager.setDestination(url, at: backupManager.destinationItems.count - 1)
+                    }
+                    ApplicationLogger.shared.info("Restored destination \(index + 1) from preset: \(url.lastPathComponent)", category: .app)
+                }
+            }
+        } else {
+            // Update destination count if no bookmarks but count specified
+            while backupManager.destinationItems.count < preset.destinationCount {
+                backupManager.addDestination()
+            }
+        }
+        
         // Update backup manager settings
         backupManager.fileTypeFilter = preset.fileTypeFilter
         backupManager.excludeCacheFiles = preset.excludeCacheFiles
@@ -328,11 +370,6 @@ class BackupPresetManager: ObservableObject {
         PreferencesManager.shared.skipHiddenFiles = preset.skipHiddenFiles
         PreferencesManager.shared.preventSleepDuringBackup = preset.preventSleep
         PreferencesManager.shared.showNotificationOnComplete = preset.showNotification
-        
-        // Update destination count if needed
-        while backupManager.destinationItems.count < preset.destinationCount {
-            backupManager.addDestination()
-        }
         
         // Update use statistics
         var updatedPreset = preset
@@ -345,7 +382,89 @@ class BackupPresetManager: ObservableObject {
         ApplicationLogger.shared.info("Applied preset: \(preset.name)", category: .app)
     }
     
+    func currentConfigurationMatchesExistingPreset(backupManager: BackupManager) -> Bool {
+        // Check if current configuration matches any existing preset
+        for preset in presets {
+            // Skip built-in presets as they don't have source/destination bookmarks
+            if preset.isBuiltIn {
+                continue
+            }
+            
+            // Check if file type filter matches
+            if preset.fileTypeFilter != backupManager.fileTypeFilter {
+                continue
+            }
+            
+            // Check if settings match
+            if preset.excludeCacheFiles != backupManager.excludeCacheFiles ||
+               preset.skipHiddenFiles != PreferencesManager.shared.skipHiddenFiles ||
+               preset.preventSleep != PreferencesManager.shared.preventSleepDuringBackup ||
+               preset.showNotification != PreferencesManager.shared.showNotificationOnComplete {
+                continue
+            }
+            
+            // Check if destination count matches
+            let activeDestinations = backupManager.destinationItems.filter { $0.url != nil }
+            if preset.destinationCount != activeDestinations.count {
+                continue
+            }
+            
+            // Check source bookmark
+            if let sourceBookmark = preset.sourceBookmark,
+               let savedURL = BackupManager.loadBookmark(from: sourceBookmark),
+               let currentURL = backupManager.sourceURL {
+                if savedURL.path != currentURL.path {
+                    continue
+                }
+            } else if preset.sourceBookmark != nil || backupManager.sourceURL != nil {
+                // One has source, the other doesn't
+                continue
+            }
+            
+            // Check destination bookmarks
+            var destinationsMatch = true
+            for (index, item) in activeDestinations.enumerated() {
+                if index < preset.destinationBookmarks.count {
+                    if let bookmarkData = preset.destinationBookmarks[index],
+                       let savedURL = BackupManager.loadBookmark(from: bookmarkData),
+                       let currentURL = item.url {
+                        if savedURL.path != currentURL.path {
+                            destinationsMatch = false
+                            break
+                        }
+                    } else if preset.destinationBookmarks[index] != nil || item.url != nil {
+                        // One has destination, the other doesn't
+                        destinationsMatch = false
+                        break
+                    }
+                }
+            }
+            
+            if destinationsMatch {
+                // Found a matching preset
+                return true
+            }
+        }
+        
+        return false
+    }
+    
     func createPresetFromCurrent(name: String, backupManager: BackupManager) -> BackupPreset {
+        // Create bookmarks for source and destinations
+        var sourceBookmark: Data? = nil
+        if let sourceURL = backupManager.sourceURL {
+            sourceBookmark = BackupManager.createBookmark(for: sourceURL)
+        }
+        
+        var destinationBookmarks: [Data?] = []
+        for item in backupManager.destinationItems {
+            if let url = item.url {
+                destinationBookmarks.append(BackupManager.createBookmark(for: url))
+            } else {
+                destinationBookmarks.append(nil)
+            }
+        }
+        
         return BackupPreset(
             name: name,
             icon: "star",
@@ -358,7 +477,10 @@ class BackupPresetManager: ObservableObject {
             skipHiddenFiles: PreferencesManager.shared.skipHiddenFiles,
             preventSleep: PreferencesManager.shared.preventSleepDuringBackup,
             showNotification: PreferencesManager.shared.showNotificationOnComplete,
-            destinationCount: backupManager.destinationItems.count
+            destinationCount: backupManager.destinationItems.count,
+            preferredDriveUUIDs: [],
+            sourceBookmark: sourceBookmark,
+            destinationBookmarks: destinationBookmarks
         )
     }
 }

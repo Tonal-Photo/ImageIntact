@@ -19,20 +19,42 @@ struct BackupConfigurationView: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            // Backup Presets Button
-            Button(action: { showingPresetSelection = true }) {
+            // Backup Presets Menu
+            Menu {
+                Button("Select Preset...") {
+                    showingPresetSelection = true
+                }
+                
+                // Only show save option if we have valid source and at least one destination
+                let hasValidConfiguration = backupManager.sourceURL != nil && 
+                    backupManager.destinationItems.contains { $0.url != nil }
+                let isDuplicatePreset = presetManager.currentConfigurationMatchesExistingPreset(backupManager: backupManager)
+                
+                if hasValidConfiguration {
+                    Divider()
+                    Button("Save Current as Preset...") {
+                        showingCreatePreset = true
+                    }
+                    .disabled(isDuplicatePreset)
+                }
+                
+                Divider()
+                Button("Manage Presets...") {
+                    showingPresetManagement = true
+                }
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: presetManager.selectedPreset?.icon ?? "doc.text")
                         .font(.caption)
-                    Text(presetManager.selectedPreset?.name ?? "Select Preset")
+                    Text(presetManager.selectedPreset?.name ?? "Presets")
                         .font(.caption)
                     Image(systemName: "chevron.down")
                         .font(.caption2)
                 }
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Select a backup preset configuration")
+            .help("Manage backup preset configurations")
             
             // File Type Filter Menu
             Menu {
@@ -113,11 +135,10 @@ struct BackupConfigurationView: View {
                 isPresented: $showingCreatePreset
             )
         }
-        .sheet(isPresented: $showingPresetManagement) {
-            ManagePresetsSheet(
-                presetManager: presetManager,
-                isPresented: $showingPresetManagement
-            )
+        .alert("Manage Presets", isPresented: $showingPresetManagement) {
+            Button("OK") { }
+        } message: {
+            Text("Preset management will be available in a future update.")
         }
         .sheet(isPresented: $showFilterSheet) {
             FileTypeSelectionSheet(
@@ -131,6 +152,9 @@ struct BackupConfigurationView: View {
                 initializeSelectedTypes()
                 isInitialized = true
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowCreatePreset"))) { _ in
+            showingCreatePreset = true
         }
     }
     
