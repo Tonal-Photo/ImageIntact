@@ -32,16 +32,45 @@ enum EventSeverity: String {
 /// Thread-safe event logger using Core Data
 @MainActor
 class EventLogger {
-    static let shared = EventLogger()
+    // Use lazy initialization to ensure proper ordering
+    static let shared: EventLogger = {
+        return EventLogger()
+    }()
     
-    private let container: NSPersistentContainer
+    // Static model cache to prevent multiple loads
+    fileprivate static var managedObjectModel: NSManagedObjectModel?
+    private static var isInitialized = false
+    
+    // Expose container for other components that need to use the same Core Data stack
+    let container: NSPersistentContainer
     internal var currentSessionID: UUID?
     internal let backgroundContext: NSManagedObjectContext
     private let batchLogger = BatchEventLogger(batchSize: 100, maxBatchWaitTime: 2.0)
     
     private init() {
-        // Create container
-        container = NSPersistentContainer(name: "ImageIntactEvents")
+        // Ensure we only initialize once
+        guard !EventLogger.isInitialized else {
+            fatalError("EventLogger singleton already initialized")
+        }
+        EventLogger.isInitialized = true
+        
+        // Load model only once and cache it
+        if EventLogger.managedObjectModel == nil {
+            guard let modelURL = Bundle.main.url(forResource: "ImageIntactEvents", withExtension: "momd") else {
+                fatalError("Failed to find Core Data model")
+            }
+            guard let model = NSManagedObjectModel(contentsOf: modelURL) else {
+                fatalError("Failed to load Core Data model")
+            }
+            EventLogger.managedObjectModel = model
+        }
+        
+        guard let model = EventLogger.managedObjectModel else {
+            fatalError("Core Data model not available")
+        }
+        
+        // Create container with explicit model to prevent duplicate loading
+        container = NSPersistentContainer(name: "ImageIntactEvents", managedObjectModel: model)
         
         // Configure for performance
         if let description = container.persistentStoreDescriptions.first {

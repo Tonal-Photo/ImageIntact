@@ -20,46 +20,16 @@ class DriveIdentityManager: ObservableObject {
     @Published var isFirstTimeSetup = false
     
     // MARK: - Private Properties
-    private let container: NSPersistentContainer
+    private var container: NSPersistentContainer {
+        // Use EventLogger's container to avoid duplicate entity warnings
+        return EventLogger.shared.container
+    }
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
     private init() {
-        // Use the same container as EventLogger with matching configuration
-        container = NSPersistentContainer(name: "ImageIntactEvents")
-        
-        // Configure for performance and match EventLogger settings
-        if let description = container.persistentStoreDescriptions.first {
-            // Enable persistent history tracking (MUST match EventLogger)
-            description.setOption(true as NSNumber, 
-                                 forKey: NSPersistentHistoryTrackingKey)
-            
-            // Enable remote change notifications
-            description.setOption(true as NSNumber,
-                                 forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
-            
-            // Set SQLite pragmas for performance
-            description.setOption(["journal_mode": "WAL",
-                                   "synchronous": "NORMAL",
-                                   "cache_size": "10000"] as NSDictionary,
-                                 forKey: NSSQLitePragmasOption)
-            
-            // Enable automatic migration
-            description.setOption(true as NSNumber,
-                                 forKey: NSMigratePersistentStoresAutomaticallyOption)
-            description.setOption(true as NSNumber,
-                                 forKey: NSInferMappingModelAutomaticallyOption)
-        }
-        
-        container.loadPersistentStores { _, error in
-            if let error = error {
-                ApplicationLogger.shared.error("Failed to load Core Data: \(error)", category: .database)
-            }
-        }
-        
-        // Configure contexts
-        container.viewContext.automaticallyMergesChangesFromParent = true
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        // EventLogger.shared will initialize the container
+        // We just use it directly - no need to configure it here
         
         // Set up drive monitor subscriptions
         setupDriveMonitorSubscriptions()

@@ -37,6 +37,7 @@ class BackupManager {
     internal let hasher: HashingProtocol
     internal let notificationService: NotificationProtocol
     internal let driveAnalyzer: DriveAnalyzerProtocol
+    internal let diskSpaceChecker: DiskSpaceProtocol
     
     // MARK: - Published Properties
     var sourceURL: URL? = nil
@@ -161,13 +162,15 @@ class BackupManager {
         fileSystem: FileSystemProtocol? = nil,
         hasher: HashingProtocol? = nil,
         notificationService: NotificationProtocol? = nil,
-        driveAnalyzer: DriveAnalyzerProtocol? = nil
+        driveAnalyzer: DriveAnalyzerProtocol? = nil,
+        diskSpaceChecker: DiskSpaceProtocol? = nil
     ) {
         // Use provided dependencies or create real implementations
         self.fileSystem = fileSystem ?? RealFileSystem()
         self.hasher = hasher ?? RealHasher()
         self.notificationService = notificationService ?? RealNotificationService()
         self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
+        self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
         
         // Check for UI test mode and load test paths
         if BackupManager.isRunningTests && ProcessInfo.processInfo.arguments.contains("--uitest") {
@@ -463,9 +466,10 @@ class BackupManager {
             
             // Do an immediate space check if we know the backup size
             if totalBytesToCopy > 0 {
-                let spaceCheck = DiskSpaceChecker.checkDestinationSpace(
+                let spaceCheck = diskSpaceChecker.checkDestinationSpace(
                     destination: url,
-                    requiredBytes: totalBytesToCopy
+                    requiredBytes: totalBytesToCopy,
+                    additionalBuffer: 100_000_000
                 )
                 
                 if let error = spaceCheck.error {
@@ -636,12 +640,12 @@ class BackupManager {
         let destinations = destinationURLs.compactMap { $0 }
         
         // Check disk space for all destinations
-        let spaceChecks = DiskSpaceChecker.checkAllDestinations(
+        let spaceChecks = diskSpaceChecker.checkAllDestinations(
             destinations: destinations,
             requiredBytes: totalBytesToCopy
         )
         
-        let (canProceed, warnings, errors) = DiskSpaceChecker.evaluateSpaceChecks(spaceChecks)
+        let (canProceed, warnings, errors) = diskSpaceChecker.evaluateSpaceChecks(spaceChecks)
         
         // If we have errors (insufficient space), show alert and abort
         if !canProceed {
