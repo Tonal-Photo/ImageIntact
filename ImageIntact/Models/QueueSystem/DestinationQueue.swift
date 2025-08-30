@@ -8,6 +8,7 @@ actor DestinationQueue {
     let queue: PriorityQueue
     let throughputMonitor: ThroughputMonitor
     private let batchProcessor = BatchFileProcessor()
+    private let fileOperations: FileOperationsProtocol
     
     private var activeWorkers: Set<UUID> = []
     private var workerTasks: [Task<Void, Never>] = []
@@ -54,11 +55,12 @@ actor DestinationQueue {
     private let maxWorkers = 4  // Reduced from 8 to prevent resource exhaustion
     private let maxMemoryUsageMB = 750  // Increased from 500MB - more appropriate for modern systems
     
-    init(destination: URL, organizationName: String = "") {
+    init(destination: URL, organizationName: String = "", fileOperations: FileOperationsProtocol = DefaultFileOperations.shared) {
         self.destination = destination
         self.organizationName = organizationName
         self.queue = PriorityQueue()
         self.throughputMonitor = ThroughputMonitor()
+        self.fileOperations = fileOperations
     }
     
     // MARK: - Queue Management
@@ -252,20 +254,19 @@ actor DestinationQueue {
         
         do {
             // Create directory if needed
-            if !FileManager.default.fileExists(atPath: destDir.path) {
-                try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+            if !fileOperations.fileExists(at: destDir) {
+                try fileOperations.createDirectory(at: destDir, withIntermediateDirectories: true)
             }
             
             // Check if file already exists with matching checksum
-            if FileManager.default.fileExists(atPath: destPath.path) {
+            if fileOperations.fileExists(at: destPath) {
                 // Quick size check first
-                if let destAttributes = try? FileManager.default.attributesOfItem(atPath: destPath.path),
-                   let destSize = destAttributes[.size] as? Int64,
+                if let destSize = fileOperations.fileSize(at: destPath),
                    destSize == task.size {
-                    // Size matches, verify checksum (autoreleasepool is inside the static method)
-                    let existingChecksum = try BackupManager.sha256ChecksumStatic(
+                    // Size matches, verify checksum
+                    let existingChecksum = try await fileOperations.calculateChecksum(
                         for: destPath,
-                        shouldCancel: shouldCancel
+                        shouldCancel: { shouldCancel }
                     )
                     if existingChecksum == task.checksum {
                         // Log skip event
@@ -290,7 +291,7 @@ actor DestinationQueue {
                     }
                 }
                 // File exists but doesn't match, remove it
-                try FileManager.default.removeItem(at: destPath)
+                try fileOperations.removeItem(at: destPath)
             }
             
             // Copy the file with proper error handling and security-scoped access
@@ -298,18 +299,18 @@ actor DestinationQueue {
                 // Extra debug for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
                     print("🎬 About to copy video from \(task.sourceURL.path)")
-                    print("   Source exists: \(FileManager.default.fileExists(atPath: task.sourceURL.path))")
+                    print("   Source exists: \(fileOperations.fileExists(at: task.sourceURL))")
                 }
                 
                 // Start security-scoped access for both source and destination
-                let sourceAccess = task.sourceURL.startAccessingSecurityScopedResource()
-                let destAccess = destination.startAccessingSecurityScopedResource()
+                let sourceAccess = fileOperations.startAccessingSecurityScopedResource(for: task.sourceURL)
+                let destAccess = fileOperations.startAccessingSecurityScopedResource(for: destination)
                 defer {
-                    if sourceAccess { task.sourceURL.stopAccessingSecurityScopedResource() }
-                    if destAccess { destination.stopAccessingSecurityScopedResource() }
+                    if sourceAccess { fileOperations.stopAccessingSecurityScopedResource(for: task.sourceURL) }
+                    if destAccess { fileOperations.stopAccessingSecurityScopedResource(for: destination) }
                 }
                 
-                try FileManager.default.copyItem(at: task.sourceURL, to: destPath)
+                try await fileOperations.copyItem(at: task.sourceURL, to: destPath)
                 
                 // Log successful copy
                 let duration = Date().timeIntervalSince(startTime)
@@ -334,7 +335,7 @@ actor DestinationQueue {
                 // Extra confirmation for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
                     print("✅ Video copied successfully: \(task.relativePath)")
-                    print("   Dest exists: \(FileManager.default.fileExists(atPath: destPath.path))")
+                    print("   Dest exists: \(fileOperations.fileExists(at: destPath))")
                 } else {
                     print("✅ Copied \(task.relativePath) to \(destination.lastPathComponent)")
                 }
@@ -366,8 +367,8 @@ actor DestinationQueue {
                 }
                 
                 // Clean up partial file if copy failed
-                if FileManager.default.fileExists(atPath: destPath.path) {
-                    try? FileManager.default.removeItem(at: destPath)
+                if fileOperations.fileExists(at: destPath) {
+                    try? fileOperations.removeItem(at: destPath)
                 }
                 throw error
             }
@@ -510,17 +511,17 @@ actor DestinationQueue {
             
             do {
                 // Check if file exists
-                guard FileManager.default.fileExists(atPath: destPath.path) else {
+                guard fileOperations.fileExists(at: destPath) else {
                     print("❌ Verification failed: \(task.relativePath) missing at \(destination.lastPathComponent)")
                     failedFiles.append((file: task.relativePath, error: "File missing after copy"))
                     continue
                 }
                 
-                // Verify checksum (autoreleasepool is inside the static method)
+                // Verify checksum
                 let verifyStartTime = Date()
-                let actualChecksum = try BackupManager.sha256ChecksumStatic(
+                let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
-                    shouldCancel: shouldCancel
+                    shouldCancel: { shouldCancel }
                 )
                 
                 if actualChecksum == task.checksum {
