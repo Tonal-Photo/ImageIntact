@@ -3,7 +3,7 @@ import Foundation
 /// Handles all progress tracking for backup operations
 /// Extracted from BackupManager to follow Single Responsibility Principle
 @MainActor
-class ProgressTracker: ObservableObject {
+class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
     
     // MARK: - File Progress
     @Published var totalFiles = 0
@@ -78,6 +78,29 @@ class ProgressTracker: ObservableObject {
     }
     
     // MARK: - File Progress Updates
+    
+    /// Update the current file being processed (protocol requirement)
+    func updateCurrentFile(_ fileName: String, index: Int, total: Int) {
+        currentFileName = fileName
+        currentFileIndex = index
+        totalFiles = total
+    }
+    
+    /// Increment the count of processed files (protocol requirement)
+    func incrementProcessedFiles() {
+        processedFiles += 1
+    }
+    
+    /// Update byte progress (protocol requirement)
+    func updateByteProgress(copied: Int64, total: Int64) {
+        totalBytesCopied = copied
+        totalBytesToCopy = total
+    }
+    
+    /// Update copy speed (protocol requirement)
+    func updateCopySpeed(_ speed: Double) {
+        copySpeed = speed
+    }
     
     /// Update progress for a file
     func updateFileProgress(fileName: String, destinationName: String) {
@@ -183,7 +206,7 @@ class ProgressTracker: ObservableObject {
     
     // MARK: - ETA Calculation
     
-    private func updateETA() {
+    func updateETA() {
         // Only update ETA every second to avoid too frequent updates
         guard Date().timeIntervalSince(lastETAUpdate) >= 1.0 else { return }
         lastETAUpdate = Date()
