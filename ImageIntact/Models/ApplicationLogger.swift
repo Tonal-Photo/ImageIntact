@@ -103,19 +103,20 @@ class ApplicationLogger {
         
         container.persistentStoreDescriptions = [description]
         
-        // Create background context for logging (to avoid blocking main thread)
-        backgroundContext = container.newBackgroundContext()
-        backgroundContext.automaticallyMergesChangesFromParent = true
-        
-        // Create OS Log
+        // Create OS Log first (doesn't depend on Core Data)
         osLog = OSLog(subsystem: "com.tonalphoto.ImageIntact", category: "ApplicationLogger")
         
+        // Load persistent stores BEFORE creating background context
         container.loadPersistentStores { _, error in
             if let error = error {
                 // Fatal error - can't log without storage
                 fatalError("Failed to load ApplicationLogs store: \(error)")
             }
         }
+        
+        // Create background context AFTER stores are loaded
+        backgroundContext = container.newBackgroundContext()
+        backgroundContext.automaticallyMergesChangesFromParent = true
         
         // Log system startup
         log(.info, .app, "ApplicationLogger initialized")
