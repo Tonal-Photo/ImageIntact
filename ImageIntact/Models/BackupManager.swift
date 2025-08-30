@@ -135,6 +135,16 @@ class BackupManager {
     var showMigrationDialog = false
     var pendingMigrationPlans: [BackupMigrationDetector.MigrationPlan] = []
     
+    // Duplicate detection state
+    var enableDuplicateDetection: Bool {
+        PreferencesManager.shared.enableSmartDuplicateDetection
+    }
+    var showDuplicateWarning = false
+    var duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]?
+    var duplicateDetector = DuplicateDetector()
+    var skipExactDuplicates = true
+    var skipRenamedDuplicates = false
+    
     // MARK: - Constants
     let sourceKey = "sourceBookmark"
     let destinationKeys = ["dest1Bookmark", "dest2Bookmark", "dest3Bookmark", "dest4Bookmark"]

@@ -620,8 +620,7 @@ struct AdvancedPreferencesView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Toggle("Enable smart duplicate detection", isOn: $preferences.enableSmartDuplicateDetection)
                                 .font(.system(size: 13))
-                                .disabled(true)
-                                .help("Coming soon - Detect and skip files that are already backed up")
+                                .help("Detect and skip files that are already backed up at destinations using checksums")
                             
                             Toggle("Show technical details during backup", isOn: $preferences.showTechnicalDetails)
                                 .font(.system(size: 13))

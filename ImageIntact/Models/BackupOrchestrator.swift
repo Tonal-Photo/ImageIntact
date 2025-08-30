@@ -58,6 +58,9 @@ class BackupOrchestrator {
     ///   - destinations: Array of destination URLs
     ///   - driveInfo: Dictionary of drive information for destinations
     ///   - sessionID: Optional session ID to use for logging
+    ///   - duplicateAnalyses: Optional duplicate analysis results for filtering
+    ///   - skipExactDuplicates: Whether to skip exact duplicates
+    ///   - skipRenamedDuplicates: Whether to skip renamed duplicates
     /// - Returns: Array of failed files or empty if successful
     func performBackup(
         source: URL,
@@ -66,7 +69,10 @@ class BackupOrchestrator {
         destinationItemIDs: [UUID],
         filter: FileTypeFilter = FileTypeFilter(),
         organizationName: String = "",
-        sessionID: String? = nil
+        sessionID: String? = nil,
+        duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]? = nil,
+        skipExactDuplicates: Bool = false,
+        skipRenamedDuplicates: Bool = false
     ) async -> [(file: String, destination: String, error: String)] {
         
         print("🚀 BackupOrchestrator: Starting backup operation")
@@ -150,10 +156,51 @@ class BackupOrchestrator {
         
         print("📋 Manifest contains \(manifest.count) files")
         
-        // Log manifest completion
-        let totalBytes = manifest.reduce(0) { $0 + $1.size }
+        // Filter manifest based on duplicate preferences if analyses provided
+        var filteredManifest = manifest
+        if let duplicateAnalyses = duplicateAnalyses, !duplicateAnalyses.isEmpty {
+            print("🔍 Filtering duplicates from manifest...")
+            let duplicateDetector = DuplicateDetector()
+            
+            // Apply filtering per destination and combine results
+            var allChecksumToSkip = Set<String>()
+            for (_, analysis) in duplicateAnalyses {
+                if skipExactDuplicates {
+                    for dup in analysis.exactDuplicates {
+                        allChecksumToSkip.insert(dup.checksum)
+                    }
+                }
+                if skipRenamedDuplicates {
+                    for dup in analysis.renamedDuplicates {
+                        allChecksumToSkip.insert(dup.checksum)
+                    }
+                }
+            }
+            
+            // Filter manifest
+            let originalCount = manifest.count
+            filteredManifest = manifest.filter { entry in
+                !allChecksumToSkip.contains(entry.checksum)
+            }
+            
+            let skippedCount = originalCount - filteredManifest.count
+            if skippedCount > 0 {
+                print("📊 Skipping \(skippedCount) duplicate files")
+                onStatusUpdate?("Skipping \(skippedCount) duplicate files...")
+                
+                // Log the filtering
+                eventLogger.logEvent(type: .scan, severity: .info, metadata: [
+                    "duplicatesSkipped": skippedCount,
+                    "skipExact": skipExactDuplicates,
+                    "skipRenamed": skipRenamedDuplicates
+                ])
+            }
+        }
+        
+        // Log manifest completion with filtered count
+        let totalBytes = filteredManifest.reduce(0) { $0 + $1.size }
         eventLogger.logEvent(type: .scan, severity: .info, metadata: [
-            "fileCount": manifest.count,
+            "fileCount": filteredManifest.count,
             "totalBytes": totalBytes,
             "destinationCount": destinations.count
         ])
@@ -164,7 +211,7 @@ class BackupOrchestrator {
             let sizeThresholdBytes = Int64(PreferencesManager.shared.largeBackupSizeThresholdGB * 1_000_000_000) // Convert GB to bytes
             
             // Check if backup exceeds thresholds
-            if manifest.count > fileThreshold || totalBytes > sizeThresholdBytes {
+            if filteredManifest.count > fileThreshold || totalBytes > sizeThresholdBytes {
                 // We need to show confirmation on main thread
                 let shouldContinue = await MainActor.run { [weak self] in
                     guard let self = self else { return false }
@@ -177,7 +224,7 @@ class BackupOrchestrator {
                     formatter.countStyle = .file
                     let sizeString = formatter.string(fromByteCount: totalBytes)
                     
-                    var message = "This backup contains \(manifest.count) files"
+                    var message = "This backup contains \(filteredManifest.count) files"
                     message += " totaling \(sizeString)."
                     
                     if destinations.count > 1 {
@@ -218,7 +265,7 @@ class BackupOrchestrator {
                     eventLogger.logEvent(type: .error, severity: .info, metadata: [
                         "phase": "large_backup_confirmation",
                         "reason": "user_cancelled",
-                        "fileCount": manifest.count,
+                        "fileCount": filteredManifest.count,
                         "totalBytes": totalBytes
                     ])
                     return failedFiles
@@ -228,7 +275,7 @@ class BackupOrchestrator {
         
         // Also log to ApplicationLogger for debug output
         ApplicationLogger.shared.debug(
-            "Manifest built: \(manifest.count) files, \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))",
+            "Manifest built: \(filteredManifest.count) files, \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))",
             category: .backup
         )
         
@@ -241,10 +288,10 @@ class BackupOrchestrator {
         }
         
         // PHASE 3: Initialize progress tracking
-        progressTracker.totalFiles = manifest.count
+        progressTracker.totalFiles = filteredManifest.count
         
         // Calculate total bytes
-        let totalBytesPerDestination = manifest.reduce(0) { $0 + $1.size }
+        let totalBytesPerDestination = filteredManifest.reduce(0) { $0 + $1.size }
         progressTracker.sourceTotalBytes = totalBytesPerDestination
         progressTracker.totalBytesToCopy = totalBytesPerDestination * Int64(destinations.count)
         progressTracker.totalBytesCopied = 0
@@ -287,7 +334,7 @@ class BackupOrchestrator {
         await coordinator.startBackup(
             source: source,
             destinations: destinations,
-            manifest: manifest,
+            manifest: filteredManifest,
             organizationName: organizationName
         )
         

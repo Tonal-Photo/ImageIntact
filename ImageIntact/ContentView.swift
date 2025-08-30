@@ -186,6 +186,24 @@ struct ContentView: View {
                 )
             }
         }
+        .sheet(isPresented: $backupManager.showDuplicateWarning) {
+            if let duplicateAnalyses = backupManager.duplicateAnalyses {
+                DuplicateWarningView(
+                    analyses: duplicateAnalyses,
+                    onProceed: { skipExact, skipRenamed in
+                        Task {
+                            await backupManager.continueBackupAfterDuplicateDecision(
+                                skipExact: skipExact,
+                                skipRenamed: skipRenamed
+                            )
+                        }
+                    },
+                    onCancel: {
+                        backupManager.cancelBackupFromDuplicateWarning()
+                    }
+                )
+            }
+        }
         .sheet(isPresented: $updateManager.showUpdateSheet) {
             UpdateStatusSheet(
                 result: updateManager.updateCheckResult,

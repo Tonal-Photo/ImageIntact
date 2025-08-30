@@ -39,6 +39,19 @@ extension BackupManager {
             }
         }
         
+        // Check for duplicates before proceeding
+        if enableDuplicateDetection {
+            await checkForDuplicates(source: source, destinations: destinations)
+            
+            // If duplicate dialog is shown, wait for user decision
+            if showDuplicateWarning && duplicateAnalyses != nil {
+                print("⏸️ Waiting for duplicate handling decision...")
+                // The actual backup will be triggered after duplicate dialog closes
+                isProcessing = false
+                return
+            }
+        }
+        
         // Start statistics tracking
         statistics.startBackup(sourceFiles: sourceFileTypes, filter: fileTypeFilter)
         
@@ -49,6 +62,7 @@ extension BackupManager {
             isProcessing = false
             shouldCancel = false
             currentOrchestrator = nil
+            duplicateAnalyses = nil  // Clear duplicate analyses after backup
             
             // Schedule cleanup after a delay so UI can read the stats first
             Task { @MainActor [weak self] in
@@ -94,7 +108,7 @@ extension BackupManager {
         // Build destination item IDs array for drive info lookup
         let destinationItemIDs = destinationItems.prefix(destinations.count).map { $0.id }
         
-        // Perform the backup with file type filter
+        // Perform the backup with file type filter and duplicate preferences
         let failures = await orchestrator.performBackup(
             source: source,
             destinations: destinations,
@@ -102,7 +116,10 @@ extension BackupManager {
             destinationItemIDs: destinationItemIDs,
             filter: fileTypeFilter,
             organizationName: organizationName,
-            sessionID: sessionID
+            sessionID: sessionID,
+            duplicateAnalyses: duplicateAnalyses,
+            skipExactDuplicates: skipExactDuplicates,
+            skipRenamedDuplicates: skipRenamedDuplicates
         )
         
         // Add any failures to our list (avoiding duplicates)
@@ -448,5 +465,69 @@ extension BackupManager {
             let destinations = destinationItems.compactMap { $0.url }
             await performQueueBasedBackup(source: source, destinations: destinations)
         }
+    }
+    
+    /// Check for duplicate files at destinations
+    @MainActor
+    private func checkForDuplicates(source: URL, destinations: [URL]) async {
+        print("🔍 Checking for duplicate files...")
+        
+        statusMessage = "Analyzing for duplicates..."
+        
+        // Build manifest if needed
+        let manifestBuilder = ManifestBuilder()
+        guard let manifest = await manifestBuilder.build(
+            source: source,
+            shouldCancel: { false },
+            filter: fileTypeFilter
+        ) else {
+            print("❌ Could not build manifest for duplicate check")
+            return
+        }
+        
+        // Perform duplicate analysis for all destinations
+        let analyses = await duplicateDetector.preflightDuplicateCheck(
+            manifest: manifest,
+            destinations: destinations,
+            organizationName: organizationName
+        )
+        
+        // Check if any duplicates were found
+        let totalDuplicates = analyses.values.reduce(0) { $0 + $1.totalDuplicates }
+        
+        if totalDuplicates > 0 {
+            print("⚠️ Found \(totalDuplicates) duplicate files across destinations")
+            duplicateAnalyses = analyses
+            showDuplicateWarning = true
+        } else {
+            print("✅ No duplicates found")
+            duplicateAnalyses = nil
+            showDuplicateWarning = false
+        }
+    }
+    
+    /// Continue backup after duplicate handling decision
+    @MainActor
+    func continueBackupAfterDuplicateDecision(skipExact: Bool, skipRenamed: Bool) async {
+        print("📦 Continuing backup with duplicate preferences...")
+        showDuplicateWarning = false
+        skipExactDuplicates = skipExact
+        skipRenamedDuplicates = skipRenamed
+        
+        // Re-run the backup now that duplicate handling is decided
+        if let source = sourceURL {
+            let destinations = destinationItems.compactMap { $0.url }
+            await performQueueBasedBackup(source: source, destinations: destinations)
+        }
+    }
+    
+    /// Cancel backup from duplicate warning
+    @MainActor
+    func cancelBackupFromDuplicateWarning() {
+        print("❌ Backup cancelled by user from duplicate warning")
+        showDuplicateWarning = false
+        duplicateAnalyses = nil
+        isProcessing = false
+        statusMessage = "Backup cancelled"
     }
 }
