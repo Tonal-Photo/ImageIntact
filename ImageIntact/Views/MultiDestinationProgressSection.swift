@@ -280,7 +280,7 @@ struct MultiDestinationProgress: View {
                     DestinationProgressRow(
                         destinationName: destination.lastPathComponent,
                         completedFiles: backupManager.destinationProgress[destination.lastPathComponent] ?? 0,
-                        totalFiles: backupManager.totalFiles,
+                        totalFiles: backupManager.progressTracker.destinationTotalFiles[destination.lastPathComponent] ?? backupManager.totalFiles,
                         isActive: backupManager.currentDestinationName == destination.lastPathComponent,
                         phase: backupManager.currentPhase,
                         state: backupManager.destinationStates[destination.lastPathComponent] ?? "copying"

@@ -62,13 +62,19 @@ class BackupCoordinator: ObservableObject {
         
         // Debug: Print task distribution
         for (idx, destTasks) in tasksByDestination {
-            print("📊 Destination \(idx) will receive \(destTasks?.count ?? 0) tasks")
+            print("📊 Destination \(idx) (\(destinations[idx].lastPathComponent)) will receive \(destTasks.count) tasks")
+            if destTasks.count > 0 {
+                let firstFew = destTasks.prefix(3).map { $0.relativePath }
+                print("   First few tasks: \(firstFew)")
+            }
         }
         
         // Create a queue for each destination with organization name
         for (index, destination) in destinations.enumerated() {
             let queue = DestinationQueue(destination: destination, organizationName: organizationName)
             let destName = destination.lastPathComponent  // Capture once
+            
+            print("🔍 Creating queue for destination \(index): \(destName)")
             
             // Set up callbacks before adding to array to avoid retain issues
             // Use destName consistently to avoid capturing destination in closures
@@ -94,6 +100,12 @@ class BackupCoordinator: ObservableObject {
             // Get tasks for this destination
             let destinationTasks = tasksByDestination[index] ?? []
             
+            print("🔍 About to add \(destinationTasks.count) tasks to \(destName)")
+            if destinationTasks.count > 0 {
+                let sample = destinationTasks.prefix(3).map { $0.relativePath }
+                print("   Sample tasks for \(destName): \(sample)")
+            }
+            
             // Initialize status - no need for serial queue here as we're still in setup phase
             // and not yet running concurrent operations
             destinationStatuses[destName] = DestinationStatus(
@@ -110,6 +122,7 @@ class BackupCoordinator: ObservableObject {
             
             // Add tasks to queue
             await queue.addTasks(destinationTasks)
+            print("🔍 Tasks added to \(destName)")
         }
         
         // Start all queues
@@ -375,12 +388,21 @@ class BackupCoordinator: ObservableObject {
             }
             
             // Calculate overall progress (include both copying and verification)
-            let totalOperations = destinationQueues.count * manifest.count * 2 // *2 for copy + verify
+            // Each destination processes its share of files (copy + verify)
+            // Total operations = sum of all (files to copy + files to verify) across all destinations
+            var totalOperations = 0
             var completedOperations = 0
+            
+            // Sum up operations across all destinations
             for status in destinationStatuses.values {
-                completedOperations += status.completed // Files copied
-                completedOperations += status.verifiedCount // Files verified
+                // Each destination has 'total' files to copy and 'total' files to verify
+                totalOperations += status.total * 2  // *2 for copy + verify
+                // Add completed copy operations
+                completedOperations += status.completed
+                // Add completed verify operations
+                completedOperations += status.verifiedCount
             }
+            
             let calculatedProgress = totalOperations > 0 ? Double(completedOperations) / Double(totalOperations) : 0
             // Sanitize to 0-1 range to prevent UI issues
             overallProgress = max(0.0, min(1.0, calculatedProgress))
@@ -409,12 +431,18 @@ class BackupCoordinator: ObservableObject {
     @MainActor
     private func updateOverallProgress(totalFiles: Int) {
         // Calculate overall progress based on current status
-        let totalOperations = destinationStatuses.count * totalFiles * 2 // *2 for copy + verify
+        // Note: totalFiles parameter is ignored as each destination has its own total
+        var totalOperations = 0
         var completedOperations = 0
         
+        // Sum up operations across all destinations
         for status in destinationStatuses.values {
-            completedOperations += status.completed // Files copied
-            completedOperations += status.verifiedCount // Files verified
+            // Each destination has 'total' files to copy and 'total' files to verify
+            totalOperations += status.total * 2  // *2 for copy + verify
+            // Add completed copy operations
+            completedOperations += status.completed
+            // Add completed verify operations
+            completedOperations += status.verifiedCount
         }
         
         let calculatedProgress = totalOperations > 0 ? Double(completedOperations) / Double(totalOperations) : 0

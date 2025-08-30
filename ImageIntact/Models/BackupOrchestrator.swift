@@ -427,6 +427,11 @@ class BackupOrchestrator {
         
         // Process all status updates synchronously since we're already on MainActor
         for (name, status) in coordinator.destinationStatuses {
+            // Set the total files for this destination if not already set
+            if progressTracker.destinationTotalFiles[name] == nil {
+                progressTracker.setDestinationTotalFiles(status.total, for: name)
+            }
+            
             if status.isComplete {
                 // Direct update - no Task needed since progressTracker is @MainActor
                 progressTracker.destinationProgress[name] = status.total

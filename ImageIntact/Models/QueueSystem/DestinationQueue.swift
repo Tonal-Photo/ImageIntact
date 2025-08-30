@@ -24,6 +24,9 @@ actor DestinationQueue {
     private(set) var verifiedFiles: Int = 0
     private(set) var isVerifying = false
     
+    // Store the tasks assigned to this destination for verification
+    private var assignedTasks: [FileTask] = []
+    
     // Callbacks for UI updates (needs to be set from async context)
     private var onProgress: ((Int, Int) async -> Void)?
     private var onStatusUpdate: ((String) async -> Void)?
@@ -64,6 +67,13 @@ actor DestinationQueue {
         await queue.enqueueMultiple(tasks)
         totalFiles += tasks.count
         totalBytes += tasks.reduce(0) { $0 + $1.size }
+        // Store the tasks assigned to this destination
+        assignedTasks = tasks
+        print("📋 \(destination.lastPathComponent) assigned \(tasks.count) tasks")
+        if tasks.count > 0 {
+            let firstFew = tasks.prefix(3).map { $0.relativePath }
+            print("   First few: \(firstFew)")
+        }
     }
     
     func start() async {
@@ -74,9 +84,6 @@ actor DestinationQueue {
         await throughputMonitor.start()
         
         print("🚀 Starting queue for \(destination.lastPathComponent) with \(await queue.count) files")
-        
-        // Keep track of all files for verification
-        let allTasks = await queue.allTasks()
         
         // Start initial workers
         for _ in 0..<currentWorkerCount {
@@ -92,9 +99,9 @@ actor DestinationQueue {
         }
         workerTasks.append(managerTask)
         
-        // Start verification monitor
+        // Start verification monitor - it will use assignedTasks member variable
         let verifyTask = Task {
-            await startVerificationWhenCopyingComplete(allTasks: allTasks)
+            await startVerificationWhenCopyingComplete()
         }
         workerTasks.append(verifyTask)
     }
@@ -451,7 +458,7 @@ actor DestinationQueue {
     
     // MARK: - Verification
     
-    private func startVerificationWhenCopyingComplete(allTasks: [FileTask]) async {
+    private func startVerificationWhenCopyingComplete() async {
         // Wait for all copying to complete
         while completedFiles < totalFiles && !shouldCancel {
             try? await Task.sleep(nanoseconds: 1_000_000_000) // Check every second
@@ -460,11 +467,15 @@ actor DestinationQueue {
         guard !shouldCancel else { return }
         
         print("✅ Copying complete for \(destination.lastPathComponent), starting verification...")
-        print("📊 Debug: allTasks.count = \(allTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)")
+        print("📊 Debug: assignedTasks.count = \(assignedTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)")
         
-        // Debug: Check what files are in allTasks
-        let sampleFiles = allTasks.prefix(5).map { $0.relativePath }
-        print("📊 Sample of allTasks for \(destination.lastPathComponent): \(sampleFiles)")
+        // Debug: Check what files are in assignedTasks
+        let sampleFiles = assignedTasks.prefix(5).map { $0.relativePath }
+        print("📊 Sample of assignedTasks for \(destination.lastPathComponent): \(sampleFiles)")
+        
+        // Debug: Check what files were successfully copied
+        let copiedSample = Array(successfullyCopiedFiles.prefix(5))
+        print("📊 Sample of successfullyCopiedFiles for \(destination.lastPathComponent): \(copiedSample)")
         
         // Small delay before setting isVerifying to ensure UI sees copying complete first
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
@@ -478,7 +489,7 @@ actor DestinationQueue {
         }
         
         // Verify only files that were successfully copied to THIS destination
-        for task in allTasks {
+        for task in assignedTasks {
             guard !shouldCancel else { break }
             
             // Skip files that weren't copied to this destination
@@ -487,7 +498,15 @@ actor DestinationQueue {
                 continue
             }
             
-            let destPath = destination.appendingPathComponent(task.relativePath)
+            // If we have an organization name, include it in the path
+            let destPath: URL
+            if !organizationName.isEmpty {
+                destPath = destination
+                    .appendingPathComponent(organizationName)
+                    .appendingPathComponent(task.relativePath)
+            } else {
+                destPath = destination.appendingPathComponent(task.relativePath)
+            }
             
             do {
                 // Check if file exists

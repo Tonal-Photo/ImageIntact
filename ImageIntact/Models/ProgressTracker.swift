@@ -30,6 +30,7 @@ class ProgressTracker: ObservableObject {
     
     // MARK: - Destination Progress
     @Published var destinationProgress: [String: Int] = [:] // destinationName -> completed files
+    @Published var destinationTotalFiles: [String: Int] = [:] // destinationName -> total files for that destination
     @Published var destinationStates: [String: String] = [:] // destinationName -> "copying" | "verifying" | "complete"
     
     // MARK: - Thread-safe state
@@ -62,6 +63,7 @@ class ProgressTracker: ObservableObject {
         overallProgress = 0.0
         
         destinationProgress.removeAll()
+        destinationTotalFiles.removeAll()
         destinationStates.removeAll()
         
         // Reset actor state
@@ -148,6 +150,11 @@ class ProgressTracker: ObservableObject {
         Task { [weak progressState] in
             await progressState?.setDestinationProgress(progress, for: destination)
         }
+    }
+    
+    /// Set total files for a destination
+    func setDestinationTotalFiles(_ total: Int, for destination: String) {
+        destinationTotalFiles[destination] = total
     }
     
     // MARK: - Byte Progress
