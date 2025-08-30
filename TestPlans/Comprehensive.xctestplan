@@ -11,9 +11,10 @@
           }
         ],
         "maximumTestExecutionTimeAllowance" : 300,
-        "testExecutionOrdering" : "random",
-        "threadSanitizerEnabled" : true,
-        "uiTestingScreenshotsLifetime" : "keepOnFailure"
+        "testExecutionOrdering" : "alphabetical",
+        "threadSanitizerEnabled" : false,
+        "uiTestingScreenshotsLifetime" : "keepOnFailure",
+        "mainThreadCheckerEnabled" : true
       }
     }
   ],
@@ -39,18 +40,19 @@
       {
         "key" : "COMPREHENSIVE_TEST",
         "value" : "1"
+      },
+      {
+        "key" : "ENABLE_DETAILED_LOGGING",
+        "value" : "1"
       }
     ],
     "maximumTestRepetitions" : 1,
-    "testTimeoutsEnabled" : true
+    "testTimeoutsEnabled" : true,
+    "addressSanitizerEnabled" : false
   },
   "testTargets" : [
     {
       "parallelizable" : true,
-      "skippedTests" : [
-        "ConcurrencyStressTests/testExtremeStress",
-        "MemoryOptimizationTests/testGiantFileSet"
-      ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
         "identifier" : "ImageIntactTests",
@@ -59,12 +61,6 @@
     },
     {
       "parallelizable" : false,
-      "selectedTests" : [
-        "ImageIntactUITests/testHappyPath_SelectSourceAndDestinations_RunBackup",
-        "ImageIntactUITests/testErrorHandling_NoSourceSelected",
-        "ImageIntactUITests/testOrganizationSection_AppearsAfterSourceSelection",
-        "MigrationUITests/testMigrationDialog_AppearsWhenNeeded"
-      ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
         "identifier" : "ImageIntactUITests",

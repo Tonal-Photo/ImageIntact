@@ -26,7 +26,23 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      systemAttachmentLifetime = "keepAlways"
+      userAttachmentLifetime = "keepAlways">
+      <TestPlans>
+         <TestPlanReference
+            reference = "container:TestPlans/Fast.xctestplan"
+            default = "NO">
+         </TestPlanReference>
+         <TestPlanReference
+            reference = "container:TestPlans/Comprehensive.xctestplan"
+            default = "YES">
+         </TestPlanReference>
+         <TestPlanReference
+            reference = "container:TestPlans/FullE2E.xctestplan"
+            default = "NO">
+         </TestPlanReference>
+      </TestPlans>
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
@@ -44,6 +60,16 @@
                BlueprintIdentifier = "71CB2DFC2E3E6030004E9F48"
                BuildableName = "ImageIntactTests.xctest"
                BlueprintName = "ImageIntactTests"
+               ReferencedContainer = "container:ImageIntact.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "71F5E3D22E3F85B800AD2DEC"
+               BuildableName = "ImageIntactUITests.xctest"
+               BlueprintName = "ImageIntactUITests"
                ReferencedContainer = "container:ImageIntact.xcodeproj">
             </BuildableReference>
          </TestableReference>

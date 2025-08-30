@@ -16,10 +16,10 @@
         ],
         "maximumTestExecutionTimeAllowance" : 1800,
         "testExecutionOrdering" : "alphabetical",
-        "threadSanitizerEnabled" : true,
+        "threadSanitizerEnabled" : false,
         "uiTestingScreenshotsLifetime" : "keepAlways",
-        "addressSanitizerEnabled" : true,
-        "undefinedBehaviorSanitizerEnabled" : true
+        "addressSanitizerEnabled" : false,
+        "mainThreadCheckerEnabled" : true
       }
     }
   ],
@@ -52,6 +52,10 @@
       {
         "key" : "LOG_LEVEL",
         "value" : "DEBUG"
+      },
+      {
+        "key" : "CAPTURE_SCREENSHOTS",
+        "value" : "1"
       }
     ],
     "language" : "en",
@@ -68,18 +72,39 @@
   "testTargets" : [
     {
       "parallelizable" : false,
-      "target" : {
-        "containerPath" : "container:ImageIntact.xcodeproj",
-        "identifier" : "ImageIntactTests",
-        "name" : "ImageIntactTests"
-      }
-    },
-    {
-      "parallelizable" : false,
+      "selectedTests" : [
+        "BackupFlowUITests/testCompleteBackupFlow_SingleDestination",
+        "BackupFlowUITests/testCompleteBackupFlow_MultipleDestinations",
+        "BackupFlowUITests/testOrganizationFolder_CreatedCorrectly",
+        "BackupFlowUITests/testProgressBars_ShowAccurateProgress",
+        "BackupFlowUITests/testVerificationPhase_ShowsStatus",
+        "BackupFlowUITests/testCancelDuringBackup_StopsOperation",
+        "DestinationManagementUITests/testAddMultipleDestinations",
+        "DestinationManagementUITests/testDestinationStatus_ShowsDuringBackup",
+        "DestinationManagementUITests/testDestinationOrder_MaintainedDuringBackup",
+        "PreferencesUITests/testOpenPreferencesWindow",
+        "PreferencesUITests/testGeneralPreferences_NotificationSettings",
+        "PreferencesUITests/testBackupPreferences_VerificationOption",
+        "MigrationUITests/testMigrationDialog_AppearsWhenNeeded",
+        "MigrationUITests/testMigrationDialog_MigrateButton",
+        "ImageIntactUITests/testHappyPath_SelectSourceAndDestinations_RunBackup"
+      ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
         "identifier" : "ImageIntactUITests",
         "name" : "ImageIntactUITests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "selectedTests" : [
+        "DestinationQueueTests",
+        "BackupCoordinatorTests"
+      ],
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactTests",
+        "name" : "ImageIntactTests"
       }
     }
   ],

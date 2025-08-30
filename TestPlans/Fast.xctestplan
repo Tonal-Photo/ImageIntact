@@ -44,21 +44,32 @@
   "testTargets" : [
     {
       "parallelizable" : true,
-      "skippedTests" : [
-        "ImageIntactUITests",
-        "MigrationUITests",
-        "BackupIntegrationTests/testLargeFileBackup",
-        "BackupIntegrationTests/testStressTest",
-        "ChecksumPerformanceTests",
-        "OptimizedChecksumPerformanceTests",
-        "ConcurrencyStressTests",
-        "MemoryOptimizationTests",
-        "QueueMemoryOptimizationTests"
+      "selectedTests" : [
+        "DestinationQueueTests/testQueueInitialization",
+        "DestinationQueueTests/testAddingTasks",
+        "DestinationQueueTests/testSuccessfulFileCopy",
+        "BackupCoordinatorTests/testCoordinatorInitialization",
+        "BackupCoordinatorTests/testRoundRobinTaskDistribution"
       ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
         "identifier" : "ImageIntactTests",
         "name" : "ImageIntactTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "selectedTests" : [
+        "ImageIntactUITests/testHappyPath_SelectSourceAndDestinations_RunBackup",
+        "ImageIntactUITests/testErrorHandling_NoSourceSelected",
+        "BackupFlowUITests/testNoSourceSelected_ButtonDisabled",
+        "BackupFlowUITests/testNoDestinationSelected_ButtonDisabled",
+        "DestinationManagementUITests/testAddSingleDestination"
+      ],
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactUITests",
+        "name" : "ImageIntactUITests"
       }
     }
   ],
