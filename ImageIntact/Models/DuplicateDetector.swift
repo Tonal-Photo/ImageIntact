@@ -51,7 +51,6 @@ class DuplicateDetector: ObservableObject {
     
     // MARK: - Properties
     
-    private let persistentContainer: NSPersistentContainer
     @Published var isAnalyzing = false
     @Published var analysisProgress: Double = 0.0
     @Published var currentAnalysis: DuplicateAnalysis?
@@ -59,13 +58,7 @@ class DuplicateDetector: ObservableObject {
     // MARK: - Initialization
     
     init() {
-        // Use the existing Core Data stack
-        self.persistentContainer = NSPersistentContainer(name: "ImageIntactEvents")
-        persistentContainer.loadPersistentStores { _, error in
-            if let error = error {
-                print("❌ Failed to load Core Data: \(error)")
-            }
-        }
+        // Use the shared EventLogger's Core Data stack to avoid conflicts
     }
     
     // MARK: - Public Methods
@@ -189,7 +182,8 @@ class DuplicateDetector: ObservableObject {
     ) async -> [String: (path: String, filename: String, organization: String?)] {
         
         return await withCheckedContinuation { continuation in
-            let context = persistentContainer.viewContext
+            // Use EventLogger's shared container to avoid conflicts
+            let context = EventLogger.shared.container.viewContext
             let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: "BackupEvent")
             
             // Build predicate

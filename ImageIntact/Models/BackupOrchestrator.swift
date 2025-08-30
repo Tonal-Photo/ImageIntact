@@ -160,7 +160,6 @@ class BackupOrchestrator {
         var filteredManifest = manifest
         if let duplicateAnalyses = duplicateAnalyses, !duplicateAnalyses.isEmpty {
             print("🔍 Filtering duplicates from manifest...")
-            let duplicateDetector = DuplicateDetector()
             
             // Apply filtering per destination and combine results
             var allChecksumToSkip = Set<String>()
