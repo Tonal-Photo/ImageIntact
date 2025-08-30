@@ -17,6 +17,7 @@ actor DestinationQueue {
     // Progress tracking
     private(set) var totalFiles: Int = 0
     private(set) var completedFiles: Int = 0
+    private var successfullyCopiedFiles: Set<String> = []
     private(set) var failedFiles: [(file: String, error: String)] = []
     private(set) var bytesTransferred: Int64 = 0
     private(set) var totalBytes: Int64 = 0
@@ -141,6 +142,7 @@ actor DestinationQueue {
             switch result {
             case .success:
                 completedFiles += 1
+                successfullyCopiedFiles.insert(task.relativePath)
                 bytesTransferred += task.size
                 await throughputMonitor.recordTransfer(bytes: task.size)
                 
@@ -280,12 +282,20 @@ actor DestinationQueue {
                 try FileManager.default.removeItem(at: destPath)
             }
             
-            // Copy the file with proper error handling
+            // Copy the file with proper error handling and security-scoped access
             do {
                 // Extra debug for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
                     print("🎬 About to copy video from \(task.sourceURL.path)")
                     print("   Source exists: \(FileManager.default.fileExists(atPath: task.sourceURL.path))")
+                }
+                
+                // Start security-scoped access for both source and destination
+                let sourceAccess = task.sourceURL.startAccessingSecurityScopedResource()
+                let destAccess = destination.startAccessingSecurityScopedResource()
+                defer {
+                    if sourceAccess { task.sourceURL.stopAccessingSecurityScopedResource() }
+                    if destAccess { destination.stopAccessingSecurityScopedResource() }
                 }
                 
                 try FileManager.default.copyItem(at: task.sourceURL, to: destPath)
@@ -458,9 +468,14 @@ actor DestinationQueue {
             await callback(true, 0)
         }
         
-        // Verify each file
+        // Verify only files that were successfully copied to THIS destination
         for task in allTasks {
             guard !shouldCancel else { break }
+            
+            // Skip files that weren't copied to this destination
+            guard successfullyCopiedFiles.contains(task.relativePath) else {
+                continue
+            }
             
             let destPath = destination.appendingPathComponent(task.relativePath)
             
@@ -551,6 +566,6 @@ actor DestinationQueue {
             let finalVerified = verifiedFiles
             await callback(false, finalVerified)
         }
-        print("🎉 Verification complete for \(destination.lastPathComponent): \(verifiedFiles)/\(totalFiles) verified")
+        print("🎉 Verification complete for \(destination.lastPathComponent): \(verifiedFiles)/\(successfullyCopiedFiles.count) verified")
     }
 }
