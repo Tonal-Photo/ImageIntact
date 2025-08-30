@@ -263,12 +263,17 @@ actor DestinationQueue {
                 // Quick size check first
                 if let destSize = fileOperations.fileSize(at: destPath),
                    destSize == task.size {
-                    // Size matches, verify checksum
-                    let existingChecksum = try await fileOperations.calculateChecksum(
-                        for: destPath,
-                        shouldCancel: { shouldCancel }
-                    )
-                    if existingChecksum == task.checksum {
+                    // Size matches, verify checksum with retry for transient read errors
+                    let checksumMatches = try await RetryHandler.shared.executeWithRetry(
+                        operation: "Verify checksum for \(task.relativePath)"
+                    ) {
+                        let existingChecksum = try await fileOperations.calculateChecksum(
+                            for: destPath,
+                            shouldCancel: { shouldCancel }
+                        )
+                        return existingChecksum == task.checksum
+                    }
+                    if checksumMatches {
                         // Log skip event
                         await MainActor.run {
                             EventLogger.shared.logEvent(
@@ -310,7 +315,12 @@ actor DestinationQueue {
                     if destAccess { fileOperations.stopAccessingSecurityScopedResource(for: destination) }
                 }
                 
-                try await fileOperations.copyItem(at: task.sourceURL, to: destPath)
+                // Use retry handler for copy operation
+                try await RetryHandler.shared.copyFileWithRetry(
+                    from: task.sourceURL,
+                    to: destPath,
+                    fileOperations: fileOperations
+                )
                 
                 // Log successful copy
                 let duration = Date().timeIntervalSince(startTime)
