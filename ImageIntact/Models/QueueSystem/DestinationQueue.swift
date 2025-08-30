@@ -149,6 +149,10 @@ actor DestinationQueue {
             case .skipped(let reason):
                 print("⏭️ Skipped \(task.relativePath): \(reason)")
                 completedFiles += 1
+                // Add to successfully copied files if it was skipped because it already exists
+                if reason.contains("Already exists") {
+                    successfullyCopiedFiles.insert(task.relativePath)
+                }
                 
             case .failed(let error):
                 print("❌ Failed \(task.relativePath): \(error)")
@@ -456,6 +460,11 @@ actor DestinationQueue {
         guard !shouldCancel else { return }
         
         print("✅ Copying complete for \(destination.lastPathComponent), starting verification...")
+        print("📊 Debug: allTasks.count = \(allTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)")
+        
+        // Debug: Check what files are in allTasks
+        let sampleFiles = allTasks.prefix(5).map { $0.relativePath }
+        print("📊 Sample of allTasks for \(destination.lastPathComponent): \(sampleFiles)")
         
         // Small delay before setting isVerifying to ensure UI sees copying complete first
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
@@ -474,6 +483,7 @@ actor DestinationQueue {
             
             // Skip files that weren't copied to this destination
             guard successfullyCopiedFiles.contains(task.relativePath) else {
+                // This file was not assigned to this destination, skip it
                 continue
             }
             

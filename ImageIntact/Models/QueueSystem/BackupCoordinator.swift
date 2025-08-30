@@ -60,6 +60,11 @@ class BackupCoordinator: ObservableObject {
             tasksByDestination[destinationIndex]?.append(task)
         }
         
+        // Debug: Print task distribution
+        for (idx, destTasks) in tasksByDestination {
+            print("📊 Destination \(idx) will receive \(destTasks?.count ?? 0) tasks")
+        }
+        
         // Create a queue for each destination with organization name
         for (index, destination) in destinations.enumerated() {
             let queue = DestinationQueue(destination: destination, organizationName: organizationName)
