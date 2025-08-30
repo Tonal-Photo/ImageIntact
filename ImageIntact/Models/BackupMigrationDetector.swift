@@ -45,6 +45,14 @@ class BackupMigrationDetector {
         
         print("🔍 Checking for existing files at destination root that match source...")
         
+        // Start security-scoped access for the destination
+        let accessGranted = destination.startAccessingSecurityScopedResource()
+        defer {
+            if accessGranted {
+                destination.stopAccessingSecurityScopedResource()
+            }
+        }
+        
         // Get all files in destination root (not in subdirectories)
         var rootFiles: [URL] = []
         do {

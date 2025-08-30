@@ -397,6 +397,14 @@ extension BackupManager {
         
         pendingMigrationPlans.removeAll()
         
+        // Start security-scoped access for source
+        let sourceAccessGranted = source.startAccessingSecurityScopedResource()
+        defer {
+            if sourceAccessGranted {
+                source.stopAccessingSecurityScopedResource()
+            }
+        }
+        
         // Build a quick manifest for checking
         let manifestBuilder = ManifestBuilder()
         guard let manifest = await manifestBuilder.build(
