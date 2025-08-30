@@ -48,8 +48,20 @@ class BackupCoordinator: ObservableObject {
         // Create tasks with smart priority
         let tasks = createFileTasks(from: manifest)
         
+        // Distribute tasks among destinations using round-robin
+        var tasksByDestination: [Int: [FileTask]] = [:]
+        for i in 0..<destinations.count {
+            tasksByDestination[i] = []
+        }
+        
+        // Round-robin distribution
+        for (index, task) in tasks.enumerated() {
+            let destinationIndex = index % destinations.count
+            tasksByDestination[destinationIndex]?.append(task)
+        }
+        
         // Create a queue for each destination with organization name
-        for destination in destinations {
+        for (index, destination) in destinations.enumerated() {
             let queue = DestinationQueue(destination: destination, organizationName: organizationName)
             let destName = destination.lastPathComponent  // Capture once
             
@@ -60,7 +72,8 @@ class BackupCoordinator: ObservableObject {
             await queue.setVerificationCallback { [weak self] isVerifying, verifiedCount async in
                 guard let self = self else { return }
                 // Use serial queue to prevent concurrent dictionary access
-                await self.updateStatusSafely(destName: destName, isVerifying: isVerifying, verifiedCount: verifiedCount, totalFiles: manifest.count)
+                let destinationTasks = tasksByDestination[index] ?? []
+                await self.updateStatusSafely(destName: destName, isVerifying: isVerifying, verifiedCount: verifiedCount, totalFiles: destinationTasks.count)
             }
             
             // Progress callback - use serial queue for dictionary access  
@@ -73,12 +86,15 @@ class BackupCoordinator: ObservableObject {
             // Now add queue to array
             destinationQueues.append(queue)
             
+            // Get tasks for this destination
+            let destinationTasks = tasksByDestination[index] ?? []
+            
             // Initialize status - no need for serial queue here as we're still in setup phase
             // and not yet running concurrent operations
             destinationStatuses[destName] = DestinationStatus(
                 name: destName,
                 completed: 0,
-                total: tasks.count,
+                total: destinationTasks.count,
                 speed: "0 MB/s",
                 eta: nil,
                 isComplete: false,
@@ -88,7 +104,7 @@ class BackupCoordinator: ObservableObject {
             )
             
             // Add tasks to queue
-            await queue.addTasks(tasks)
+            await queue.addTasks(destinationTasks)
         }
         
         // Start all queues
