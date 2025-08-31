@@ -141,7 +141,7 @@ class BackupManager {
     }
     var showDuplicateWarning = false
     var duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]?
-    var duplicateDetector = DuplicateDetector()
+    internal let duplicateDetector: DuplicateDetectorProtocol
     var skipExactDuplicates = true
     var skipRenamedDuplicates = false
     
@@ -173,7 +173,8 @@ class BackupManager {
         hasher: HashingProtocol? = nil,
         notificationService: NotificationProtocol? = nil,
         driveAnalyzer: DriveAnalyzerProtocol? = nil,
-        diskSpaceChecker: DiskSpaceProtocol? = nil
+        diskSpaceChecker: DiskSpaceProtocol? = nil,
+        duplicateDetector: DuplicateDetectorProtocol? = nil
     ) {
         // Use provided dependencies or create real implementations
         self.fileSystem = fileSystem ?? RealFileSystem()
@@ -181,6 +182,7 @@ class BackupManager {
         self.notificationService = notificationService ?? RealNotificationService()
         self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
         self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
+        self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
         
         // Check for UI test mode and load test paths
         if BackupManager.isRunningTests && ProcessInfo.processInfo.arguments.contains("--uitest") {
