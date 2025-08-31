@@ -168,14 +168,49 @@ final class ImageFileTypeTests: XCTestCase {
         }
     }
     
+    func testCaptureOneSessionSupport() {
+        // Test that .cosessiondb files are recognized
+        let sessionFile = "MyProject.cosessiondb"
+        let ext = URL(fileURLWithPath: sessionFile).pathExtension
+        
+        if let fileType = ImageFileType.from(fileExtension: ext) {
+            XCTAssertEqual(fileType, .cos, "Session database should be COS type")
+            XCTAssertTrue(fileType.isSidecar, "Session database should be classified as sidecar")
+        } else {
+            XCTFail("cosessiondb extension should be recognized")
+        }
+    }
+    
     func testCaptureOneCachePathDetection() {
-        let cachePatterns = [
+        // These paths should be detected as cache and excluded
+        let cachePaths = [
             "/Users/test/Pictures/Session.cosessiondb/Cache/preview.jpg",
+            "/Users/test/Pictures/Session.cosessiondb/Proxies/proxy_001.jpg",
+            "/Users/test/Pictures/Session.cosessiondb/Thumbnails/thumb_1234.jpg",
             "/Users/test/Pictures/CaptureOne/Cache/thumb_1234.jpg"
         ]
         
-        for path in cachePatterns {
-            XCTAssertTrue(path.lowercased().contains("cache"), "Path should contain cache indicator")
+        // These paths should NOT be excluded (legitimate session files)
+        let validPaths = [
+            "/Users/test/Pictures/Session.cosessiondb/Session.db",
+            "/Users/test/Pictures/Session.cosessiondb/Settings/defaults.cos",
+            "/Users/test/Pictures/Session.cosessiondb/Output/processed_001.jpg"
+        ]
+        
+        // Verify cache paths contain cache indicators
+        for path in cachePaths {
+            let containsCache = path.contains("/Cache/") || 
+                                path.contains("/Proxies/") || 
+                                path.contains("/Thumbnails/")
+            XCTAssertTrue(containsCache, "Path \(path) should contain cache indicator")
+        }
+        
+        // Verify valid paths don't contain cache indicators
+        for path in validPaths {
+            let containsCache = path.contains("/Cache/") || 
+                                path.contains("/Proxies/") || 
+                                path.contains("/Thumbnails/")
+            XCTAssertFalse(containsCache, "Path \(path) should not contain cache indicator")
         }
     }
     

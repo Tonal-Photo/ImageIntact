@@ -8,6 +8,7 @@
 import Foundation
 
 /// Protocol for duplicate file detection
+@MainActor
 protocol DuplicateDetectorProtocol: AnyObject {
     
     /// Analyze source files against a destination for duplicates

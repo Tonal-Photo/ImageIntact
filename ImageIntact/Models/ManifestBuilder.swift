@@ -43,6 +43,11 @@ actor ManifestBuilder {
         ".photoslibrary/database",
         ".photoslibrary/private",
         
+        // Capture One Session caches
+        "Cache",  // C1 Session cache folder
+        "Proxies",  // C1 Session proxy folder
+        "Thumbnails",  // C1 Session thumbnails
+        
         // Development caches
         "node_modules",
         ".git",
@@ -73,6 +78,17 @@ actor ManifestBuilder {
     private func isCacheFile(_ url: URL) -> Bool {
         let path = url.path
         let filename = url.lastPathComponent
+        
+        // Special handling for Capture One Session structure
+        // Sessions have .cosessiondb extension and contain Cache/Proxies/Thumbnails folders
+        if path.contains(".cosessiondb/") {
+            // Check if we're in a cache subfolder within a Session
+            if path.contains(".cosessiondb/Cache/") ||
+               path.contains(".cosessiondb/Proxies/") ||
+               path.contains(".cosessiondb/Thumbnails/") {
+                return true
+            }
+        }
         
         // Check exact filename matches
         for pattern in Self.cachePatterns {
