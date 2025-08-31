@@ -21,3 +21,4 @@ xcuserdata/
 
 # macOS
 .DS_Store
+*.xcresult
