@@ -143,7 +143,19 @@ extension EventLogger {
                 event.eventType = pendingEvent.type.rawValue
                 event.severity = pendingEvent.severity.rawValue
                 event.filePath = pendingEvent.file?.path
+                event.fileName = pendingEvent.file?.lastPathComponent
                 event.destinationPath = pendingEvent.destination?.path
+                
+                // Extract drive UUID from destination if available
+                if let destination = pendingEvent.destination {
+                    do {
+                        let resourceValues = try destination.resourceValues(forKeys: [.volumeUUIDStringKey])
+                        event.driveUUID = resourceValues.volumeUUIDString
+                    } catch {
+                        // Silently fail if we can't get drive UUID
+                    }
+                }
+                
                 event.fileSize = pendingEvent.fileSize
                 event.checksum = pendingEvent.checksum
                 event.errorMessage = pendingEvent.error?.localizedDescription
@@ -206,7 +218,19 @@ extension EventLogger {
                 managedObject.setValue(event.type.rawValue, forKey: "eventType")
                 managedObject.setValue(event.severity.rawValue, forKey: "severity")
                 managedObject.setValue(event.file?.path, forKey: "filePath")
+                managedObject.setValue(event.file?.lastPathComponent, forKey: "fileName")
                 managedObject.setValue(event.destination?.path, forKey: "destinationPath")
+                
+                // Extract drive UUID from destination if available
+                if let destination = event.destination {
+                    do {
+                        let resourceValues = try destination.resourceValues(forKeys: [.volumeUUIDStringKey])
+                        managedObject.setValue(resourceValues.volumeUUIDString, forKey: "driveUUID")
+                    } catch {
+                        // Silently fail if we can't get drive UUID
+                    }
+                }
+                
                 managedObject.setValue(event.fileSize, forKey: "fileSize")
                 managedObject.setValue(event.checksum, forKey: "checksum")
                 managedObject.setValue(event.error?.localizedDescription, forKey: "errorMessage")

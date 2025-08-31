@@ -189,9 +189,14 @@ class DuplicateDetector: ObservableObject {
             // Build predicate
             var predicates: [NSPredicate] = []
             
-            // Filter by destination path prefix
-            let destPath = destination.path
-            predicates.append(NSPredicate(format: "destinationPath BEGINSWITH %@", destPath))
+            // If we have a driveUUID, use it for more efficient query
+            if let uuid = driveUUID {
+                predicates.append(NSPredicate(format: "driveUUID == %@", uuid))
+            } else {
+                // Fallback to path-based filtering
+                let destPath = destination.path
+                predicates.append(NSPredicate(format: "destinationPath BEGINSWITH %@", destPath))
+            }
             
             // Filter by event type (successful copies)
             predicates.append(NSPredicate(format: "eventType == %@", "copy"))
