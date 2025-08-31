@@ -49,7 +49,11 @@
         "DestinationQueueTests/testAddingTasks",
         "DestinationQueueTests/testSuccessfulFileCopy",
         "BackupCoordinatorTests/testCoordinatorInitialization",
-        "BackupCoordinatorTests/testRoundRobinTaskDistribution"
+        "BackupCoordinatorTests/testRoundRobinTaskDistribution",
+        "DuplicateDetectorTests/testEmptyManifestReturnsNoDuplicates",
+        "DuplicateDetectorTests/testFilterManifestRemovesExactDuplicates",
+        "ProtocolIntegrationTests/testMockDuplicateDetectorImplementsProtocol",
+        "ProtocolIntegrationTests/testBackupManagerAcceptsDuplicateDetectorProtocol"
       ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
