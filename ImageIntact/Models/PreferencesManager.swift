@@ -53,6 +53,14 @@ class PreferencesManager: ObservableObject {
     @AppStorage("preventSleepDuringBackup") var preventSleepDuringBackup: Bool = true
     @AppStorage("showNotificationOnComplete") var showNotificationOnComplete: Bool = true
     
+    // MARK: - Network Performance
+    
+    @AppStorage("networkCopyTimeout") var networkCopyTimeout: Int = 90 // seconds
+    @AppStorage("networkCopySpeedLimit") var networkCopySpeedLimit: Double = 0 // MB/s, 0 = unlimited
+    @AppStorage("useStreamCopyForNetwork") var useStreamCopyForNetwork: Bool = true // Use stream-based copy for better control
+    @AppStorage("networkBufferSize") var networkBufferSize: Int = 1 // MB (1-16)
+    @AppStorage("networkRetryAttempts") var networkRetryAttempts: Int = 3
+    
     // MARK: - Logging & Privacy
     
     @AppStorage("minimumLogLevel") var minimumLogLevel: Int = 1 // Maps to LogLevel.info
@@ -86,6 +94,13 @@ class PreferencesManager: ObservableObject {
         visionProcessingPriority = "normal"
         preventSleepDuringBackup = true
         showNotificationOnComplete = true
+        
+        // Network Performance
+        networkCopyTimeout = 90
+        networkCopySpeedLimit = 0
+        useStreamCopyForNetwork = true
+        networkBufferSize = 1
+        networkRetryAttempts = 3
         
         // Logging
         minimumLogLevel = 1

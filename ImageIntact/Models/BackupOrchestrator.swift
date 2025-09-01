@@ -392,7 +392,8 @@ class BackupOrchestrator {
         var lastProgressCheck = Date()
         var previousProgress: [String: Int] = [:]
         var stallCounts: [String: Int] = [:]
-        let maxStallDuration: TimeInterval = 60.0
+        // Use network timeout preference for stall detection
+        let maxStallDuration: TimeInterval = TimeInterval(PreferencesManager.shared.networkCopyTimeout)
         
         while !Task.isCancelled && !shouldCancel {
             updateProgressFromCoordinator(coordinator, destinations: destinations)

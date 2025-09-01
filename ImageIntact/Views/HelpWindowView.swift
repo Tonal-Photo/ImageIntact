@@ -667,7 +667,7 @@ struct PerformanceContent: View {
                 }
                 HStack {
                     Image(systemName: "network")
-                    Text("**Network**: 1-2 workers with timeout handling")
+                    Text("**Network**: 1-2 workers with configurable timeout and speed limiting")
                 }
                 HStack {
                     Image(systemName: "sdcard")
@@ -686,8 +686,45 @@ struct PerformanceContent: View {
                 Text("• Connect drives directly (avoid USB hubs)")
                 Text("• Close other disk-intensive applications")
                 Text("• Use wired network connections when possible")
+                Text("• Enable stream-based copy for SMB/NAS drives")
+                Text("• Set speed limits if network copies fail")
             }
             .font(.callout)
+            
+            Text("Network Performance Settings")
+                .font(.title3)
+                .fontWeight(.medium)
+                .padding(.top)
+            
+            GroupBox {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Stream-Based Copy", systemImage: "network.badge.shield.half.filled")
+                        .font(.headline)
+                    Text("Uses chunk-based copying for network volumes (SMB/NAS). Enables cancellation, speed limiting, and better timeout handling. When disabled, uses NSFileCoordinator which may be more compatible but cannot be cancelled mid-file.")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    Label("Network Timeout", systemImage: "clock.badge.exclamationmark")
+                        .font(.headline)
+                    Text("Automatically abort network copies that stall for the configured time (default: 90 seconds). Prevents indefinite hangs on SMB issues.")
+                        .font(.callout)
+                    
+                    Label("Speed Limiting", systemImage: "speedometer")
+                        .font(.headline)
+                    Text("Throttle network copy speed to prevent overwhelming SMB connections. Try 50-100 MB/s if experiencing disconnections.")
+                        .font(.callout)
+                    
+                    Label("Buffer Size", systemImage: "square.stack.3d.up")
+                        .font(.headline)
+                    Text("Smaller buffers (1-2 MB) can be more stable on flaky connections. Larger buffers (8-16 MB) may be faster on stable networks.")
+                        .font(.callout)
+                }
+            }
+            
+            Text("Access these settings in Preferences → Performance → Network Performance")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.top, 4)
         }
     }
 }
@@ -995,8 +1032,13 @@ struct TroubleshootingContent: View {
             GroupBox("Common Issues") {
                 VStack(alignment: .leading, spacing: 12) {
                     TroubleshootingItem(
-                        issue: "Network drive timeouts",
-                        solution: "Network destinations have longer timeouts. Ensure stable connection and be patient with SMB/AFP volumes."
+                        issue: "Network drive hangs or disconnections (SMB/NAS)",
+                        solution: "Enable 'Stream-based copy' in Preferences → Performance. Try setting a speed limit (50-100 MB/s) and smaller buffer size (1-2 MB). The timeout is configurable (default 90 seconds)."
+                    )
+                    
+                    TroubleshootingItem(
+                        issue: "Network copies cannot be cancelled",
+                        solution: "Enable 'Stream-based copy' in Preferences → Performance. When disabled, the traditional NSFileCoordinator method cannot be cancelled mid-file."
                     )
                     
                     TroubleshootingItem(
@@ -1217,7 +1259,17 @@ struct FAQContent: View {
                 
                 FAQItem(
                     question: "Why does my backup seem stuck or slow?",
-                    answer: "Large RAW files (20-50MB each) and network drives can significantly impact speed. Check the individual progress bars for each destination - they update independently. Network drives will show a network icon and may take longer. The app adapts the number of workers (1-8) based on drive speed."
+                    answer: "Large RAW files (20-50MB each) and network drives can significantly impact speed. Check the individual progress bars for each destination - they update independently. Network drives will show a network icon and may take longer. The app adapts the number of workers (1-8) based on drive speed. For network drives, enable 'Stream-based copy' in Preferences for better control."
+                )
+                
+                FAQItem(
+                    question: "Why does my SMB/NAS backup hang or disconnect?",
+                    answer: "macOS SMB can be unstable with high-speed transfers. Go to Preferences → Performance → Network Performance and: 1) Enable 'Stream-based copy' for cancellable operations, 2) Set a speed limit (try 50-100 MB/s), 3) Use smaller buffer size (1-2 MB), 4) Adjust timeout (default 90 seconds). These settings only affect network volumes, not local drives."
+                )
+                
+                FAQItem(
+                    question: "What's the difference between Stream-based and NSFileCoordinator copy methods?",
+                    answer: "Stream-based copy (recommended for network drives) copies files in chunks, allowing cancellation, speed limiting, and timeout handling. NSFileCoordinator uses Apple's file coordination system - it may be more compatible with some servers but cannot be cancelled once a file copy starts and may hang indefinitely on network issues."
                 )
                 
                 FAQItem(

@@ -5,8 +5,12 @@ import Darwin // For extended attribute functions
 /// Uses NSFileCoordinator for network volumes to ensure data integrity
 class CancellableFileOperations: FileOperationsProtocol {
     private let fileManager = FileManager.default
-    private let bufferSize = 1024 * 1024 * 4  // 4MB buffer for efficient copying
+    private var bufferSize: Int {
+        // Use user-configured buffer size for network operations
+        return PreferencesManager.shared.networkBufferSize * 1024 * 1024
+    }
     private let fileCoordinator = NSFileCoordinator(filePresenter: nil)
+    private let prefs = PreferencesManager.shared
     
     /// Copy a file using streams that can be cancelled
     func copyItem(at source: URL, to destination: URL) async throws {
@@ -14,11 +18,14 @@ class CancellableFileOperations: FileOperationsProtocol {
         try validatePaths(source: source, destination: destination)
         
         // Check if either source or destination is on a network volume
-        let useCoordination = isNetworkVolume(url: source) || isNetworkVolume(url: destination)
+        let isNetwork = isNetworkVolume(url: source) || isNetworkVolume(url: destination)
         
-        if useCoordination {
-            // Use file coordination for network volumes
-            try await coordinatedCopy(from: source, to: destination)
+        if isNetwork && prefs.useStreamCopyForNetwork {
+            // Use stream-based copy for network volumes (cancellable and throttleable)
+            try await streamCopy(from: source, to: destination, isNetwork: true)
+        } else if isNetwork {
+            // Use coordinated copy with timeout for network volumes
+            try await coordinatedCopyWithTimeout(from: source, to: destination)
         } else {
             // First try to create hard link (instant and cancellable)
             if tryHardLink(from: source, to: destination) {
@@ -26,7 +33,7 @@ class CancellableFileOperations: FileOperationsProtocol {
             }
             
             // Fall back to stream-based copy for cross-volume or when hard link fails
-            try await streamCopy(from: source, to: destination)
+            try await streamCopy(from: source, to: destination, isNetwork: false)
         }
     }
     
@@ -167,6 +174,33 @@ class CancellableFileOperations: FileOperationsProtocol {
         return false
     }
     
+    /// Coordinated copy with timeout for network volumes
+    private func coordinatedCopyWithTimeout(from source: URL, to destination: URL) async throws {
+        let timeout = TimeInterval(prefs.networkCopyTimeout)
+        
+        // Race between timeout and copy using withThrowingTaskGroup
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            // Add the copy task
+            group.addTask {
+                try await self.coordinatedCopy(from: source, to: destination)
+            }
+            
+            // Add the timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw NSError(domain: "CancellableFileOperations", code: 408,
+                             userInfo: [NSLocalizedDescriptionKey: "Network copy timed out after \(Int(timeout)) seconds"])
+            }
+            
+            // Wait for the first task to complete (either copy succeeds or timeout)
+            for try await _ in group {
+                // First task completed successfully (must be the copy since timeout throws)
+                group.cancelAll() // Cancel the timeout
+                return
+            }
+        }
+    }
+    
     /// Coordinated copy using NSFileCoordinator for network volumes
     private func coordinatedCopy(from source: URL, to destination: URL) async throws {
         // Check if task is cancelled before starting
@@ -230,8 +264,8 @@ class CancellableFileOperations: FileOperationsProtocol {
         }
     }
     
-    /// Stream-based copy that can be cancelled
-    private func streamCopy(from source: URL, to destination: URL) async throws {
+    /// Stream-based copy that can be cancelled and throttled
+    private func streamCopy(from source: URL, to destination: URL, isNetwork: Bool) async throws {
         // Open source file for reading
         guard let sourceHandle = try? FileHandle(forReadingFrom: source) else {
             throw NSError(domain: "CancellableFileOperations", code: 1, 
@@ -251,13 +285,18 @@ class CancellableFileOperations: FileOperationsProtocol {
             try? destHandle.close()
         }
         
+        // Track timing for throttling
+        var lastChunkTime = Date()
+        let speedLimit = isNetwork ? prefs.networkCopySpeedLimit : 0 // MB/s
+        let chunkSize = isNetwork ? bufferSize : (4 * 1024 * 1024) // Use configured size for network
+        
         // Copy in chunks that can be cancelled between iterations
         while true {
             // Check for cancellation
             try Task.checkCancellation()
             
             // Read a chunk
-            let chunk = sourceHandle.readData(ofLength: bufferSize)
+            let chunk = sourceHandle.readData(ofLength: chunkSize)
             
             // If no data read, we're done
             if chunk.isEmpty {
@@ -266,6 +305,20 @@ class CancellableFileOperations: FileOperationsProtocol {
             
             // Write the chunk
             try destHandle.write(contentsOf: chunk)
+            
+            // Throttle for network copies if speed limit is set
+            if isNetwork && speedLimit > 0 {
+                let bytesPerSecond = speedLimit * 1024 * 1024
+                let expectedDuration = Double(chunk.count) / bytesPerSecond
+                let actualDuration = Date().timeIntervalSince(lastChunkTime)
+                
+                if actualDuration < expectedDuration {
+                    // Sleep to limit speed
+                    let sleepTime = expectedDuration - actualDuration
+                    try await Task.sleep(nanoseconds: UInt64(sleepTime * 1_000_000_000))
+                }
+                lastChunkTime = Date()
+            }
             
             // Yield to allow cancellation
             await Task.yield()
