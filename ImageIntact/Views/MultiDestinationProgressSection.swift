@@ -188,10 +188,8 @@ struct SimpleBackupProgress: View {
                     .foregroundColor(.secondary)
                 
                 HStack {
-                    // During verification, show processedFiles (verified count), otherwise show currentFileIndex
-                    let fileCount = backupManager.currentPhase == .verifyingDestinations ? 
-                        backupManager.processedFiles : backupManager.currentFileIndex
-                    Text("Files: \(fileCount)/\(backupManager.totalFiles)")
+                    // Always show processedFiles which tracks actual copied files
+                    Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
                         .font(.subheadline)
                     
                     Spacer()
