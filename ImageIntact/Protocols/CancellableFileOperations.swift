@@ -1,4 +1,5 @@
 import Foundation
+import Darwin // For extended attribute functions
 
 /// Cancellable file operations using stream-based copying
 /// Uses NSFileCoordinator for network volumes to ensure data integrity
@@ -107,6 +108,48 @@ class CancellableFileOperations: FileOperationsProtocol {
         } catch {
             // Hard link failed (file system doesn't support it or other error)
             return false
+        }
+    }
+    
+    /// Preserve extended attributes from source to destination file
+    private func preserveExtendedAttributes(from source: URL, to destination: URL) throws {
+        // Get list of extended attributes
+        let sourcePath = source.path
+        let destPath = destination.path
+        
+        // Get the list of extended attribute names
+        let listSize = listxattr(sourcePath, nil, 0, 0)
+        guard listSize > 0 else { return } // No extended attributes
+        
+        let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: listSize)
+        defer { buffer.deallocate() }
+        
+        let result = listxattr(sourcePath, buffer, listSize, 0)
+        guard result > 0 else { return }
+        
+        // Parse attribute names (null-terminated strings)
+        var position = 0
+        while position < result {
+            let nameStart = buffer.advanced(by: position)
+            let name = String(cString: nameStart)
+            
+            // Get size of this attribute's value
+            let valueSize = getxattr(sourcePath, name, nil, 0, 0, 0)
+            if valueSize > 0 {
+                // Get the attribute value
+                let valueBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: valueSize)
+                defer { valueBuffer.deallocate() }
+                
+                let fetchResult = getxattr(sourcePath, name, valueBuffer, valueSize, 0, 0)
+                if fetchResult > 0 {
+                    // Set the attribute on the destination
+                    // Use XATTR_NOFOLLOW to not follow symlinks (though we skip them anyway)
+                    setxattr(destPath, name, valueBuffer, fetchResult, 0, 0)
+                }
+            }
+            
+            // Move to next attribute name
+            position += strlen(nameStart) + 1
         }
     }
     
@@ -228,6 +271,9 @@ class CancellableFileOperations: FileOperationsProtocol {
         // Copy file attributes (permissions, dates, etc.)
         let attributes = try fileManager.attributesOfItem(atPath: source.path)
         try fileManager.setAttributes(attributes, ofItemAtPath: destination.path)
+        
+        // Preserve extended attributes (Finder tags, comments, etc.)
+        try preserveExtendedAttributes(from: source, to: destination)
     }
     
     // MARK: - FileOperationsProtocol conformance
