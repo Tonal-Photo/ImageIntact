@@ -169,6 +169,9 @@ class CancellableFileOperations: FileOperationsProtocol {
     
     /// Coordinated copy using NSFileCoordinator for network volumes
     private func coordinatedCopy(from source: URL, to destination: URL) async throws {
+        // Check if task is cancelled before starting
+        try Task.checkCancellation()
+        
         // Create parent directory if needed
         let destDir = destination.deletingLastPathComponent()
         if !fileManager.fileExists(atPath: destDir.path) {
@@ -195,10 +198,13 @@ class CancellableFileOperations: FileOperationsProtocol {
                         error: &writeError,
                         byAccessor: { (writeURL) in
                             // Now we have exclusive write access to the destination
+                            // Check if task is cancelled (in sync context)
+                            if Task.isCancelled {
+                                copyError = CancellationError()
+                                return
+                            }
+                            
                             do {
-                                // Check for cancellation before copying
-                                try Task.checkCancellation()
-                                
                                 // Use FileManager for the actual copy within the coordination
                                 // This ensures proper locking on network volumes
                                 try self.fileManager.copyItem(at: readURL, to: writeURL)

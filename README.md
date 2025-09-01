@@ -7,7 +7,7 @@ ImageIntact is the backup app photographers have been waiting for – built by a
 ![macOS](https://img.shields.io/badge/macOS-14.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.2.6-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.2.7-brightgreen)
 
 ## Why ImageIntact?
 
@@ -33,7 +33,8 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Verification built-in** – Every file is checksummed to ensure perfect copies
 - **Never deletes** – Suspicious files are quarantined, never removed
 - **Complete audit trail** – Know exactly what happened to every file
-- **Sleep prevention** – Your Mac won't sleep mid-backup (v1.2.6)
+- **Sleep prevention** – Your Mac won't sleep mid-backup
+- **Network drive safety** – Enhanced data integrity for NAS and network volumes (v1.2.7)
 
 ### 🎨 Thoughtfully Designed
 - **Clean, native Mac interface** – No Java, no weird UI, just a proper Mac app
@@ -41,13 +42,14 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Smart notifications** – Get notified when backups complete (v1.2.6)
 - **Privacy-first** – Anonymize logs when sharing for support (v1.2.6)
 
-## New in Version 1.2.6
+## New in Version 1.2.7
 
-The latest release brings features photographers have been asking for:
-- **Preferences Window** (Cmd+,) – All your settings in one organized place
-- **Smart Confirmations** – Optional pre-flight checks with "don't show again" options
-- **Better Network Drive Support** – Accurate space calculations for NAS devices
-- **Enhanced Performance** – Improved memory management for massive photo libraries
+This release focuses on enhanced safety and reliability:
+- **Improved File Handling** – Smarter handling of aliases, symbolic links, and special files
+- **Network Drive Protection** – Enhanced data integrity when backing up to NAS or network volumes
+- **Extended Metadata** – Preserves Finder tags, comments, and custom file attributes
+- **Better Help System** – Improved documentation with easier access from the Help menu
+- **Security Enhancements** – Multiple under-the-hood improvements for safer backups
 
 ## Real-World Use
 

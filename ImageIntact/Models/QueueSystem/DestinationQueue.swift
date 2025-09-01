@@ -379,6 +379,9 @@ actor DestinationQueue {
                     )
                 }
                 
+                // Update completed files counter
+                completedFiles += 1
+                
                 // Extra confirmation for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
                     print("✅ Video copied successfully: \(task.relativePath)")
