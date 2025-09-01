@@ -7,7 +7,7 @@ ImageIntact is the backup app photographers have been waiting for – built by a
 ![macOS](https://img.shields.io/badge/macOS-14.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.2.7-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.2.8-brightgreen)
 
 ## Why ImageIntact?
 
@@ -34,7 +34,8 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Never deletes** – Suspicious files are quarantined, never removed
 - **Complete audit trail** – Know exactly what happened to every file
 - **Sleep prevention** – Your Mac won't sleep mid-backup
-- **Network drive safety** – Enhanced data integrity for NAS and network volumes (v1.2.7)
+- **Network drive safety** – Enhanced data integrity for NAS and network volumes
+- **SMB timeout protection** – No more indefinite hangs on network issues (v1.2.8)
 
 ### 🎨 Thoughtfully Designed
 - **Clean, native Mac interface** – No Java, no weird UI, just a proper Mac app
@@ -42,9 +43,18 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Smart notifications** – Get notified when backups complete (v1.2.6)
 - **Privacy-first** – Anonymize logs when sharing for support (v1.2.6)
 
-## New in Version 1.2.7
+## New in Version 1.2.8
 
-This release focuses on enhanced safety and reliability:
+This release fixes critical issues and adds network performance controls:
+- **Fixed Progress Tracking** – Accurate file counting for multi-destination backups
+- **Network Performance Settings** – Configurable timeouts, speed limiting, and buffer sizes for SMB/NAS
+- **Stream-Based Network Copy** – Cancellable, throttleable copying method for unreliable connections
+- **Enhanced SMB Stability** – No more indefinite hangs when network drives disconnect
+- **Improved Cancellation** – Cancel button now works reliably during all operations
+
+## Previous: Version 1.2.7
+
+Enhanced safety and reliability:
 - **Improved File Handling** – Smarter handling of aliases, symbolic links, and special files
 - **Network Drive Protection** – Enhanced data integrity when backing up to NAS or network volumes
 - **Extended Metadata** – Preserves Finder tags, comments, and custom file attributes
