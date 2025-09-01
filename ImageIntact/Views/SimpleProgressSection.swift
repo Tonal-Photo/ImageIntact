@@ -32,9 +32,14 @@ struct SimpleProgressSection: View {
                         VStack(alignment: .leading, spacing: 8) {
                             // Overall progress
                             HStack {
-                                // Always show processedFiles which tracks actual copied files
-                                Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
-                                    .font(.subheadline)
+                                // Show appropriate counter based on phase
+                                if backupManager.currentPhase == .verifyingDestinations {
+                                    Text("Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.totalFiles)")
+                                        .font(.subheadline)
+                                } else {
+                                    Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
+                                        .font(.subheadline)
+                                }
                                 
                                 Spacer()
                                 
@@ -53,7 +58,7 @@ struct SimpleProgressSection: View {
                                 }
                             }
                             
-                            ProgressView(value: Double(backupManager.currentFileIndex), total: Double(backupManager.totalFiles))
+                            ProgressView(value: backupManager.overallProgress)
                                 .progressViewStyle(.linear)
                             
                             HStack {

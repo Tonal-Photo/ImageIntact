@@ -8,6 +8,7 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
     // MARK: - File Progress
     @Published var totalFiles = 0
     @Published var processedFiles = 0
+    @Published var verifiedFiles = 0  // Track verification separately
     @Published var currentFileIndex = 0
     @Published var currentFileName = ""
     @Published var currentFile = ""
@@ -45,6 +46,7 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
     func resetAll() {
         totalFiles = 0
         processedFiles = 0
+        verifiedFiles = 0
         currentFileIndex = 0
         currentFileName = ""
         currentFile = ""

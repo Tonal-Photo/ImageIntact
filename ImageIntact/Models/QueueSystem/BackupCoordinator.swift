@@ -412,22 +412,24 @@ class BackupCoordinator: ObservableObject {
             }
             
             // Calculate overall progress (include both copying and verification)
-            // Each destination processes its share of files (copy + verify)
-            // Total operations = sum of all (files to copy + files to verify) across all destinations
-            var totalOperations = 0
-            var completedOperations = 0
+            // Calculate overall progress as average of all destinations
+            // This ensures we don't show 100% until ALL destinations are complete
+            var totalProgress = 0.0
+            var destinationCount = 0
             
-            // Sum up operations across all destinations
             for status in destinationStatuses.values {
                 // Each destination has 'total' files to copy and 'total' files to verify
-                totalOperations += status.total * 2  // *2 for copy + verify
-                // Add completed copy operations
-                completedOperations += status.completed
-                // Add completed verify operations
-                completedOperations += status.verifiedCount
+                let destinationTotal = status.total * 2  // *2 for copy + verify phases
+                let destinationCompleted = status.completed + status.verifiedCount
+                
+                if destinationTotal > 0 {
+                    let destinationProgress = Double(destinationCompleted) / Double(destinationTotal)
+                    totalProgress += destinationProgress
+                    destinationCount += 1
+                }
             }
             
-            let calculatedProgress = totalOperations > 0 ? Double(completedOperations) / Double(totalOperations) : 0
+            let calculatedProgress = destinationCount > 0 ? totalProgress / Double(destinationCount) : 0.0
             // Sanitize to 0-1 range to prevent UI issues
             overallProgress = max(0.0, min(1.0, calculatedProgress))
             
@@ -454,25 +456,29 @@ class BackupCoordinator: ObservableObject {
     
     @MainActor
     private func updateOverallProgress(totalFiles: Int) {
-        // Calculate overall progress based on current status
-        // Note: totalFiles parameter is ignored as each destination has its own total
-        var totalOperations = 0
-        var completedOperations = 0
+        // Calculate overall progress as average of all destinations
+        // This ensures we don't show 100% until ALL destinations are complete
+        var totalProgress = 0.0
+        var destinationCount = 0
+        var debugInfo = ""
         
-        // Sum up operations across all destinations
-        for status in destinationStatuses.values {
+        for (name, status) in destinationStatuses {
             // Each destination has 'total' files to copy and 'total' files to verify
-            totalOperations += status.total * 2  // *2 for copy + verify
-            // Add completed copy operations
-            completedOperations += status.completed
-            // Add completed verify operations
-            completedOperations += status.verifiedCount
+            let destinationTotal = status.total * 2  // *2 for copy + verify phases
+            let destinationCompleted = status.completed + status.verifiedCount
+            
+            if destinationTotal > 0 {
+                let destinationProgress = Double(destinationCompleted) / Double(destinationTotal)
+                totalProgress += destinationProgress
+                destinationCount += 1
+                debugInfo += "\(name): \(destinationCompleted)/\(destinationTotal), "
+            }
         }
         
-        let calculatedProgress = totalOperations > 0 ? Double(completedOperations) / Double(totalOperations) : 0
-        overallProgress = max(0.0, min(1.0, calculatedProgress))
+        let avgProgress = destinationCount > 0 ? totalProgress / Double(destinationCount) : 0.0
+        overallProgress = max(0.0, min(1.0, avgProgress))
         
-        print("📊 Overall progress update: \(completedOperations)/\(totalOperations) = \(String(format: "%.1f%%", overallProgress * 100))")
+        print("📊 Overall progress update: \(String(format: "%.1f%%", overallProgress * 100)) [\(debugInfo)]")
     }
     
     

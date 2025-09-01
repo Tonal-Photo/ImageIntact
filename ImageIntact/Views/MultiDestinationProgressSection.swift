@@ -188,9 +188,14 @@ struct SimpleBackupProgress: View {
                     .foregroundColor(.secondary)
                 
                 HStack {
-                    // Always show processedFiles which tracks actual copied files
-                    Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
-                        .font(.subheadline)
+                    // Show appropriate counter based on phase
+                    if backupManager.currentPhase == .verifyingDestinations {
+                        Text("Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.totalFiles)")
+                            .font(.subheadline)
+                    } else {
+                        Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
+                            .font(.subheadline)
+                    }
                     
                     Spacer()
                     

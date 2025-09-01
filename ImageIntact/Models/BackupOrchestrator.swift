@@ -508,12 +508,17 @@ class BackupOrchestrator {
             speed: coordinator.currentSpeed
         )
         
-        // Update processed files count - should be total completed (copied) files, not verified
-        var totalCompleted = 0
+        // Update processed files count - should be the maximum completed from any destination
+        // (not sum, since all destinations copy the same files)
+        // Cap at totalFiles to prevent overflow during verification phase
+        var maxCompleted = 0
+        var maxVerified = 0
         for status in coordinator.destinationStatuses.values {
-            totalCompleted += status.completed
+            maxCompleted = max(maxCompleted, status.completed)
+            maxVerified = max(maxVerified, status.verifiedCount)
         }
-        progressTracker.processedFiles = totalCompleted
+        progressTracker.processedFiles = min(maxCompleted, progressTracker.totalFiles)
+        progressTracker.verifiedFiles = min(maxVerified, progressTracker.totalFiles)
         
         // Update phase based on activity
         let verifyingCount = verifyingDestinations.count

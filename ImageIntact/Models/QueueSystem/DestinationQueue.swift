@@ -178,12 +178,22 @@ actor DestinationQueue {
                 bytesTransferred += task.size
                 await throughputMonitor.recordTransfer(bytes: task.size)
                 
+                // Report progress update
+                if let progressCallback = onProgress {
+                    await progressCallback(completedFiles, totalFiles)
+                }
+                
             case .skipped(let reason):
                 print("⏭️ Skipped \(task.relativePath): \(reason)")
                 completedFiles += 1
                 // Add to successfully copied files if it was skipped because it already exists
                 if reason.contains("Already exists") {
                     successfullyCopiedFiles.insert(task.relativePath)
+                }
+                
+                // Report progress update
+                if let progressCallback = onProgress {
+                    await progressCallback(completedFiles, totalFiles)
                 }
                 
             case .failed(let error):
@@ -198,6 +208,11 @@ actor DestinationQueue {
                     await queue.enqueue(retryTask)
                 } else {
                     completedFiles += 1 // Count as completed even if failed
+                    
+                    // Report progress update
+                    if let progressCallback = onProgress {
+                        await progressCallback(completedFiles, totalFiles)
+                    }
                 }
                 
             case .cancelled:
@@ -379,13 +394,8 @@ actor DestinationQueue {
                     )
                 }
                 
-                // Update completed files counter
-                completedFiles += 1
-                
-                // Report progress update
-                if let progressCallback = onProgress {
-                    await progressCallback(completedFiles, totalFiles)
-                }
+                // Note: Don't increment completedFiles here - it's already done in processFileTask
+                // based on the result (success/skipped/failed)
                 
                 // Extra confirmation for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
