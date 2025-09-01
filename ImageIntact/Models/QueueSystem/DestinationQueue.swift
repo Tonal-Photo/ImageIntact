@@ -382,6 +382,11 @@ actor DestinationQueue {
                 // Update completed files counter
                 completedFiles += 1
                 
+                // Report progress update
+                if let progressCallback = onProgress {
+                    await progressCallback(completedFiles, totalFiles)
+                }
+                
                 // Extra confirmation for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
                     print("✅ Video copied successfully: \(task.relativePath)")

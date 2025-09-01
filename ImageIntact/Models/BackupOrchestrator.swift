@@ -508,12 +508,12 @@ class BackupOrchestrator {
             speed: coordinator.currentSpeed
         )
         
-        // Update processed files count
-        var totalVerified = 0
+        // Update processed files count - should be total completed (copied) files, not verified
+        var totalCompleted = 0
         for status in coordinator.destinationStatuses.values {
-            totalVerified += status.verifiedCount
+            totalCompleted += status.completed
         }
-        progressTracker.processedFiles = totalVerified
+        progressTracker.processedFiles = totalCompleted
         
         // Update phase based on activity
         let verifyingCount = verifyingDestinations.count
