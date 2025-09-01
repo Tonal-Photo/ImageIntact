@@ -369,25 +369,56 @@ class ImageFileScanner {
             var results = ScanResult()
             var scannedCount = 0
             
-            let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .fileSizeKey]
+            let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .fileSizeKey,
+                                                 .isSymbolicLinkKey, .isPackageKey]
             
             guard let enumerator = FileManager.default.enumerator(
                 at: directory,
                 includingPropertiesForKeys: resourceKeys,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                options: [.skipsHiddenFiles]
             ) else {
                 throw NSError(domain: "ImageFileScanner", code: 1, 
                             userInfo: [NSLocalizedDescriptionKey: "Failed to create enumerator"])
             }
+            
+            // Safety tracking
+            var visitedPaths = Set<String>()
+            let maxDepth = 50
+            let photoPackageExtensions = Set(["cosessiondb", "lrdata", "photoslibrary", "aplibrary", "photolibrary"])
             
             while let element = enumerator.nextObject() {
                 guard let url = element as? URL else { continue }
                 
                 try Task.checkCancellation()
                 
+                // Check depth
+                let depth = url.pathComponents.count - directory.pathComponents.count
+                if depth > maxDepth {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                
                 let resourceValues = try url.resourceValues(forKeys: Set(resourceKeys))
                 
-                guard resourceValues.isRegularFile == true else { continue }
+                // Handle symbolic links
+                if resourceValues.isSymbolicLink == true {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                
+                // Handle packages
+                if resourceValues.isPackage == true {
+                    let ext = url.pathExtension.lowercased()
+                    if !photoPackageExtensions.contains(ext) {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                }
+                
+                guard resourceValues.isRegularFile == true else {
+                    visitedPaths.insert(url.path)
+                    continue
+                }
                 
                 if let fileType = ImageFileType.from(fileExtension: url.pathExtension) {
                     results[fileType, default: 0] += 1
@@ -411,36 +442,132 @@ class ImageFileScanner {
         // Cancel any existing scan
         currentTask?.cancel()
         
+        print("📂 Starting scan of: \(directory.path)")
+        
         var fileTypes = ScanResult()
         var totalBytes: Int64 = 0
         var scannedCount = 0
+        var skippedCount = 0
+        var rawFileCount = 0
+        var skippedPackages = 0
+        var resolvedSymlinks = 0
         
-        let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .fileSizeKey]
+        let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .fileSizeKey, 
+                                             .isSymbolicLinkKey, .isPackageKey, .isAliasFileKey]
         
+        // Create custom enumerator with controlled behavior
+        // We'll selectively scan packages that are known photo management structures
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
             includingPropertiesForKeys: resourceKeys,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: [.skipsHiddenFiles]  // Keep hidden files skipped
         ) else {
             throw NSError(domain: "ImageFileScanner", code: 1, 
                         userInfo: [NSLocalizedDescriptionKey: "Failed to create enumerator"])
         }
+        
+        // Track visited paths to prevent circular references
+        var visitedPaths = Set<String>()
+        
+        // Define maximum recursion depth to prevent infinite loops
+        let maxDepth = 50  // Reasonable depth for photo libraries
+        
+        // Photo management packages we should scan inside
+        let photoPackageExtensions = Set([
+            "cosessiondb",  // Capture One Session
+            "lrdata",       // Lightroom data
+            "photoslibrary", // Photos.app library
+            "aplibrary",    // Aperture library
+            "photolibrary"  // Old Photos library
+        ])
         
         while let element = enumerator.nextObject() {
             guard let url = element as? URL else { continue }
             
             try Task.checkCancellation()
             
+            // Check recursion depth
+            let depth = url.pathComponents.count - directory.pathComponents.count
+            if depth > maxDepth {
+                print("  ⚠️ Skipping deep path (depth \(depth)): \(url.path)")
+                enumerator.skipDescendants()
+                continue
+            }
+            
             let resourceValues = try url.resourceValues(forKeys: Set(resourceKeys))
             
-            guard resourceValues.isRegularFile == true else { continue }
+            // Handle symbolic links
+            if resourceValues.isSymbolicLink == true {
+                resolvedSymlinks += 1
+                // Resolve the symlink
+                do {
+                    let resolvedURL = try URL(fileURLWithPath: FileManager.default.destinationOfSymbolicLink(atPath: url.path))
+                    let realPath = resolvedURL.path
+                    
+                    // Check for circular references
+                    if visitedPaths.contains(realPath) {
+                        print("  ⚠️ Skipping circular symlink: \(url.lastPathComponent) -> \(realPath)")
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    
+                    // Don't follow symlinks that point outside the scan directory
+                    if !realPath.hasPrefix(directory.path) {
+                        print("  ⚠️ Skipping external symlink: \(url.lastPathComponent) -> \(realPath)")
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                } catch {
+                    print("  ⚠️ Cannot resolve symlink: \(url.lastPathComponent)")
+                    enumerator.skipDescendants()
+                    continue
+                }
+            }
             
-            if let fileType = ImageFileType.from(fileExtension: url.pathExtension) {
+            // Handle packages (app bundles, etc.)
+            if resourceValues.isPackage == true {
+                let ext = url.pathExtension.lowercased()
+                
+                // Only scan inside known photo management packages
+                if !photoPackageExtensions.contains(ext) {
+                    skippedPackages += 1
+                    if skippedPackages <= 5 {
+                        print("  ⚠️ Skipping package: \(url.lastPathComponent)")
+                    }
+                    enumerator.skipDescendants()
+                    continue
+                }
+                // If it's a photo package, we'll scan inside it
+                print("  📦 Scanning photo package: \(url.lastPathComponent)")
+            }
+            
+            // Skip if it's a directory (unless it's a photo package we're scanning)
+            guard resourceValues.isRegularFile == true else {
+                // Mark this directory as visited
+                visitedPaths.insert(url.path)
+                continue
+            }
+            
+            let ext = url.pathExtension
+            if let fileType = ImageFileType.from(fileExtension: ext) {
                 fileTypes[fileType, default: 0] += 1
+                
+                // Debug: track RAW files specifically
+                if fileType.isRaw {
+                    rawFileCount += 1
+                    if rawFileCount <= 5 || rawFileCount % 100 == 0 {
+                        print("  🎯 RAW #\(rawFileCount): \(url.lastPathComponent) (\(fileType.rawValue))")
+                    }
+                }
                 
                 // Add file size to total
                 if let fileSize = resourceValues.fileSize {
                     totalBytes += Int64(fileSize)
+                }
+            } else if !ext.isEmpty {
+                skippedCount += 1
+                if skippedCount <= 10 {
+                    print("  ⚠️ Skipped unsupported: .\(ext) - \(url.lastPathComponent)")
                 }
             }
             
@@ -448,6 +575,19 @@ class ImageFileScanner {
             if scannedCount % 100 == 0 {
                 progress((scanned: scannedCount, total: nil, currentPath: url.lastPathComponent))
             }
+        }
+        
+        print("📊 Scan complete:")
+        print("  - Total files scanned: \(scannedCount)")
+        print("  - RAW files found: \(rawFileCount)")
+        print("  - Files skipped (unsupported): \(skippedCount)")
+        print("  - Packages skipped: \(skippedPackages)")
+        print("  - Symlinks resolved: \(resolvedSymlinks)")
+        print("  - Total size: \(totalBytes / (1024*1024*1024)) GB")
+        
+        // Print breakdown by type
+        for (type, count) in fileTypes.sorted(by: { $0.value > $1.value }) {
+            print("    \(type.rawValue): \(count)")
         }
         
         return (fileTypes, totalBytes)

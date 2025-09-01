@@ -132,6 +132,19 @@ actor BatchFileProcessor {
     
     /// Copy a file using an optimized buffer
     private func copyFileWithBuffer(from source: URL, to destination: URL) throws {
+        // Check if source is a symbolic link
+        var isSymlink = false
+        if let resourceValues = try? source.resourceValues(forKeys: [.isSymbolicLinkKey]) {
+            isSymlink = resourceValues.isSymbolicLink ?? false
+        }
+        
+        if isSymlink {
+            // Silently skip symbolic links - they should have been filtered during manifest building
+            // This is just a safety check. Log for debugging but don't throw user-visible error
+            print("🔗 Skipping symbolic link in batch copy (safety check): \(source.lastPathComponent)")
+            return  // Return successfully without copying
+        }
+        
         // For now, use FileManager's optimized copy
         // In future, could implement streaming copy with our buffer pool
         try FileManager.default.copyItem(at: source, to: destination)

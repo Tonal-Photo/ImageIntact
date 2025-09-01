@@ -191,6 +191,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		71D62B4D2E4F37A1006FBC07 /* Auto-increment Build Number */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 8;
 			files = (
 			);

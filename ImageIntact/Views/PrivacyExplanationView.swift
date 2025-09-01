@@ -154,9 +154,11 @@ struct PrivacyExplanationView: View {
         }
         .frame(width: 500, height: 600)
         .background(Color(NSColor.windowBackgroundColor))
-        .sheet(isPresented: $showingFullHelp) {
-            // This would open the full help documentation
-            HelpView(scrollToSection: "privacy")
+        .onChange(of: showingFullHelp) { _, newValue in
+            if newValue {
+                HelpWindowManager.shared.showHelp()
+                showingFullHelp = false
+            }
         }
     }
 }

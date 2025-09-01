@@ -70,8 +70,10 @@ class BackupCoordinator: ObservableObject {
         }
         
         // Create a queue for each destination with organization name
+        // Use CancellableFileOperations for better cancellation support
+        let cancellableOps = CancellableFileOperations()
         for (index, destination) in destinations.enumerated() {
-            let queue = DestinationQueue(destination: destination, organizationName: organizationName)
+            let queue = DestinationQueue(destination: destination, organizationName: organizationName, fileOperations: cancellableOps)
             let destName = destination.lastPathComponent  // Capture once
             
             print("🔍 Creating queue for destination \(index): \(destName)")
@@ -188,8 +190,27 @@ class BackupCoordinator: ObservableObject {
         shouldCancel = true
         statusMessage = "Cancelling backup..."
         
+        // Immediately clear all statuses to stop UI updates
+        for (name, _) in destinationStatuses {
+            destinationStatuses[name] = DestinationStatus(
+                name: name,
+                completed: 0,
+                total: 0,
+                speed: "Cancelled",
+                eta: nil,
+                isComplete: false,
+                hasFailed: false,
+                isVerifying: false,
+                verifiedCount: 0
+            )
+        }
+        
         Task { [weak self] in
             guard let self = self else { return }
+            
+            // Log cancellation
+            print("🛑 CANCELLING: Stopping all destination queues immediately")
+            
             // Stop all queues in parallel for faster cancellation
             await withTaskGroup(of: Void.self) { group in
                 for queue in self.destinationQueues {
@@ -198,6 +219,9 @@ class BackupCoordinator: ObservableObject {
                     }
                 }
             }
+            
+            print("🛑 All queues stopped")
+            
             // Clear queues to release memory
             self.destinationQueues.removeAll()
             // Clear manifest to free memory

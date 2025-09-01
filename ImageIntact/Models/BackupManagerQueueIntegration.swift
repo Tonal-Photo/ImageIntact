@@ -412,6 +412,12 @@ extension BackupManager {
     private func checkForMigration(source: URL, destinations: [URL]) async {
         print("🔍 Checking for migration opportunities...")
         
+        // Check for cancellation
+        guard !shouldCancel else {
+            print("❌ Migration check cancelled")
+            return
+        }
+        
         pendingMigrationPlans.removeAll()
         
         // Start security-scoped access for source
@@ -422,11 +428,11 @@ extension BackupManager {
             }
         }
         
-        // Build a quick manifest for checking
+        // Build a quick manifest for checking - now with cancellation support
         let manifestBuilder = ManifestBuilder()
         guard let manifest = await manifestBuilder.build(
             source: source,
-            shouldCancel: { false },
+            shouldCancel: { [weak self] in self?.shouldCancel ?? true },
             filter: fileTypeFilter
         ) else {
             print("❌ Could not build manifest for migration check")
@@ -472,13 +478,19 @@ extension BackupManager {
     private func checkForDuplicates(source: URL, destinations: [URL]) async {
         print("🔍 Checking for duplicate files...")
         
+        // Check for cancellation
+        guard !shouldCancel else {
+            print("❌ Duplicate check cancelled")
+            return
+        }
+        
         statusMessage = "Analyzing for duplicates..."
         
-        // Build manifest if needed
+        // Build manifest if needed - with cancellation support
         let manifestBuilder = ManifestBuilder()
         guard let manifest = await manifestBuilder.build(
             source: source,
-            shouldCancel: { false },
+            shouldCancel: { [weak self] in self?.shouldCancel ?? true },
             filter: fileTypeFilter
         ) else {
             print("❌ Could not build manifest for duplicate check")

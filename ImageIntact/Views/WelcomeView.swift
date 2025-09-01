@@ -50,6 +50,42 @@ struct WelcomeView: View {
             
             Divider()
             
+            // What's not backed up
+            VStack(alignment: .leading, spacing: 8) {
+                Text("What's Not Backed Up:")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 16, weight: .medium))
+                        .frame(width: 20)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("For safety and efficiency, ImageIntact skips:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("• Cache files and previews • System files • Symbolic links (aliases)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Button("Learn more in Help →") {
+                            isPresented = false
+                            HelpWindowManager.shared.showHelp(scrollToSection: "faq")
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                    }
+                    
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 20)
+            
+            Divider()
+            
             // How to use
             VStack(alignment: .leading, spacing: 16) {
                 Text("How to Use:")
@@ -71,7 +107,7 @@ struct WelcomeView: View {
             HStack(spacing: 16) {
                 Button("Show Help") {
                     isPresented = false
-                    NotificationCenter.default.post(name: NSNotification.Name("ShowHelp"), object: nil)
+                    HelpWindowManager.shared.showHelp()
                 }
                 .buttonStyle(.borderless)
                 

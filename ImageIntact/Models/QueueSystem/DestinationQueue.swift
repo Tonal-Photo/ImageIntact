@@ -112,16 +112,25 @@ actor DestinationQueue {
         shouldCancel = true
         isRunning = false
         
+        print("🛑 DestinationQueue.stop() called for \(destination.lastPathComponent)")
+        
         // Cancel all worker tasks immediately
         for task in workerTasks {
             task.cancel()
         }
         workerTasks.removeAll()
         
+        // Clear the queue to prevent further processing
+        Task {
+            await queue.clear()
+        }
+        
         // Clear callbacks to prevent retain cycles
         onProgress = nil
         onStatusUpdate = nil
         onVerificationStateChange = nil
+        
+        print("🛑 DestinationQueue stopped for \(destination.lastPathComponent)")
     }
     
     // MARK: - Worker Management
@@ -138,9 +147,23 @@ actor DestinationQueue {
         print("👷 Worker \(workerId.uuidString.prefix(8)) started for \(destination.lastPathComponent)")
         
         while !shouldCancel && isRunning {
+            // Check for cancellation before dequeue
+            if shouldCancel {
+                print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled before dequeue")
+                break
+            }
+            
             // Get next task from queue
             guard let task = await queue.dequeue() else {
                 // No more tasks, worker can exit
+                break
+            }
+            
+            // Check for cancellation after dequeue
+            if shouldCancel {
+                print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled after dequeue")
+                // Put task back for potential retry
+                await queue.enqueue(task)
                 break
             }
             
@@ -240,6 +263,11 @@ actor DestinationQueue {
     // MARK: - File Processing
     
     private func processFileTask(_ task: FileTask) async -> CopyResult {
+        // Check for cancellation at the start
+        if shouldCancel {
+            return .cancelled
+        }
+        
         // If we have an organization name, add it to the path
         let destPath: URL
         if !organizationName.isEmpty {
@@ -253,6 +281,10 @@ actor DestinationQueue {
         let startTime = Date()
         
         do {
+            // Check cancellation before directory creation
+            if shouldCancel {
+                return .cancelled
+            }
             // Create directory if needed
             if !fileOperations.fileExists(at: destDir) {
                 try fileOperations.createDirectory(at: destDir, withIntermediateDirectories: true)
@@ -297,6 +329,11 @@ actor DestinationQueue {
                 }
                 // File exists but doesn't match, remove it
                 try fileOperations.removeItem(at: destPath)
+            }
+            
+            // Check cancellation before starting the actual copy
+            if shouldCancel {
+                return .cancelled
             }
             
             // Copy the file with proper error handling and security-scoped access

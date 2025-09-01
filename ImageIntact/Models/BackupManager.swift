@@ -463,8 +463,11 @@ class BackupManager {
             saveBookmark(url: url, key: destinationKeys[index])
         }
         
-        // Analyze drive for performance estimates
+        // Clear old drive info immediately when destination changes
         let itemID = destinationItems[index].id
+        destinationDriveInfo.removeValue(forKey: itemID)
+        
+        // Analyze drive for performance estimates
         Task {
             // Check if the destination is accessible
             let accessing = url.startAccessingSecurityScopedResource()
@@ -797,8 +800,32 @@ class BackupManager {
         shouldCancel = true
         statusMessage = "Cancelling backup..."
         
-        // Stop preventing sleep
-        SleepPrevention.shared.stopPreventingSleep()
+        // Immediately clear all progress indicators
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            
+            // Force clear all destination progress immediately
+            for name in self.progressTracker.destinationProgress.keys {
+                self.progressTracker.setDestinationProgress(0, for: name)
+                self.progressTracker.setDestinationState("cancelled", for: name)
+            }
+            
+            // Clear file name displays
+            self.currentFileName = ""
+            self.currentDestinationName = ""
+            self.overallStatusText = "Cancelled"
+            
+            // Force UI update
+            self.isProcessing = false
+            self.currentPhase = .idle
+            self.statusMessage = "Backup cancelled"
+            
+            // Clear progress tracker immediately - this resets all the computed values
+            self.progressTracker.resetAll()
+            
+            // Stop sleep prevention
+            SleepPrevention.shared.stopPreventingSleep()
+        }
         
         // Cancel orchestrator if using new system
         Task { @MainActor [weak self] in

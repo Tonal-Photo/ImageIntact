@@ -77,7 +77,7 @@ struct HelpView: View {
                     // Smart Backup Organization
                     HelpSection(title: "Smart Backup Organization") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("ImageIntact can automatically organize your backups into dated folders:")
+                            Text("ImageIntact can organize your backups into a structured folder:")
                             
                             VStack(alignment: .leading, spacing: 8) {
                                 HelpPoint(title: "Organization Folder", 
@@ -175,6 +175,9 @@ struct HelpView: View {
                                 
                                 HelpPoint(title: "Smart Cache Exclusion", 
                                          description: "Automatically skips Lightroom and Capture One preview caches")
+                                
+                                HelpPoint(title: "Symbolic Links", 
+                                         description: "Symbolic links (aliases) are skipped for security - only actual files are backed up")
                             }
                         }
                     }
@@ -378,6 +381,26 @@ struct HelpView: View {
                                 }
                                 .font(.caption)
                             }
+                        }
+                    }
+                    
+                    // FAQ
+                    HelpSection(title: "Frequently Asked Questions", id: "faq") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HelpPoint(title: "Why aren't all my files being copied?", 
+                                     description: "ImageIntact only backs up image, video, and sidecar files. System files, caches, and symbolic links are skipped.")
+                            
+                            HelpPoint(title: "What are symbolic links?", 
+                                     description: "Symbolic links (also called symlinks or aliases) are shortcuts that point to files in other locations. For security, ImageIntact backs up the actual files, not the shortcuts.")
+                            
+                            HelpPoint(title: "Why does my backup seem stuck?", 
+                                     description: "Large RAW files and network drives can take time. Check the progress bars for each destination - they update independently.")
+                            
+                            HelpPoint(title: "Can I backup to the same drive twice?", 
+                                     description: "Yes, but each destination must be a different folder. This is useful for creating multiple organized copies.")
+                            
+                            HelpPoint(title: "What happens if a backup is interrupted?", 
+                                     description: "ImageIntact will skip already-copied files on the next run. Your data is always safe.")
                         }
                     }
                     

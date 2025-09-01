@@ -161,7 +161,7 @@ actor ManifestBuilder {
         
         guard let enumerator = fileManager.enumerator(
             at: source,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey],
             options: enumeratorOptions
         ) else {
             return nil
@@ -174,7 +174,13 @@ actor ManifestBuilder {
             guard !shouldCancel() else { return nil }
             
             do {
-                let resourceValues = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+                let resourceValues = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey])
+                
+                // Skip symbolic links - we don't follow them for security
+                if resourceValues.isSymbolicLink == true {
+                    print("🔗 Skipping symbolic link: \(url.lastPathComponent)")
+                    continue
+                }
                 
                 guard resourceValues.isRegularFile == true else { continue }
                 

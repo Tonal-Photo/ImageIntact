@@ -8,7 +8,6 @@ struct ContentView: View {
     
     // First-run and help system
     @State private var showWelcomePopup = false
-    @State private var showHelpWindow = false
     
     enum FocusField: Hashable {
         case source
@@ -159,9 +158,6 @@ struct ContentView: View {
         .sheet(isPresented: $showWelcomePopup) {
             WelcomeView(isPresented: $showWelcomePopup)
         }
-        .sheet(isPresented: $showHelpWindow) {
-            HelpView(isPresented: $showHelpWindow)
-        }
         .sheet(isPresented: $backupManager.showCompletionReport) {
             BackupCompletionView(statistics: backupManager.statistics)
         }
@@ -309,7 +305,16 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            showHelpWindow = true
+            HelpWindowManager.shared.showHelp()
+        }
+        
+        // Also listen for the ImageIntact Help command
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ShowImageIntactHelp"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            HelpWindowManager.shared.showHelp()
         }
         
         NotificationCenter.default.addObserver(

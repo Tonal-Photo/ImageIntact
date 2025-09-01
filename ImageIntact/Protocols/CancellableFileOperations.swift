@@ -1,0 +1,274 @@
+import Foundation
+
+/// Cancellable file operations using stream-based copying
+/// Uses NSFileCoordinator for network volumes to ensure data integrity
+class CancellableFileOperations: FileOperationsProtocol {
+    private let fileManager = FileManager.default
+    private let bufferSize = 1024 * 1024 * 4  // 4MB buffer for efficient copying
+    private let fileCoordinator = NSFileCoordinator(filePresenter: nil)
+    
+    /// Copy a file using streams that can be cancelled
+    func copyItem(at source: URL, to destination: URL) async throws {
+        // Validate paths before any operations
+        try validatePaths(source: source, destination: destination)
+        
+        // Check if either source or destination is on a network volume
+        let useCoordination = isNetworkVolume(url: source) || isNetworkVolume(url: destination)
+        
+        if useCoordination {
+            // Use file coordination for network volumes
+            try await coordinatedCopy(from: source, to: destination)
+        } else {
+            // First try to create hard link (instant and cancellable)
+            if tryHardLink(from: source, to: destination) {
+                return
+            }
+            
+            // Fall back to stream-based copy for cross-volume or when hard link fails
+            try await streamCopy(from: source, to: destination)
+        }
+    }
+    
+    /// Validate that paths are safe and within expected boundaries
+    private func validatePaths(source: URL, destination: URL) throws {
+        // Ensure both paths are file URLs
+        guard source.isFileURL && destination.isFileURL else {
+            throw NSError(domain: "CancellableFileOperations", code: 100,
+                         userInfo: [NSLocalizedDescriptionKey: "Only file URLs are supported"])
+        }
+        
+        // Resolve symbolic links to get real paths
+        let realSource = source.resolvingSymlinksInPath()
+        let realDestination = destination.resolvingSymlinksInPath()
+        
+        // Check that source exists and is a regular file
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: realSource.path, isDirectory: &isDirectory) else {
+            throw NSError(domain: "CancellableFileOperations", code: 101,
+                         userInfo: [NSLocalizedDescriptionKey: "Source file does not exist"])
+        }
+        
+        guard !isDirectory.boolValue else {
+            throw NSError(domain: "CancellableFileOperations", code: 102,
+                         userInfo: [NSLocalizedDescriptionKey: "Source must be a file, not a directory"])
+        }
+        
+        // Prevent copying to system directories
+        let restrictedPaths = [
+            "/System",
+            "/Library",
+            "/usr",
+            "/bin",
+            "/sbin",
+            "/private/etc",
+            "/private/var/root"
+        ]
+        
+        let destPath = realDestination.path
+        for restricted in restrictedPaths {
+            if destPath.hasPrefix(restricted) {
+                throw NSError(domain: "CancellableFileOperations", code: 103,
+                             userInfo: [NSLocalizedDescriptionKey: "Cannot copy to system directory: \(restricted)"])
+            }
+        }
+        
+        // Ensure destination parent directory exists or can be created
+        let destParent = realDestination.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: destParent.path) {
+            // Verify we can create it (not in a read-only location)
+            if !fileManager.isWritableFile(atPath: destParent.deletingLastPathComponent().path) {
+                throw NSError(domain: "CancellableFileOperations", code: 104,
+                             userInfo: [NSLocalizedDescriptionKey: "Cannot write to destination directory"])
+            }
+        }
+        
+        // Prevent source and destination being the same
+        if realSource.path == realDestination.path {
+            throw NSError(domain: "CancellableFileOperations", code: 105,
+                         userInfo: [NSLocalizedDescriptionKey: "Source and destination cannot be the same"])
+        }
+    }
+    
+    /// Try to create a hard link (instant copy on same volume)
+    private func tryHardLink(from source: URL, to destination: URL) -> Bool {
+        // Additional validation for hard links
+        // Hard links should only be created for regular files, not directories or special files
+        
+        // Check if both paths are on the same volume (required for hard links)
+        guard let sourceVolume = try? source.resourceValues(forKeys: [.volumeURLKey]).volume,
+              let destVolume = try? destination.deletingLastPathComponent().resourceValues(forKeys: [.volumeURLKey]).volume,
+              sourceVolume == destVolume else {
+            return false // Different volumes, hard link not possible
+        }
+        
+        do {
+            try fileManager.linkItem(at: source, to: destination)
+            return true
+        } catch {
+            // Hard link failed (file system doesn't support it or other error)
+            return false
+        }
+    }
+    
+    /// Check if a URL is on a network volume
+    private func isNetworkVolume(url: URL) -> Bool {
+        do {
+            let resourceValues = try url.resourceValues(forKeys: [.volumeIsLocalKey])
+            if let isLocal = resourceValues.volumeIsLocal {
+                return !isLocal
+            }
+        } catch {
+            // If we can't determine, assume it's local for performance
+            return false
+        }
+        return false
+    }
+    
+    /// Coordinated copy using NSFileCoordinator for network volumes
+    private func coordinatedCopy(from source: URL, to destination: URL) async throws {
+        // Create parent directory if needed
+        let destDir = destination.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: destDir.path) {
+            try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
+        }
+        
+        // Use file coordination for network safety
+        var readError: NSError?
+        var writeError: NSError?
+        var copyError: Error?
+        
+        await withCheckedContinuation { continuation in
+            fileCoordinator.coordinate(
+                readingItemAt: source,
+                options: [.withoutChanges],
+                error: &readError,
+                byAccessor: { (readURL) in
+                    // Now we have exclusive read access to the source file
+                    // Use a separate coordinator for writing to avoid conflicts
+                    let writeCoordinator = NSFileCoordinator(filePresenter: nil)
+                    writeCoordinator.coordinate(
+                        writingItemAt: destination,
+                        options: [.forReplacing],
+                        error: &writeError,
+                        byAccessor: { (writeURL) in
+                            // Now we have exclusive write access to the destination
+                            do {
+                                // Check for cancellation before copying
+                                try Task.checkCancellation()
+                                
+                                // Use FileManager for the actual copy within the coordination
+                                // This ensures proper locking on network volumes
+                                try self.fileManager.copyItem(at: readURL, to: writeURL)
+                            } catch {
+                                copyError = error
+                            }
+                        }
+                    )
+                }
+            )
+            continuation.resume()
+        }
+        
+        // Check for errors in order of occurrence
+        if let error = readError {
+            throw error
+        }
+        if let error = writeError {
+            throw error
+        }
+        if let error = copyError {
+            throw error
+        }
+    }
+    
+    /// Stream-based copy that can be cancelled
+    private func streamCopy(from source: URL, to destination: URL) async throws {
+        // Open source file for reading
+        guard let sourceHandle = try? FileHandle(forReadingFrom: source) else {
+            throw NSError(domain: "CancellableFileOperations", code: 1, 
+                         userInfo: [NSLocalizedDescriptionKey: "Cannot open source file"])
+        }
+        defer { 
+            try? sourceHandle.close()
+        }
+        
+        // Create destination file
+        fileManager.createFile(atPath: destination.path, contents: nil)
+        guard let destHandle = try? FileHandle(forWritingTo: destination) else {
+            throw NSError(domain: "CancellableFileOperations", code: 2,
+                         userInfo: [NSLocalizedDescriptionKey: "Cannot create destination file"])
+        }
+        defer {
+            try? destHandle.close()
+        }
+        
+        // Copy in chunks that can be cancelled between iterations
+        while true {
+            // Check for cancellation
+            try Task.checkCancellation()
+            
+            // Read a chunk
+            let chunk = sourceHandle.readData(ofLength: bufferSize)
+            
+            // If no data read, we're done
+            if chunk.isEmpty {
+                break
+            }
+            
+            // Write the chunk
+            try destHandle.write(contentsOf: chunk)
+            
+            // Yield to allow cancellation
+            await Task.yield()
+        }
+        
+        // Ensure all data is written to disk
+        try destHandle.synchronize()
+        
+        // Copy file attributes (permissions, dates, etc.)
+        let attributes = try fileManager.attributesOfItem(atPath: source.path)
+        try fileManager.setAttributes(attributes, ofItemAtPath: destination.path)
+    }
+    
+    // MARK: - FileOperationsProtocol conformance
+    
+    func fileExists(at url: URL) -> Bool {
+        return fileManager.fileExists(atPath: url.path)
+    }
+    
+    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
+        try fileManager.createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
+    }
+    
+    func removeItem(at url: URL) throws {
+        try fileManager.removeItem(at: url)
+    }
+    
+    func attributesOfItem(at url: URL) throws -> [FileAttributeKey: Any] {
+        return try fileManager.attributesOfItem(atPath: url.path)
+    }
+    
+    func calculateChecksum(for url: URL, shouldCancel: () -> Bool) async throws -> String {
+        // Use the existing static method from BackupManager for consistency
+        // This uses SHA-256 which is what the rest of the app expects
+        // Pass network volume status for optimized reading
+        let isNetwork = isNetworkVolume(url: url)
+        return try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel(), isNetworkVolume: isNetwork)
+    }
+    
+    func fileSize(at url: URL) -> Int64? {
+        guard let attributes = try? attributesOfItem(at: url),
+              let size = attributes[.size] as? NSNumber else {
+            return nil
+        }
+        return size.int64Value
+    }
+    
+    func startAccessingSecurityScopedResource(for url: URL) -> Bool {
+        return url.startAccessingSecurityScopedResource()
+    }
+    
+    func stopAccessingSecurityScopedResource(for url: URL) {
+        url.stopAccessingSecurityScopedResource()
+    }
+}

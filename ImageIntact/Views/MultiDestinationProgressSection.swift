@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MultiDestinationProgressSection: View {
     @Bindable var backupManager: BackupManager
+    @State private var networkDestinations: Set<String> = []
     
     private var destinations: [URL] {
         backupManager.destinationURLs.compactMap { $0 }
@@ -16,6 +17,17 @@ struct MultiDestinationProgressSection: View {
         case .flushingToDisk: return "Flushing to disk"
         case .verifyingDestinations: return "Verifying checksums"
         case .complete: return "Complete"
+        }
+    }
+    
+    private func checkForNetworkDrives() -> String? {
+        guard !networkDestinations.isEmpty else { return nil }
+        
+        let count = networkDestinations.count
+        if count == 1 {
+            return "Network drive detected - operations may take longer"
+        } else {
+            return "\(count) network drives detected - operations may take longer"
         }
     }
     
@@ -49,6 +61,32 @@ struct MultiDestinationProgressSection: View {
                                 .foregroundColor(.secondary)
                             
                             Spacer()
+                            
+                            // Add cancel button during preparation phases too
+                            if backupManager.isProcessing {
+                                Button(action: {
+                                    backupManager.cancelOperation()
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                        .imageScale(.large)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Cancel operation")
+                            }
+                        }
+                        
+                        // Add network drive warning if applicable
+                        if backupManager.isProcessing && 
+                           (backupManager.statusMessage.contains("Checking") || 
+                            backupManager.statusMessage.contains("checksum") ||
+                            backupManager.currentPhase == .buildingManifest) {
+                            if let networkDrives = checkForNetworkDrives() {
+                                Label(networkDrives, systemImage: "network")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                                    .padding(.top, 4)
+                            }
                         }
                         
                         // Show phase progress if in phase-based backup
@@ -72,6 +110,25 @@ struct MultiDestinationProgressSection: View {
                 }
             }
             .transition(.opacity)
+            .task {
+                await checkDriveTypes()
+            }
+            .onChange(of: destinations) { _, _ in
+                Task {
+                    await checkDriveTypes()
+                }
+            }
+        }
+    }
+    
+    private func checkDriveTypes() async {
+        networkDestinations.removeAll()
+        
+        for destination in destinations {
+            if let driveInfo = DriveAnalyzer.analyzeDrive(at: destination),
+               driveInfo.connectionType == .network {
+                networkDestinations.insert(destination.lastPathComponent)
+            }
         }
     }
 }
@@ -200,6 +257,7 @@ struct SimpleBackupProgress: View {
 struct MultiDestinationProgress: View {
     @Bindable var backupManager: BackupManager
     let destinations: [URL]
+    @State private var networkDrives: Set<String> = []
     
     private func phaseDescription(for phase: BackupPhase) -> String {
         switch phase {
@@ -210,6 +268,17 @@ struct MultiDestinationProgress: View {
         case .flushingToDisk: return "Flushing to disk"
         case .verifyingDestinations: return "Verifying checksums"
         case .complete: return "Complete"
+        }
+    }
+    
+    private func checkDriveTypes() async {
+        networkDrives.removeAll()
+        
+        for destination in destinations {
+            if let driveInfo = DriveAnalyzer.analyzeDrive(at: destination),
+               driveInfo.connectionType == .network {
+                networkDrives.insert(destination.lastPathComponent)
+            }
         }
     }
     
@@ -283,7 +352,8 @@ struct MultiDestinationProgress: View {
                         totalFiles: backupManager.progressTracker.destinationTotalFiles[destination.lastPathComponent] ?? backupManager.totalFiles,
                         isActive: backupManager.currentDestinationName == destination.lastPathComponent,
                         phase: backupManager.currentPhase,
-                        state: backupManager.destinationStates[destination.lastPathComponent] ?? "copying"
+                        state: backupManager.destinationStates[destination.lastPathComponent] ?? "copying",
+                        isNetworkDrive: networkDrives.contains(destination.lastPathComponent)
                     )
                 }
             }
@@ -311,6 +381,14 @@ struct MultiDestinationProgress: View {
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(8)
         .padding(.horizontal, 20)
+        .task {
+            await checkDriveTypes()
+        }
+        .onChange(of: destinations) { _, _ in
+            Task {
+                await checkDriveTypes()
+            }
+        }
     }
 }
 
@@ -321,13 +399,21 @@ struct DestinationProgressRow: View {
     let isActive: Bool
     var phase: BackupPhase = .copyingFiles
     var state: String = "copying"
+    var isNetworkDrive: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(destinationName)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                HStack(spacing: 4) {
+                    if isNetworkDrive {
+                        Image(systemName: "network")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                    Text(destinationName)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
                 
                 Spacer()
                 

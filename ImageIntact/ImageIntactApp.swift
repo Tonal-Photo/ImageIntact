@@ -202,10 +202,12 @@ struct ImageIntactApp: App {
             }
             #endif
             
-            // Add Help menu
-            CommandMenu("Help") {
+            // Replace the default Help menu with our custom one
+            CommandGroup(replacing: .help) {
                 Button("ImageIntact Help") {
-                    NotificationCenter.default.post(name: NSNotification.Name("ShowHelp"), object: nil)
+                    Task { @MainActor in
+                        HelpWindowManager.shared.showHelp()
+                    }
                 }
                 .keyboardShortcut("?", modifiers: .command)
             }
