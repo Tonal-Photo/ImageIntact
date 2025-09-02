@@ -188,7 +188,7 @@ class BackupCoordinator: ObservableObject {
     func cancelBackup() {
         guard !shouldCancel else { return }  // Prevent multiple cancellations
         shouldCancel = true
-        statusMessage = "Cancelling backup..."
+        statusMessage = "Backup cancelled"
         
         // Immediately clear all statuses to stop UI updates
         for (name, _) in destinationStatuses {
@@ -198,7 +198,7 @@ class BackupCoordinator: ObservableObject {
                 total: 0,
                 speed: "Cancelled",
                 eta: nil,
-                isComplete: false,
+                isComplete: true,  // Mark as complete to stop monitoring
                 hasFailed: false,
                 isVerifying: false,
                 verifiedCount: 0
