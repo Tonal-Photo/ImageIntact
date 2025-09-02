@@ -813,7 +813,7 @@ class BackupManager {
             // Clear file name displays
             self.currentFileName = ""
             self.currentDestinationName = ""
-            self.overallStatusText = "Cancelled"
+            self.overallStatusText = "" // Clear this so UI doesn't show "1 destination copying"
             
             // Force UI update
             self.isProcessing = false
