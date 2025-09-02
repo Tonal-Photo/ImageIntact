@@ -35,6 +35,18 @@ class BackupOrchestrator {
     /// Cancel the current backup operation
     func cancel() {
         shouldCancel = true
+        
+        // Immediately update UI to show cancelled state
+        Task { @MainActor in
+            onStatusUpdate?("Backup cancelled")
+            onPhaseChange?(.idle)
+            
+            // Clear all destination states in progress tracker
+            for dest in progressTracker.destinationProgress.keys {
+                progressTracker.setDestinationState("cancelled", for: dest)
+            }
+        }
+        
         currentCoordinator?.cancelBackup()
         monitorTask?.cancel()
         
@@ -396,6 +408,11 @@ class BackupOrchestrator {
         let maxStallDuration: TimeInterval = TimeInterval(PreferencesManager.shared.networkCopyTimeout)
         
         while !Task.isCancelled && !shouldCancel {
+            // Check for cancellation immediately to avoid updating UI after cancel
+            if shouldCancel || Task.isCancelled {
+                break
+            }
+            
             updateProgressFromCoordinator(coordinator, destinations: destinations)
             
             // Check if all destinations are complete
