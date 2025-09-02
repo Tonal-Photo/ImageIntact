@@ -9,6 +9,9 @@ struct ContentView: View {
     // First-run and help system
     @State private var showWelcomePopup = false
     
+    // Store event monitor to properly clean it up
+    @State private var eventMonitor: Any?
+    
     enum FocusField: Hashable {
         case source
         case destination(Int)
@@ -200,6 +203,18 @@ struct ContentView: View {
                 )
             }
         }
+        .onDisappear {
+            // Clean up event monitor when view disappears
+            if let monitor = eventMonitor {
+                NSEvent.removeMonitor(monitor)
+                eventMonitor = nil
+            }
+        }
+        // Override default Escape key behavior to prevent cancellation
+        .onExitCommand {
+            // Do nothing - prevent default cancelOperation behavior
+            // Users must use the explicit Cancel button
+        }
         .sheet(isPresented: $updateManager.showUpdateSheet) {
             UpdateStatusSheet(
                 result: updateManager.updateCheckResult,
@@ -338,7 +353,13 @@ struct ContentView: View {
     
     // MARK: - Keyboard Shortcuts
     func setupKeyboardShortcuts() {
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        // Remove any existing monitor first
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        
+        // Add new monitor and store the reference
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Check if Command key is pressed
             if event.modifierFlags.contains(.command) {
                 switch event.charactersIgnoringModifiers {
@@ -357,11 +378,10 @@ struct ContentView: View {
                 }
             }
             
-            // Handle Escape key but don't cancel operation (too easy to hit accidentally)
-            if event.keyCode == 53 { // 53 is the key code for Escape
-                // Consume the event to prevent default behavior, but don't cancel
-                return nil
-            }
+            // Escape key handling - disabled during backup operations
+            // The Escape key (keyCode 53) is intentionally not handled to prevent
+            // accidental cancellation of backup operations. Users must use the
+            // explicit Cancel button in the UI.
             
             return event
         }
