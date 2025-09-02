@@ -266,6 +266,9 @@ class CancellableFileOperations: FileOperationsProtocol {
     
     /// Stream-based copy that can be cancelled and throttled
     private func streamCopy(from source: URL, to destination: URL, isNetwork: Bool) async throws {
+        // Check for cancellation before starting
+        try Task.checkCancellation()
+        
         // Open source file for reading
         guard let sourceHandle = try? FileHandle(forReadingFrom: source) else {
             throw NSError(domain: "CancellableFileOperations", code: 1, 
