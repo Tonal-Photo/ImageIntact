@@ -460,8 +460,20 @@ class BackupOrchestrator {
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
         }
         
-        // Final update
-        updateProgressFromCoordinator(coordinator, destinations: destinations)
+        // Final update - but if cancelled, don't update from coordinator
+        if !shouldCancel && !Task.isCancelled {
+            updateProgressFromCoordinator(coordinator, destinations: destinations)
+        } else {
+            // Clear all destination states when cancelled
+            Task { @MainActor in
+                for dest in destinations {
+                    let name = dest.lastPathComponent
+                    progressTracker.setDestinationState("cancelled", for: name)
+                }
+                // Clear the overall status text
+                onStatusUpdate?("Backup cancelled")
+            }
+        }
         print("📊 Monitor task completed")
     }
     

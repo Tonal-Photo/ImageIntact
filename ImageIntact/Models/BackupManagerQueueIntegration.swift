@@ -202,6 +202,10 @@ extension BackupManager {
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             showCompletionReport = true
         } else {
+            // Clear the overall status text when cancelled
+            overallStatusText = ""
+            statusMessage = "Backup cancelled"
+            
             // Still stop sleep prevention even if cancelled
             logInfo("Backup cancelled by user")
         }
