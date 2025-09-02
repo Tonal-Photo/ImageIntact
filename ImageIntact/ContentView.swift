@@ -357,10 +357,9 @@ struct ContentView: View {
                 }
             }
             
-            // Escape key to cancel operation
-            if event.keyCode == 53 && backupManager.isProcessing { // 53 is the key code for Escape
-                backupManager.cancelOperation()
-                print("Cancel operation requested")
+            // Handle Escape key but don't cancel operation (too easy to hit accidentally)
+            if event.keyCode == 53 { // 53 is the key code for Escape
+                // Consume the event to prevent default behavior, but don't cancel
                 return nil
             }
             
