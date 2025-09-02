@@ -162,8 +162,7 @@ actor DestinationQueue {
             // Check for cancellation after dequeue
             if shouldCancel {
                 print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled after dequeue")
-                // Put task back for potential retry
-                await queue.enqueue(task)
+                // Don't re-queue when cancelled, just exit
                 break
             }
             
@@ -216,8 +215,8 @@ actor DestinationQueue {
                 }
                 
             case .cancelled:
-                // Put task back in queue for later
-                await queue.enqueue(task)
+                // Don't re-queue cancelled tasks, just exit the worker
+                print("🛑 Task cancelled for \(task.relativePath)")
                 break
             }
             
