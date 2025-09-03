@@ -1,0 +1,10 @@
+Fixed critical issues with backup cancellation:
+• Cancel button now stops backups instantly and cleanly
+• Escape key no longer interferes with backup operations  
+• UI properly shows cancellation status immediately
+• Improved stability when stopping network transfers
+
+Plus all the features from 1.2.7:
+• Enhanced network performance for NAS/SMB drives
+• Configurable timeouts prevent indefinite hangs
+• Better progress tracking for multi-destination backups
