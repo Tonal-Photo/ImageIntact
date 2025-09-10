@@ -88,12 +88,11 @@ final class BackupCoordinatorTests: XCTestCase {
     
     // MARK: - Distribution Tests
     
-    func testRoundRobinTaskDistribution() async throws {
+    func testAllFilesGoToAllDestinations() async throws {
         // Given - 10 tasks, 3 destinations
         // Expected distribution:
-        // Dest 0: tasks 0, 3, 6, 9 (4 tasks)
-        // Dest 1: tasks 1, 4, 7 (3 tasks)  
-        // Dest 2: tasks 2, 5, 8 (3 tasks)
+        // EACH destination should get ALL 10 tasks
+        // This is critical for proper backup redundancy
         
         // When
         Task {
@@ -112,24 +111,25 @@ final class BackupCoordinatorTests: XCTestCase {
         let statuses = coordinator.destinationStatuses
         XCTAssertEqual(statuses.count, 3, "Should have 3 destination statuses")
         
-        // Check each destination got the right number of tasks
+        // Check each destination got ALL tasks
         if let dest1Status = statuses["destination1"] {
-            XCTAssertEqual(dest1Status.total, 4, "First destination should have 4 tasks")
+            XCTAssertEqual(dest1Status.total, 10, "First destination should have ALL 10 tasks")
         }
         
         if let dest2Status = statuses["destination2"] {
-            XCTAssertEqual(dest2Status.total, 3, "Second destination should have 3 tasks")
+            XCTAssertEqual(dest2Status.total, 10, "Second destination should have ALL 10 tasks")
         }
         
         if let dest3Status = statuses["destination3"] {
-            XCTAssertEqual(dest3Status.total, 3, "Third destination should have 3 tasks")
+            XCTAssertEqual(dest3Status.total, 10, "Third destination should have ALL 10 tasks")
         }
         
         await coordinator.cancelBackup()
     }
     
-    func testEvenDistributionWithExactMultiple() async throws {
-        // Given - 9 tasks for 3 destinations (exact multiple)
+    func testEachDestinationGetsCompleteManifest() async throws {
+        // Given - 9 tasks for 3 destinations
+        // EACH destination should get ALL 9 tasks, not split them
         let evenManifest = createMockManifest(count: 9)
         
         // When
@@ -148,8 +148,8 @@ final class BackupCoordinatorTests: XCTestCase {
         // Then
         let statuses = coordinator.destinationStatuses
         
-        for (_, status) in statuses {
-            XCTAssertEqual(status.total, 3, "Each destination should have exactly 3 tasks")
+        for (destName, status) in statuses {
+            XCTAssertEqual(status.total, 9, "Destination \(destName) should have ALL 9 tasks, not a fraction")
         }
         
         await coordinator.cancelBackup()
@@ -256,6 +256,51 @@ final class BackupCoordinatorTests: XCTestCase {
         
         // Then
         XCTAssertFalse(coordinator.isRunning, "Should not be running after stop")
+    }
+    
+    // MARK: - Critical Bug Prevention Tests
+    
+    func testMultiDestinationNeverSplitsFiles_PreventsBug1_2_9() async throws {
+        // This test specifically prevents the bug fixed in 1.2.9
+        // where files were being split between destinations using round-robin
+        
+        // Given - Large number of files (simulating real scenario)
+        let largeManifest = createMockManifest(count: 307) // Real scenario from bug report
+        let multipleDestinations = [
+            URL(fileURLWithPath: "/backup/photos1"),
+            URL(fileURLWithPath: "/backup/photos2")
+        ]
+        
+        // When
+        Task {
+            await coordinator.startBackup(
+                source: sourceURL,
+                destinations: multipleDestinations,
+                manifest: largeManifest,
+                organizationName: "TestOrg"
+            )
+        }
+        
+        // Give it time to initialize
+        try await Task.sleep(nanoseconds: 200_000_000)
+        
+        // Then - CRITICAL ASSERTIONS
+        let statuses = coordinator.destinationStatuses
+        XCTAssertEqual(statuses.count, 2, "Should have 2 destination statuses")
+        
+        // Each destination MUST have ALL files
+        for (destName, status) in statuses {
+            XCTAssertEqual(status.total, 307, 
+                          "CRITICAL: Destination \(destName) must have ALL 307 files. " +
+                          "If this fails, we have regression of the 1.2.9 bug!")
+        }
+        
+        // Verify no destination has partial files
+        let totals = statuses.values.map { $0.total }
+        XCTAssertTrue(totals.allSatisfy { $0 == 307 }, 
+                     "All destinations must have exactly the same number of files")
+        
+        await coordinator.cancelBackup()
     }
     
     // MARK: - Verification Tests
