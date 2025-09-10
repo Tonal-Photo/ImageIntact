@@ -147,7 +147,7 @@ class SecurityEnhancementTests: XCTestCase {
         let sleepPrevention = SleepPrevention.shared
         
         // Start prevention
-        sleepPrevention.start()
+        sleepPrevention.startPreventingSleep(reason: "Test", timeout: 60)
         XCTAssertTrue(sleepPrevention.isPreventing)
         
         // Should have a maximum duration set
@@ -155,7 +155,7 @@ class SecurityEnhancementTests: XCTestCase {
         // but we can verify the mechanism is in place
         
         // Stop prevention
-        sleepPrevention.stop()
+        sleepPrevention.stopPreventingSleep()
         XCTAssertFalse(sleepPrevention.isPreventing)
     }
     
