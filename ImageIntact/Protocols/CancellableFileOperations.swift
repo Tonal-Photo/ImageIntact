@@ -14,6 +14,14 @@ class CancellableFileOperations: FileOperationsProtocol {
     
     /// Copy a file using streams that can be cancelled
     func copyItem(at source: URL, to destination: URL) async throws {
+        // Check if source is a symbolic link and skip silently if it is
+        let sourceAttributes = try? fileManager.attributesOfItem(atPath: source.path)
+        if sourceAttributes?[.type] as? FileAttributeType == .typeSymbolicLink {
+            // Silently skip symbolic links - don't throw an error, just return
+            print("Skipping symbolic link: \(source.path)")
+            return
+        }
+        
         // Validate paths before any operations
         try validatePaths(source: source, destination: destination)
         
