@@ -48,16 +48,11 @@ class BackupCoordinator: ObservableObject {
         // Create tasks with smart priority
         let tasks = createFileTasks(from: manifest)
         
-        // Distribute tasks among destinations using round-robin
+        // Each destination should get ALL tasks (not round-robin distribution!)
         var tasksByDestination: [Int: [FileTask]] = [:]
         for i in 0..<destinations.count {
-            tasksByDestination[i] = []
-        }
-        
-        // Round-robin distribution
-        for (index, task) in tasks.enumerated() {
-            let destinationIndex = index % destinations.count
-            tasksByDestination[destinationIndex]?.append(task)
+            // Give each destination a copy of ALL tasks
+            tasksByDestination[i] = tasks
         }
         
         // Debug: Print task distribution
