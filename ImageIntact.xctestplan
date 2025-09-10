@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "BB0F8E29-5A23-4B7C-9E3E-3C6370B3A08F",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:ImageIntact.xcodeproj",
+      "identifier" : "71592B5A2E3CE71600571AB3",
+      "name" : "ImageIntact"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "71592B6A2E3CE71700571AB3",
+        "name" : "ImageIntactTests"
+      }
+    }
+  ],
+  "version" : 1
+}

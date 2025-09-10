@@ -1,0 +1,11 @@
+CRITICAL FIX for multi-destination backups:
+• In some instances with large numbers of source files and multiple destinations, not all files were being copied to all destinations
+• We apologize sincerely for this bug since it broke one of the fundamental tenets of the app
+• All files are now correctly copied to each destination
+
+This is an urgent update if you use multiple backup destinations.
+
+Also includes all fixes from 1.2.8:
+• Cancel button works instantly and cleanly
+• Escape key no longer interferes with backups
+• Improved network drive performance

@@ -7,7 +7,7 @@ ImageIntact is the backup app photographers have been waiting for – built by a
 ![macOS](https://img.shields.io/badge/macOS-14.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.2.8-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.2.9-brightgreen)
 
 ## Why ImageIntact?
 
@@ -43,11 +43,14 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Smart notifications** – Get notified when backups complete (v1.2.6)
 - **Privacy-first** – Anonymize logs when sharing for support (v1.2.6)
 
-## New in Version 1.2.8
+## New in Version 1.2.9
 
-This patch release fixes critical issues with backup cancellation and keyboard handling:
+**CRITICAL FIX:** In some instances with large numbers of source files and multiple destinations, not all files were being copied to all destinations. We apologize sincerely for this bug since it broke one of the fundamental tenets of the app.
 
-### Bug Fixes (1.2.8)
+### Bug Fix (1.2.9)
+- **Fixed multi-destination file distribution** – All files are now correctly copied to each destination
+
+### Previous Fixes (1.2.8)
 - **Fixed Escape key behavior** – Escape key no longer cancels backups or freezes the UI
 - **Fixed Cancel button** – Properly stops all operations immediately without errors
 - **Fixed UI state after cancellation** – Shows "Backup cancelled" immediately instead of lingering status
