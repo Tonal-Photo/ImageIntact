@@ -147,10 +147,8 @@ struct PresetSelectionSheet: View {
             // Pre-select current preset if any
             selectedPresetID = presetManager.selectedPreset?.id
         }
-        .alert("Manage Presets", isPresented: $showingManagePresets) {
-            Button("OK") { }
-        } message: {
-            Text("Preset management will be available in a future update.")
+        .sheet(isPresented: $showingManagePresets) {
+            ManagePresetsSheet()
         }
     }
 }

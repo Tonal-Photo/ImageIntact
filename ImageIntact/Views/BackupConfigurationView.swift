@@ -135,10 +135,8 @@ struct BackupConfigurationView: View {
                 isPresented: $showingCreatePreset
             )
         }
-        .alert("Manage Presets", isPresented: $showingPresetManagement) {
-            Button("OK") { }
-        } message: {
-            Text("Preset management will be available in a future update.")
+        .sheet(isPresented: $showingPresetManagement) {
+            ManagePresetsSheet()
         }
         .sheet(isPresented: $showFilterSheet) {
             FileTypeSelectionSheet(
