@@ -367,35 +367,55 @@ class BackupPresetManager: ObservableObject {
     }
     
     func applyPreset(_ preset: BackupPreset, to backupManager: BackupManager) {
-        // Apply source bookmark if available (for custom presets)
+        // Handle source path
         if let sourceBookmark = preset.sourceBookmark {
+            // Preset has a saved source - apply it
             if let url = BackupManager.loadBookmark(from: sourceBookmark) {
                 backupManager.setSource(url)
                 ApplicationLogger.shared.info("Restored source from preset: \(url.lastPathComponent)", category: .app)
             }
+        } else if preset.isBuiltIn {
+            // Built-in presets don't save paths - they only apply settings
+            // Keep the current source unchanged
+            ApplicationLogger.shared.info("Built-in preset applied, keeping current source", category: .app)
+        }
+        // For custom presets without source bookmark, also keep current source
+        // This handles the case where a preset was created without a source selected
+        
+        // Clear destinations and reapply from preset
+        // First, clear all existing destination URLs
+        for i in 0..<backupManager.destinationURLs.count {
+            backupManager.destinationURLs[i] = nil
+        }
+        backupManager.destinationDriveInfo.removeAll()
+        
+        // Also clear destination items
+        for i in 0..<backupManager.destinationItems.count {
+            backupManager.destinationItems[i].url = nil
         }
         
-        // Clear existing destinations and apply preset destinations
-        backupManager.clearAllSelections()
+        // Reset destination items to minimum
+        while backupManager.destinationItems.count > 1 {
+            backupManager.destinationItems.removeLast()
+        }
         
         // Apply destination bookmarks if available
         if !preset.destinationBookmarks.isEmpty {
+            // Ensure we have enough destination slots
+            while backupManager.destinationItems.count < preset.destinationBookmarks.count {
+                backupManager.addDestination()
+            }
+            
+            // Apply each destination bookmark
             for (index, bookmarkData) in preset.destinationBookmarks.enumerated() {
                 if let data = bookmarkData,
                    let url = BackupManager.loadBookmark(from: data) {
-                    if index == 0 {
-                        // First destination - update the existing one
-                        backupManager.setDestination(url, at: 0)
-                    } else {
-                        // Additional destinations - add new ones
-                        backupManager.addDestination()
-                        backupManager.setDestination(url, at: backupManager.destinationItems.count - 1)
-                    }
+                    backupManager.setDestination(url, at: index)
                     ApplicationLogger.shared.info("Restored destination \(index + 1) from preset: \(url.lastPathComponent)", category: .app)
                 }
             }
-        } else {
-            // Update destination count if no bookmarks but count specified
+        } else if !preset.isBuiltIn {
+            // Custom preset without destination bookmarks - just set up the count
             while backupManager.destinationItems.count < preset.destinationCount {
                 backupManager.addDestination()
             }
