@@ -49,11 +49,21 @@
         "DestinationQueueTests/testAddingTasks",
         "DestinationQueueTests/testSuccessfulFileCopy",
         "BackupCoordinatorTests/testCoordinatorInitialization",
-        "BackupCoordinatorTests/testRoundRobinTaskDistribution",
+        "BackupCoordinatorTests/testMultiDestinationNeverSplitsFiles_PreventsBug1_2_9",
+        "BackupCoordinatorTests/testAllFilesGoToAllDestinations",
+        "BackupCoordinatorTests/testEachDestinationGetsCompleteManifest",
         "DuplicateDetectorTests/testEmptyManifestReturnsNoDuplicates",
         "DuplicateDetectorTests/testFilterManifestRemovesExactDuplicates",
         "ProtocolIntegrationTests/testMockDuplicateDetectorImplementsProtocol",
-        "ProtocolIntegrationTests/testBackupManagerAcceptsDuplicateDetectorProtocol"
+        "ProtocolIntegrationTests/testBackupManagerAcceptsDuplicateDetectorProtocol",
+        "SecurityEnhancementTests/testPathValidationRejectsPathTraversal",
+        "SecurityEnhancementTests/testPathValidationAcceptsValidPaths",
+        "SecurityEnhancementTests/testSymbolicLinkDetectionAndSkipping",
+        "SecurityEnhancementTests/testRecursionDepthLimit",
+        "SecurityEnhancementTests/testPackageDetection",
+        "SecurityEnhancementTests/testNetworkVolumeDetection",
+        "SecurityEnhancementTests/testSleepPreventionTimeout",
+        "SecurityEnhancementTests/testExtendedAttributePreservation"
       ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
