@@ -390,29 +390,25 @@ class PresetManagementTests: XCTestCase {
     }
     
     func testImportPresetFromJSON() throws {
-        // Given: JSON data representing a preset
-        let presetJSON = """
-        {
-            "id": "\(UUID().uuidString)",
-            "name": "Imported Preset",
-            "icon": "square.and.arrow.down",
-            "isBuiltIn": false,
-            "strategy": "incremental",
-            "schedule": "manual",
-            "performanceMode": "balanced",
-            "fileTypeFilter": {
-                "includedExtensions": ["jpg", "jpeg", "png"]
-            },
-            "excludeCacheFiles": true,
-            "skipHiddenFiles": true,
-            "preventSleep": false,
-            "showNotification": true,
-            "destinationCount": 1,
-            "preferredDriveUUIDs": [],
-            "createdDate": \(Date().timeIntervalSince1970),
-            "useCount": 0
-        }
-        """.data(using: .utf8)!
+        // Given: A preset to export first (to get correct JSON format)
+        let presetToExport = BackupPreset(
+            name: "Imported Preset",
+            icon: "square.and.arrow.down",
+            isBuiltIn: false,
+            strategy: .incremental,
+            schedule: .manual,
+            performanceMode: .balanced,
+            fileTypeFilter: FileTypeFilter(extensions: ["jpg", "jpeg", "png"]),
+            excludeCacheFiles: true,
+            skipHiddenFiles: true,
+            preventSleep: false,
+            showNotification: true
+        )
+        
+        // Export it to get proper JSON format
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let presetJSON = try encoder.encode(presetToExport)
         
         let initialCount = presetManager.presets.count
         

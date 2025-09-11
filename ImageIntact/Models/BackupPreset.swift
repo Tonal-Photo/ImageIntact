@@ -316,15 +316,54 @@ class BackupPresetManager: ObservableObject {
     
     func updatePreset(_ preset: BackupPreset) {
         if let index = presets.firstIndex(where: { $0.id == preset.id }) {
-            presets[index] = preset
+            var updatedPreset = preset
+            updatedPreset.lastUsedDate = Date()
+            presets[index] = updatedPreset
             savePresets()
         }
+    }
+    
+    func renamePreset(_ preset: BackupPreset, to newName: String) -> Bool {
+        guard !preset.isBuiltIn else { return false }
+        guard !newName.isEmpty else { return false }
+        
+        // Check for duplicate names
+        if presets.contains(where: { $0.id != preset.id && $0.name == newName }) {
+            return false
+        }
+        
+        if let index = presets.firstIndex(where: { $0.id == preset.id }) {
+            presets[index].name = newName
+            presets[index].lastUsedDate = Date()
+            savePresets()
+            return true
+        }
+        return false
+    }
+    
+    func canRenamePreset(_ preset: BackupPreset) -> Bool {
+        return !preset.isBuiltIn
+    }
+    
+    func isValidPresetName(_ name: String, for preset: BackupPreset) -> Bool {
+        guard !name.isEmpty else { return false }
+        return !presets.contains { $0.id != preset.id && $0.name == name }
     }
     
     func deletePreset(_ preset: BackupPreset) {
         guard !preset.isBuiltIn else { return }
         presets.removeAll { $0.id == preset.id }
+        
+        // Clear selection if deleted preset was selected
+        if selectedPreset?.id == preset.id {
+            selectedPreset = nil
+        }
+        
         savePresets()
+    }
+    
+    func canDeletePreset(_ preset: BackupPreset) -> Bool {
+        return !preset.isBuiltIn
     }
     
     func applyPreset(_ preset: BackupPreset, to backupManager: BackupManager) {
@@ -447,6 +486,85 @@ class BackupPresetManager: ObservableObject {
         }
         
         return false
+    }
+    
+    func duplicatePreset(_ preset: BackupPreset) -> BackupPreset {
+        let duplicatedPreset = BackupPreset(
+            id: UUID(),
+            name: "\(preset.name) Copy",
+            icon: preset.icon,
+            isBuiltIn: false,
+            strategy: preset.strategy,
+            schedule: preset.schedule,
+            performanceMode: preset.performanceMode,
+            fileTypeFilter: preset.fileTypeFilter,
+            excludeCacheFiles: preset.excludeCacheFiles,
+            skipHiddenFiles: preset.skipHiddenFiles,
+            preventSleep: preset.preventSleep,
+            showNotification: preset.showNotification,
+            destinationCount: preset.destinationCount,
+            preferredDriveUUIDs: preset.preferredDriveUUIDs,
+            sourceBookmark: preset.sourceBookmark,
+            destinationBookmarks: preset.destinationBookmarks,
+            createdDate: Date(),
+            lastUsedDate: nil,
+            useCount: 0
+        )
+        
+        addPreset(duplicatedPreset)
+        return duplicatedPreset
+    }
+    
+    func movePreset(from sourceIndex: Int, to destinationIndex: Int) {
+        // Don't allow moving built-in presets
+        guard sourceIndex < presets.count,
+              destinationIndex < presets.count,
+              !presets[sourceIndex].isBuiltIn else { return }
+        
+        // Don't allow moving to built-in section
+        let builtInCount = presets.filter { $0.isBuiltIn }.count
+        guard destinationIndex >= builtInCount else { return }
+        
+        let preset = presets.remove(at: sourceIndex)
+        presets.insert(preset, at: destinationIndex)
+        savePresets()
+    }
+    
+    func importPreset(from data: Data) throws -> BackupPreset {
+        let decoder = JSONDecoder()
+        var imported = try decoder.decode(BackupPreset.self, from: data)
+        
+        // Ensure imported preset is not built-in and has unique ID
+        imported = BackupPreset(
+            id: UUID(),
+            name: imported.name,
+            icon: imported.icon,
+            isBuiltIn: false,
+            strategy: imported.strategy,
+            schedule: imported.schedule,
+            performanceMode: imported.performanceMode,
+            fileTypeFilter: imported.fileTypeFilter,
+            excludeCacheFiles: imported.excludeCacheFiles,
+            skipHiddenFiles: imported.skipHiddenFiles,
+            preventSleep: imported.preventSleep,
+            showNotification: imported.showNotification,
+            destinationCount: imported.destinationCount,
+            preferredDriveUUIDs: imported.preferredDriveUUIDs,
+            sourceBookmark: imported.sourceBookmark,
+            destinationBookmarks: imported.destinationBookmarks,
+            createdDate: Date(),
+            lastUsedDate: nil,
+            useCount: 0
+        )
+        
+        addPreset(imported)
+        return imported
+    }
+    
+    func exportPreset(_ preset: BackupPreset) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        return try encoder.encode(preset)
     }
     
     func createPresetFromCurrent(name: String, backupManager: BackupManager) -> BackupPreset {
