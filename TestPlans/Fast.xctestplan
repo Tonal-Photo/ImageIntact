@@ -69,7 +69,14 @@
         "PresetTests/testPresetCanSaveAndRestorePaths",
         "PresetTests/testDuplicatePresetDetection",
         "PresetTests/testPresetSupportsMultipleDestinations",
-        "PresetTests/testEmptyConfigurationDoesNotMatchPresets"
+        "PresetTests/testEmptyConfigurationDoesNotMatchPresets",
+        "PresetManagementTests/testDeleteCustomPreset",
+        "PresetManagementTests/testCannotDeleteBuiltInPreset",
+        "PresetManagementTests/testRenameCustomPreset",
+        "PresetManagementTests/testCannotRenameBuiltInPreset",
+        "PresetManagementTests/testEditCustomPresetSettings",
+        "PresetManagementTests/testReorderCustomPresets",
+        "PresetManagementTests/testDuplicateCustomPreset"
       ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
