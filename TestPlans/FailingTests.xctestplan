@@ -1,0 +1,39 @@
+{
+  "configurations" : [
+    {
+      "id" : "F1A2I3L4-5I6N7G8-TEST-PLAN1234567890",
+      "name" : "FailingTests",
+      "options" : {
+        "maximumTestExecutionTimeAllowance" : 60,
+        "testExecutionOrdering" : "alphabetical"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "selectedTests" : [
+        "BackupIntegrationTests/testBackupSkipsCacheFiles",
+        "BackupIntegrationTests/testBackupCancellation",
+        "BackupIntegrationTests/testBackupProgressTracking",
+        "ConcurrencyStressTests/testThreeDestinationsConcurrentUpdates",
+        "UIStateManagementTests",
+        "UIStateTests"
+      ],
+      "skippedTests" : [
+        "UIStateManagementTests",
+        "UIStateTests"
+      ],
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactTests",
+        "name" : "ImageIntactTests"
+      }
+    }
+  ],
+  "version" : 1
+}

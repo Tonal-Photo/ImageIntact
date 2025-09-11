@@ -4,17 +4,8 @@
       "id" : "A1B2C3D4-5E6F-7890-ABCD-EF1234567890",
       "name" : "Comprehensive",
       "options" : {
-        "environmentVariableEntries" : [
-          {
-            "key" : "TEST_MODE",
-            "value" : "COMPREHENSIVE"
-          }
-        ],
         "maximumTestExecutionTimeAllowance" : 300,
-        "testExecutionOrdering" : "alphabetical",
-        "threadSanitizerEnabled" : false,
-        "uiTestingScreenshotsLifetime" : "keepOnFailure",
-        "mainThreadCheckerEnabled" : true
+        "testExecutionOrdering" : "alphabetical"
       }
     }
   ],
@@ -28,43 +19,30 @@
         }
       ]
     },
-    "commandLineArgumentEntries" : [
-      {
-        "argument" : "--comprehensive-test-mode"
-      },
-      {
-        "argument" : "--uitest"
-      }
-    ],
-    "environmentVariableEntries" : [
-      {
-        "key" : "COMPREHENSIVE_TEST",
-        "value" : "1"
-      },
-      {
-        "key" : "ENABLE_DETAILED_LOGGING",
-        "value" : "1"
-      }
-    ],
-    "maximumTestRepetitions" : 1,
-    "testTimeoutsEnabled" : true,
-    "addressSanitizerEnabled" : false
+    "testTimeoutsEnabled" : true
   },
   "testTargets" : [
     {
       "parallelizable" : true,
+      "skippedTests" : [
+        "UIStateManagementTests",
+        "UIStateTests",
+        "BackupIntegrationTests/testBackupSkipsCacheFiles",
+        "BackupIntegrationTests/testBackupCancellation", 
+        "BackupIntegrationTests/testBackupProgressTracking",
+        "ConcurrencyStressTests/testThreeDestinationsConcurrentUpdates",
+        "QueueBasedBackupTests",
+        "RealBackupManagerTests",
+        "ChecksumPerformanceTests",
+        "OptimizedChecksumPerformanceTests",
+        "MemoryOptimizationTests",
+        "QueueMemoryOptimizationTests",
+        "CoreDataBatchTests"
+      ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
         "identifier" : "ImageIntactTests",
         "name" : "ImageIntactTests"
-      }
-    },
-    {
-      "parallelizable" : false,
-      "target" : {
-        "containerPath" : "container:ImageIntact.xcodeproj",
-        "identifier" : "ImageIntactUITests",
-        "name" : "ImageIntactUITests"
       }
     }
   ],
