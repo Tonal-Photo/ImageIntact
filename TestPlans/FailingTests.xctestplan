@@ -21,6 +21,7 @@
         "BackupIntegrationTests/testBackupCancellation",
         "BackupIntegrationTests/testBackupProgressTracking",
         "ConcurrencyStressTests/testThreeDestinationsConcurrentUpdates",
+        "QueueSystemTests/testProgressCallbacksUpdate",
         "UIStateManagementTests",
         "UIStateTests"
       ],

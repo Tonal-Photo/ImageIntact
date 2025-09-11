@@ -63,7 +63,13 @@
         "SecurityEnhancementTests/testPackageDetection",
         "SecurityEnhancementTests/testNetworkVolumeDetection",
         "SecurityEnhancementTests/testSleepPreventionTimeout",
-        "SecurityEnhancementTests/testExtendedAttributePreservation"
+        "SecurityEnhancementTests/testExtendedAttributePreservation",
+        "PresetTests/testPresetButtonAlwaysVisible",
+        "PresetTests/testDestinationFieldsOnlyShowWhenPopulated",
+        "PresetTests/testPresetSavesAndRestoresPaths",
+        "PresetTests/testDuplicatePresetDetection",
+        "PresetTests/testPresetWithMultipleDestinations",
+        "PresetTests/testBuiltInPresetsCannotBeDuplicated"
       ],
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
