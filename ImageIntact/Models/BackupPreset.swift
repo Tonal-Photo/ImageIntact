@@ -310,6 +310,7 @@ class BackupPresetManager: ObservableObject {
     }
     
     func addPreset(_ preset: BackupPreset) {
+        // ApplicationLogger.shared.info("Adding preset '\(preset.name)' with \(preset.destinationBookmarks.filter { $0 != nil }.count) destination bookmarks", category: .app)
         presets.append(preset)
         savePresets()
     }
@@ -400,6 +401,7 @@ class BackupPresetManager: ObservableObject {
         }
         
         // Apply destination bookmarks if available
+        // ApplicationLogger.shared.info("Preset has \(preset.destinationBookmarks.count) destination bookmarks", category: .app)
         if !preset.destinationBookmarks.isEmpty {
             // Ensure we have enough destination slots
             while backupManager.destinationItems.count < preset.destinationBookmarks.count {
@@ -412,6 +414,8 @@ class BackupPresetManager: ObservableObject {
                    let url = BackupManager.loadBookmark(from: data) {
                     backupManager.setDestination(url, at: index)
                     ApplicationLogger.shared.info("Restored destination \(index + 1) from preset: \(url.lastPathComponent)", category: .app)
+                } else {
+                    // ApplicationLogger.shared.info("No bookmark data for destination \(index + 1)", category: .app)
                 }
             }
         } else if !preset.isBuiltIn {
@@ -597,11 +601,14 @@ class BackupPresetManager: ObservableObject {
         var destinationBookmarks: [Data?] = []
         for item in backupManager.destinationItems {
             if let url = item.url {
-                destinationBookmarks.append(BackupManager.createBookmark(for: url))
+                let bookmark = BackupManager.createBookmark(for: url)
+                destinationBookmarks.append(bookmark)
+                // ApplicationLogger.shared.info("Creating destination bookmark for: \(url.lastPathComponent)", category: .app)
             } else {
                 destinationBookmarks.append(nil)
             }
         }
+        // ApplicationLogger.shared.info("Created \(destinationBookmarks.filter { $0 != nil }.count) destination bookmarks", category: .app)
         
         return BackupPreset(
             name: name,
