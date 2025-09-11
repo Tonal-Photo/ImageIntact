@@ -112,13 +112,13 @@ struct HelpView: View {
                             
                             VStack(alignment: .leading, spacing: 8) {
                                 HelpPoint(title: "Built-in Presets", 
-                                         description: "Choose from Daily Workflow, Client Shoot, or Archive presets")
+                                         description: "Choose from Daily Workflow, Travel Backup, Client Delivery, Archive Master, Video Project, or Quick Mirror presets")
                                 
                                 HelpPoint(title: "Custom Presets", 
-                                         description: "Save your current configuration as a reusable preset")
+                                         description: "Save your current configuration as a reusable preset with source and destination paths")
                                 
-                                HelpPoint(title: "Complete Configuration", 
-                                         description: "Presets save source, destinations, filters, and all settings")
+                                HelpPoint(title: "Smart Path Handling", 
+                                         description: "Built-in presets change settings only; custom presets can optionally save paths")
                                 
                                 HelpPoint(title: "Quick Apply", 
                                          description: "Select a preset to instantly configure your backup")
@@ -129,11 +129,43 @@ struct HelpView: View {
                             
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("1. Configure your backup (source, destinations, filters)")
-                                Text("2. Click 'Save as Preset' under the source field")
+                                Text("2. Click the preset menu and select 'Save Current Settings...'")
                                 Text("3. Name your preset and choose an icon")
                                 Text("4. Apply it anytime from the Presets menu")
                             }
                             .font(.caption)
+                            
+                            Text("**Managing presets:**")
+                                .fontWeight(.medium)
+                                .padding(.top, 8)
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("• **Manage Presets...** - Opens the preset management window")
+                                Text("• **Delete** - Remove custom presets (built-ins are protected)")
+                                Text("• **Rename** - Change custom preset names")
+                                Text("• **Duplicate** - Create a copy of any preset")
+                                Text("• **Reorder** - Drag to rearrange custom presets")
+                                Text("• **Import/Export** - Share presets as JSON files")
+                            }
+                            .font(.caption)
+                            
+                            GroupBox {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Preset Tips")
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                    
+                                    Text("• Built-in presets never change your paths - only settings")
+                                        .font(.caption2)
+                                    Text("• Custom presets remember source & destination paths")
+                                        .font(.caption2)
+                                    Text("• Export presets to share with team members")
+                                        .font(.caption2)
+                                    Text("• Duplicate a built-in preset to customize it")
+                                        .font(.caption2)
+                                }
+                                .padding(4)
+                            }
                         }
                     }
                     
