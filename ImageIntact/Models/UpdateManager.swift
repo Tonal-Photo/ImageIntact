@@ -42,9 +42,21 @@ class UpdateManager {
     }
     
     init(provider: UpdateProvider? = nil) {
-        // Default to GitHub provider, but allow injection for testing
-        self.updateProvider = provider ?? GitHubUpdateProvider()
-        print("UpdateManager initialized with \(updateProvider.providerName)")
+        // Use provided provider, or select based on build type
+        if let provider = provider {
+            // Explicit provider provided (for testing)
+            self.updateProvider = provider
+        } else {
+            // Select provider based on build configuration
+            if BuildConfiguration.isOpenSourceBuild {
+                // GitHub builds always check GitHub releases
+                self.updateProvider = GitHubUpdateProvider()
+            } else {
+                // App Store builds use the App Store update mechanism
+                self.updateProvider = AppStoreUpdateProvider()
+            }
+        }
+        print("UpdateManager initialized with \(updateProvider.providerName) for \(BuildConfiguration.editionName)")
         
         // Check for test mode from launch arguments
         checkForTestMode()
@@ -112,7 +124,7 @@ class UpdateManager {
         guard !isCheckingForUpdates else { return }
         
         if isManual {
-            showUpdateSheet = true
+            // Don't show sheet yet for manual checks - will be shown based on results
             updateCheckResult = .checking
         }
         
@@ -171,7 +183,14 @@ class UpdateManager {
                 print("No updates available (current: v\(currentVersion))")
                 
                 if isManual {
-                    updateCheckResult = .upToDate
+                    if BuildConfiguration.isOpenSourceBuild {
+                        // GitHub builds show the normal up-to-date sheet
+                        updateCheckResult = .upToDate
+                        showUpdateSheet = true
+                    } else {
+                        // App Store builds show a custom info alert
+                        showAppStoreUpdateInfo()
+                    }
                 }
             }
         } catch {
@@ -341,6 +360,30 @@ class UpdateManager {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+    
+    /// Show info about App Store updates
+    private func showAppStoreUpdateInfo() {
+        let alert = NSAlert()
+        alert.messageText = "App Store Updates"
+        alert.informativeText = """
+        ImageIntact \(currentVersion) is the current version.
+        
+        Updates for the App Store version are delivered automatically through the Mac App Store.
+        
+        You can check for updates or leave a review on the ImageIntact page in the App Store.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "View in App Store")
+        alert.addButton(withTitle: "OK")
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            // Open ImageIntact page in the App Store
+            // Using the macappstore:// URL scheme with the app ID
+            if let url = URL(string: "macappstore://apps.apple.com/app/id6749640884") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
     
     /// Show error alert

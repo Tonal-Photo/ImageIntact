@@ -12,6 +12,10 @@ struct ContentView: View {
     // Store event monitor to properly clean it up
     @State private var eventMonitor: Any?
     
+    // Premium features
+    @State private var showPurchaseView = false
+    @State private var showUpgradeAlert = false
+    
     enum FocusField: Hashable {
         case source
         case destination(Int)
@@ -232,6 +236,24 @@ struct ContentView: View {
                 }
             )
         }
+        .sheet(isPresented: $showPurchaseView) {
+            PurchaseProView()
+                .frame(minWidth: 500, minHeight: 600)
+        }
+        .alert("Upgrade to Pro", isPresented: $showUpgradeAlert) {
+            if !BuildConfiguration.isOpenSourceBuild {
+                Button("View Pro Features") {
+                    showPurchaseView = true
+                }
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            if BuildConfiguration.isOpenSourceBuild {
+                Text("This feature is only available in the App Store version of ImageIntact.")
+            } else {
+                Text("This feature requires ImageIntact Pro. Unlock all premium features with a one-time purchase.")
+            }
+        }
     }
     
     // MARK: - Menu Commands
@@ -348,6 +370,23 @@ struct ContentView: View {
             queue: .main
         ) { _ in
             verifyCoreDataStorage()
+        }
+        
+        // Premium feature notifications
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ShowPurchaseView"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            showPurchaseView = true
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ShowUpgradePrompt"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            showUpgradeAlert = true
         }
     }
     

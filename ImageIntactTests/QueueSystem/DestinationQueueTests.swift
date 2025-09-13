@@ -35,7 +35,7 @@ final class DestinationQueueTests: XCTestCase {
     }
     
     override func tearDown() async throws {
-        mockFileOps.reset()
+        await mockFileOps.reset()
         mockChecksum.reset()
         queue = nil
         
@@ -80,10 +80,10 @@ final class DestinationQueueTests: XCTestCase {
         let tasks = [createFileTask(sourceURL: sourceURL, relativePath: "test.jpg", size: 1000, checksum: "abc123")]
         
         // Setup mock to succeed
-        mockFileOps.mockFileSizes[sourceURL] = 1000
-        mockFileOps.mockChecksums[sourceURL] = "abc123"
+        await mockFileOps.setMockFileSize(1000, for: sourceURL)
+        await mockFileOps.setMockChecksum("abc123", for: sourceURL)
         // Set destination checksum for verification to pass
-        mockFileOps.mockChecksums[destURL] = "abc123"
+        await mockFileOps.setMockChecksum("abc123", for: destURL)
         
         // When
         await queue.addTasks(tasks)
@@ -93,8 +93,10 @@ final class DestinationQueueTests: XCTestCase {
         await waitForQueueCompletion()
         
         // Then
-        XCTAssertEqual(mockFileOps.copyCount, 1, "Should have copied 1 file")
-        XCTAssertTrue(mockFileOps.verifyCopied(from: sourceURL, to: destURL))
+        let copyCount = await mockFileOps.copyCount
+        XCTAssertEqual(copyCount, 1, "Should have copied 1 file")
+        let verified = await mockFileOps.verifyCopied(from: sourceURL, to: destURL)
+        XCTAssertTrue(verified)
         
         let status = await queue.getStatus()
         XCTAssertEqual(status.completed, 1, "Should have completed 1 task")
@@ -107,8 +109,8 @@ final class DestinationQueueTests: XCTestCase {
         let tasks = [createFileTask(sourceURL: sourceURL, relativePath: "existing.jpg", size: 2000, checksum: "xyz789")]
         
         // Setup mock - file already exists with same checksum
-        mockFileOps.addMockFile(at: destURL, size: 2000, checksum: "xyz789")
-        mockFileOps.mockChecksums[sourceURL] = "xyz789"
+        await mockFileOps.addMockFile(at: destURL, size: 2000, checksum: "xyz789")
+        await mockFileOps.setMockChecksum("xyz789", for: sourceURL)
         
         // When
         await queue.addTasks(tasks)
@@ -116,7 +118,8 @@ final class DestinationQueueTests: XCTestCase {
         await waitForQueueCompletion()
         
         // Then
-        XCTAssertEqual(mockFileOps.copyCount, 0, "Should not copy file that already exists with matching checksum")
+        let copyCount = await mockFileOps.copyCount
+        XCTAssertEqual(copyCount, 0, "Should not copy file that already exists with matching checksum")
         
         let status = await queue.getStatus()
         XCTAssertEqual(status.completed, 1, "Should still mark as completed even if skipped")
@@ -129,8 +132,8 @@ final class DestinationQueueTests: XCTestCase {
         let tasks = [createFileTask(sourceURL: sourceURL, relativePath: "mismatch.jpg", size: 3000, checksum: "new123")]
         
         // Setup mock - file exists with different checksum
-        mockFileOps.addMockFile(at: destURL, size: 3000, checksum: "old456")
-        mockFileOps.mockChecksums[sourceURL] = "new123"
+        await mockFileOps.addMockFile(at: destURL, size: 3000, checksum: "old456")
+        await mockFileOps.setMockChecksum("new123", for: sourceURL)
         
         // When
         await queue.addTasks(tasks)
@@ -138,9 +141,12 @@ final class DestinationQueueTests: XCTestCase {
         await waitForQueueCompletion()
         
         // Then
-        XCTAssertEqual(mockFileOps.removalCount, 1, "Should remove existing file with wrong checksum")
-        XCTAssertEqual(mockFileOps.copyCount, 1, "Should copy new file")
-        XCTAssertTrue(mockFileOps.removedItems.contains(destURL), "Should have removed the destination file")
+        let removalCount = await mockFileOps.removalCount
+        let copyCount = await mockFileOps.copyCount
+        XCTAssertEqual(removalCount, 1, "Should remove existing file with wrong checksum")
+        XCTAssertEqual(copyCount, 1, "Should copy new file")
+        let removedItems = await mockFileOps.removedItems
+        XCTAssertTrue(removedItems.contains(destURL), "Should have removed the destination file")
     }
     
     // MARK: - Error Handling Tests
@@ -152,7 +158,7 @@ final class DestinationQueueTests: XCTestCase {
         
         // Setup mock to fail first 3 times (matching DEFAULT_MAX_RETRIES), succeed on 4th
         mockFileOps.shouldFailCopy = true
-        mockFileOps.mockChecksums[sourceURL] = "retry123"
+        await mockFileOps.setMockChecksum("retry123", for: sourceURL)
         
         // Track copy attempts  
         var attemptCount = 0
@@ -161,7 +167,7 @@ final class DestinationQueueTests: XCTestCase {
         // Override copyItem to count attempts and eventually succeed
         // Note: DestinationQueue retries 3 times after initial failure = 4 total attempts
         mockFileOps = MockFileOperationsWithRetry()
-        mockFileOps.mockChecksums[sourceURL] = "retry123"
+        await mockFileOps.setMockChecksum("retry123", for: sourceURL)
         (mockFileOps as! MockFileOperationsWithRetry).failUntilAttempt = 3
         
         // Create queue with retry-aware mock
@@ -178,7 +184,8 @@ final class DestinationQueueTests: XCTestCase {
         
         // Then
         let retryMock = mockFileOps as! MockFileOperationsWithRetry
-        XCTAssertEqual(retryMock.copyAttempts, 4, "Should retry up to 3 times after initial failure")
+        let copyAttempts = await retryMock.copyAttempts
+        XCTAssertEqual(copyAttempts, 4, "Should retry up to 3 times after initial failure")
         
         let status = await queue.getStatus()
         XCTAssertEqual(status.completed, 1, "Should eventually complete after retries")
@@ -191,7 +198,7 @@ final class DestinationQueueTests: XCTestCase {
         
         // Setup mock to always fail
         mockFileOps.shouldFailCopy = true
-        mockFileOps.mockChecksums[sourceURL] = "fail123"
+        await mockFileOps.setMockChecksum("fail123", for: sourceURL)
         
         // When
         await queue.addTasks(tasks)
@@ -216,8 +223,8 @@ final class DestinationQueueTests: XCTestCase {
         let tasks = [createFileTask(sourceURL: sourceURL, relativePath: "nested/deep/file.jpg", size: 6000, checksum: "nested123")]
         
         // Setup mock checksums for verification
-        mockFileOps.mockChecksums[sourceURL] = "nested123"
-        mockFileOps.mockChecksums[destURL] = "nested123"
+        await mockFileOps.setMockChecksum("nested123", for: sourceURL)
+        await mockFileOps.setMockChecksum("nested123", for: destURL)
         
         // When
         await queue.addTasks(tasks)
@@ -226,10 +233,12 @@ final class DestinationQueueTests: XCTestCase {
         
         // Then - check that directory creation was called
         // The exact directory depends on implementation, but we should see directory creation
-        XCTAssertTrue(mockFileOps.createdDirectories.count > 0, "Should create directories")
+        let createdDirs = await mockFileOps.createdDirectories
+        XCTAssertTrue(createdDirs.count > 0, "Should create directories")
         
         // Verify the file was copied to the right location
-        let copiedToCorrectLocation = mockFileOps.copiedFiles.contains { copy in
+        let copiedFiles = await mockFileOps.copiedFiles
+        let copiedToCorrectLocation = copiedFiles.contains { copy in
             copy.destination.path.contains("TestOrg/nested/deep/file.jpg")
         }
         XCTAssertTrue(copiedToCorrectLocation, "Should copy file to nested directory structure")
@@ -245,8 +254,8 @@ final class DestinationQueueTests: XCTestCase {
         let tasks = [createFileTask(sourceURL: sourceURL, relativePath: "verify.jpg", size: 7000, checksum: checksum)]
         
         // Setup mock
-        mockFileOps.mockChecksums[sourceURL] = checksum
-        mockFileOps.mockChecksums[destURL] = checksum
+        await mockFileOps.setMockChecksum(checksum, for: sourceURL)
+        await mockFileOps.setMockChecksum(checksum, for: destURL)
         
         // When
         await queue.addTasks(tasks)
@@ -268,7 +277,7 @@ final class DestinationQueueTests: XCTestCase {
         
         // Use a mock that simulates corruption during copy
         let corruptingMock = MockFileOperationsWithCorruption()
-        corruptingMock.mockChecksums[sourceURL] = "original123"
+        await corruptingMock.setMockChecksum("original123", for: sourceURL)
         corruptingMock.corruptFile = "badverify.jpg"  // This file will be "corrupted"
         
         // Create queue with corrupting mock
@@ -306,8 +315,8 @@ final class DestinationQueueTests: XCTestCase {
         // Setup checksums for all files to pass verification
         for (index, task) in tasks.enumerated() {
             let destURL = destinationURL.appendingPathComponent("TestOrg/file\(index).jpg")
-            mockFileOps.mockChecksums[task.sourceURL] = task.checksum
-            mockFileOps.mockChecksums[destURL] = task.checksum
+            await mockFileOps.setMockChecksum(task.checksum, for: task.sourceURL)
+            await mockFileOps.setMockChecksum(task.checksum, for: destURL)
         }
         
         // Track progress using the queue's status
@@ -336,7 +345,7 @@ final class DestinationQueueTests: XCTestCase {
         
         // Setup checksums
         for task in tasks {
-            slowMock.mockChecksums[task.sourceURL] = task.checksum
+            await slowMock.setMockChecksum(task.checksum, for: task.sourceURL)
         }
         
         // Create queue with slow mock
@@ -410,13 +419,17 @@ final class DestinationQueueTests: XCTestCase {
 
 /// Mock that fails until a certain number of attempts
 class MockFileOperationsWithRetry: MockFileOperations {
-    var copyAttempts = 0
+    private var _copyAttempts = 0
     var failUntilAttempt = 3
     
+    var copyAttempts: Int {
+        get async { _copyAttempts }
+    }
+    
     override func copyItem(at source: URL, to destination: URL) async throws {
-        copyAttempts += 1
+        _copyAttempts += 1
         
-        if copyAttempts <= failUntilAttempt {
+        if _copyAttempts <= failUntilAttempt {
             throw MockError.copyFailed
         }
         

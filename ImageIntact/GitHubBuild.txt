@@ -1,0 +1,2 @@
+This file indicates a GitHub build.
+When present, premium features are disabled.

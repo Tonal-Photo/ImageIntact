@@ -11,6 +11,7 @@ import AppKit
 class HelpWindowManager {
     static let shared = HelpWindowManager()
     private var helpWindow: NSWindow?
+    private var bugReportWindow: NSWindow?
     
     private init() {}
     
@@ -88,5 +89,66 @@ class HelpWindowManager {
     func closeHelp() {
         helpWindow?.close()
         helpWindow = nil
+    }
+    
+    // MARK: - Bug Report Window
+    
+    func showBugReport() {
+        // If window already exists, bring it to front
+        if let existingWindow = bugReportWindow {
+            existingWindow.makeKeyAndOrderFront(nil)
+            if existingWindow.isMiniaturized || !existingWindow.isVisible {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            return
+        }
+        
+        // Create the bug report view
+        let bugReportView = BugReportView()
+        let hostingController = NSHostingController(rootView: bugReportView)
+        
+        // Create window
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 550),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        
+        // Configure window
+        window.title = "Report a Bug"
+        window.contentViewController = hostingController
+        window.center()
+        window.setFrameAutosaveName("BugReportWindow")
+        window.isReleasedWhenClosed = false
+        window.level = .normal
+        
+        // Set fixed size (not resizable for this dialog)
+        window.minSize = NSSize(width: 600, height: 550)
+        window.maxSize = NSSize(width: 600, height: 550)
+        
+        // Store reference and show
+        bugReportWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: false)
+        
+        // Clean up reference when window closes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(bugReportWindowWillClose),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
+    }
+    
+    @objc private func bugReportWindowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === bugReportWindow {
+            bugReportWindow = nil
+        }
+    }
+    
+    func closeBugReport() {
+        bugReportWindow?.close()
+        bugReportWindow = nil
     }
 }

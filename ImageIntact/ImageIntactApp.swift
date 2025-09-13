@@ -134,6 +134,50 @@ struct ImageIntactApp: App {
                 
                 Divider()
                 
+                // Premium Feature Test Items
+                Menu("Premium Features") {
+                    Button("Automated Backup (Pro)") {
+                        PremiumFeatureManager.shared.performPremiumAction(.automatedBackups) {
+                            // This would open automated backup settings
+                            print("✅ Opening automated backup settings...")
+                            NotificationCenter.default.post(name: NSNotification.Name("ShowAutomatedBackupSettings"), object: nil)
+                        } fallback: {
+                            // Show upgrade prompt
+                            print("🔒 Automated Backup is a Pro feature")
+                            NotificationCenter.default.post(name: NSNotification.Name("ShowUpgradePrompt"), object: nil)
+                        }
+                    }
+                    .disabled(!PremiumFeatureManager.shared.isUnlocked(.automatedBackups))
+                    
+                    Button("Cloud Destinations (Pro)") {
+                        PremiumFeatureManager.shared.performPremiumAction(.cloudBackup) {
+                            print("✅ Opening cloud destination settings...")
+                            NotificationCenter.default.post(name: NSNotification.Name("ShowCloudSettings"), object: nil)
+                        } fallback: {
+                            print("🔒 Cloud Destinations is a Pro feature")
+                            NotificationCenter.default.post(name: NSNotification.Name("ShowUpgradePrompt"), object: nil)
+                        }
+                    }
+                    .disabled(!PremiumFeatureManager.shared.isUnlocked(.cloudBackup))
+                    
+                    Divider()
+                    
+                    if BuildConfiguration.isAppStoreBuild {
+                        if StoreManager.shared.hasPro {
+                            Text("✅ Pro Version Active")
+                        } else {
+                            Button("Upgrade to Pro...") {
+                                NotificationCenter.default.post(name: NSNotification.Name("ShowPurchaseView"), object: nil)
+                            }
+                        }
+                    } else {
+                        Text("Open Source Edition")
+                        Text("Pro features available in App Store version")
+                    }
+                }
+                
+                Divider()
+                
                 Button("Select Source Folder") {
                     NotificationCenter.default.post(name: NSNotification.Name("SelectSourceFolder"), object: nil)
                 }
@@ -210,6 +254,15 @@ struct ImageIntactApp: App {
                     }
                 }
                 .keyboardShortcut("?", modifiers: .command)
+                
+                Divider()
+                
+                Button("Report a Bug...") {
+                    Task { @MainActor in
+                        HelpWindowManager.shared.showBugReport()
+                    }
+                }
+                .keyboardShortcut("B", modifiers: [.command, .shift])
             }
         }
     }
