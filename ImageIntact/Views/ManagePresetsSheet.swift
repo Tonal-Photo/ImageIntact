@@ -331,9 +331,8 @@ struct PresetRow: View {
 
 // MARK: - Preset Document for Export
 
-@MainActor
 struct PresetDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json] }
+    nonisolated static var readableContentTypes: [UTType] { [.json] }
     
     let preset: BackupPreset?
     
@@ -341,7 +340,7 @@ struct PresetDocument: FileDocument {
         self.preset = preset
     }
     
-    init(configuration: ReadConfiguration) throws {
+    nonisolated init(configuration: ReadConfiguration) throws {
         preset = nil
     }
     
@@ -350,7 +349,10 @@ struct PresetDocument: FileDocument {
             throw CocoaError(.fileWriteUnknown)
         }
         
-        let data = try BackupPresetManager.shared.exportPreset(preset)
+        // Export the preset as JSON
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(preset)
         return FileWrapper(regularFileWithContents: data)
     }
 }

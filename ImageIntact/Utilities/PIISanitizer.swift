@@ -229,14 +229,14 @@ class PIISanitizer {
     private func sanitizeDirectoryNames(_ text: String, stats: inout SanitizationStats?) -> String {
         var result = text
         
-        // Standard directories to skip
-        let standardDirs = ["Users", "Volumes", "Applications", "Library", "System",
-                           "Documents", "Pictures", "Photos", "Movies", "Music",
-                           "Downloads", "Desktop", "Public", "DCIM", "Backups",
-                           "Archive", "NetworkBackup", "[USER]", "[VOLUME]", "[FILENAME]", "[DIRECTORY]"]
+        // Standard directories to skip (kept for reference, not currently used)
+        _ = ["Users", "Volumes", "Applications", "Library", "System",
+             "Documents", "Pictures", "Photos", "Movies", "Music",
+             "Downloads", "Desktop", "Public", "DCIM", "Backups",
+             "Archive", "NetworkBackup", "[USER]", "[VOLUME]", "[FILENAME]", "[DIRECTORY]"]
         
-        // Pattern for personal information
-        let personalPattern = #"(\d{4}[-_]\d{2}[-_]\d{2})|([Ww]edding\d{4})|([Bb]irthday\d{4})|([Vv]acation\d{4})|([Tt]rip\d{4})|([Ee]vent\d{4})|([Pp]arty\d{4})|(\d{4}[-_][A-Za-z]+)|([A-Za-z]+[-_]\d{4})"#
+        // Pattern for personal information (kept for reference, not currently used)
+        _ = #"(\d{4}[-_]\d{2}[-_]\d{2})|([Ww]edding\d{4})|([Bb]irthday\d{4})|([Vv]acation\d{4})|([Tt]rip\d{4})|([Ee]vent\d{4})|([Pp]arty\d{4})|(\d{4}[-_][A-Za-z]+)|([A-Za-z]+[-_]\d{4})"#
         
         // Create a regex that directly matches personal directories in paths
         // This finds directories with personal patterns that are between slashes
