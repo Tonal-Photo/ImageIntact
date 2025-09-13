@@ -445,6 +445,13 @@ class BackupPresetManager: ObservableObject {
         ApplicationLogger.shared.info("Applied preset: \(preset.name)", category: .app)
     }
     
+    /// Clear the selected preset when configuration changes
+    func clearSelectedPresetIfModified() {
+        // This is called when user manually modifies the configuration
+        // Clear the selected preset to indicate it's no longer using a preset
+        selectedPreset = nil
+    }
+    
     func currentConfigurationMatchesExistingPreset(backupManager: BackupManager) -> Bool {
         // Check if current configuration matches any existing preset
         for preset in presets {

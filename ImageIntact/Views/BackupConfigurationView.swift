@@ -29,13 +29,16 @@ struct BackupConfigurationView: View {
                 let hasValidConfiguration = backupManager.sourceURL != nil && 
                     backupManager.destinationItems.contains { $0.url != nil }
                 let isDuplicatePreset = presetManager.currentConfigurationMatchesExistingPreset(backupManager: backupManager)
+                // Also check if we have a selected preset (user loaded from preset)
+                let isUsingPreset = presetManager.selectedPreset != nil
+                let shouldDisableSave = isDuplicatePreset || isUsingPreset
                 
                 if hasValidConfiguration {
                     Divider()
                     Button("Save Current as Preset...") {
                         showingCreatePreset = true
                     }
-                    .disabled(isDuplicatePreset)
+                    .disabled(shouldDisableSave)
                 }
                 
                 Divider()

@@ -123,7 +123,12 @@ class BackupManager {
     
     // Backup options
     var excludeCacheFiles = true  // Default to excluding cache files
-    var fileTypeFilter = FileTypeFilter()  // Default to no filtering (all files)
+    var fileTypeFilter = FileTypeFilter() {  // Default to no filtering (all files)
+        didSet {
+            // Clear selected preset since configuration has changed
+            BackupPresetManager.shared.clearSelectedPresetIfModified()
+        }
+    }
     
     // Backup organization
     var organizationName: String = ""  // Custom folder name for organizing backups
@@ -348,6 +353,8 @@ class BackupManager {
             let newItem = DestinationItem()
             destinationItems.append(newItem)
             destinationURLs.append(nil)
+            // Clear selected preset since configuration has changed
+            BackupPresetManager.shared.clearSelectedPresetIfModified()
         }
     }
     
@@ -355,6 +362,9 @@ class BackupManager {
         sourceURL = url
         saveBookmark(url: url, key: sourceKey)
         tagSourceFolder(at: url)
+        
+        // Clear selected preset since configuration has changed
+        BackupPresetManager.shared.clearSelectedPresetIfModified()
         
         // Clear previous scan results
         sourceFileTypes = [:]
@@ -405,6 +415,9 @@ class BackupManager {
     func setDestination(_ url: URL, at index: Int) {
         guard index < destinationItems.count else { return }
         guard index < destinationURLs.count else { return }
+        
+        // Clear selected preset since configuration has changed
+        BackupPresetManager.shared.clearSelectedPresetIfModified()
         
         // Check if this is the same as the source
         if let source = sourceURL, source == url {
@@ -536,6 +549,9 @@ class BackupManager {
         guard index < destinationURLs.count else { return }
         guard index < destinationItems.count else { return }
         
+        // Clear selected preset since configuration has changed
+        BackupPresetManager.shared.clearSelectedPresetIfModified()
+        
         // Clear drive info for this item
         let itemID = destinationItems[index].id
         destinationDriveInfo.removeValue(forKey: itemID)
@@ -549,6 +565,9 @@ class BackupManager {
     @MainActor
     func removeDestination(at index: Int) {
         guard index < destinationItems.count else { return }
+        
+        // Clear selected preset since configuration has changed
+        BackupPresetManager.shared.clearSelectedPresetIfModified()
         
         // Don't remove if it's the last destination
         guard destinationItems.count > 1 else { 
