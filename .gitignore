@@ -15,9 +15,18 @@ xcuserdata/
 *.md
 !README.md
 # ENTITLEMENTS.md should NEVER be committed (security sensitive)
+Docs/
 
 # PDFs - internal consumption only
 *.pdf
+
+# Crash reports and logs - contain potentially sensitive information
+crash-reports/
+test-output.txt
+all-tests-output.txt
+all-test-results.txt
+comprehensive-results.txt
+comprehensive-test-results.txt
 
 # macOS
 .DS_Store
