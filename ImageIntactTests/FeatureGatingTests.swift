@@ -84,9 +84,11 @@ final class FeatureGatingTests: XCTestCase {
     
     // MARK: - Open Source Build Tests
     
-    #if OPENSOURCE_BUILD
     func testAllFeaturesLockedInOpenSourceBuild() {
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = true  // Simulate open source build
+        #endif
         mockStoreManager.hasPro = true // Even with Pro flag set
         
         // Then - all features should still be locked
@@ -98,6 +100,9 @@ final class FeatureGatingTests: XCTestCase {
     
     func testPerformPremiumActionShowsUpgradeInOpenSourceBuild() {
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = true  // Simulate open source build
+        #endif
         var actionExecuted = false
         var fallbackExecuted = false
         let feature = PremiumFeatureManager.Feature.automatedBackups
@@ -111,13 +116,14 @@ final class FeatureGatingTests: XCTestCase {
         XCTAssertFalse(actionExecuted, "Premium action should not execute in open source build")
         XCTAssertTrue(fallbackExecuted, "Fallback should execute in open source build")
     }
-    #endif
     
     // MARK: - App Store Build Tests
     
-    #if !OPENSOURCE_BUILD
     func testFeaturesUnlockedWithProPurchase() {
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = false  // Simulate App Store build
+        #endif
         mockStoreManager.hasPro = true
         
         // Then - all features should be unlocked
@@ -129,6 +135,9 @@ final class FeatureGatingTests: XCTestCase {
     
     func testFeaturesLockedWithoutProPurchase() {
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = false  // Simulate App Store build
+        #endif
         mockStoreManager.hasPro = false
         
         // Then - all features should be locked
@@ -140,6 +149,9 @@ final class FeatureGatingTests: XCTestCase {
     
     func testPerformPremiumActionExecutesWithPro() {
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = false  // Simulate App Store build
+        #endif
         mockStoreManager.hasPro = true
         var actionExecuted = false
         var fallbackExecuted = false
@@ -157,6 +169,9 @@ final class FeatureGatingTests: XCTestCase {
     
     func testPerformPremiumActionShowsUpgradeWithoutPro() {
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = false  // Simulate App Store build
+        #endif
         mockStoreManager.hasPro = false
         var actionExecuted = false
         var fallbackExecuted = false
@@ -171,13 +186,14 @@ final class FeatureGatingTests: XCTestCase {
         XCTAssertFalse(actionExecuted, "Premium action should not execute without Pro")
         XCTAssertTrue(fallbackExecuted, "Fallback should execute without Pro")
     }
-    #endif
     
     // MARK: - Feature State Change Tests
     
     func testFeatureStateUpdatesWhenPurchaseChanges() async {
-        #if !OPENSOURCE_BUILD
         // Given
+        #if DEBUG
+        featureManager.testModeIsOpenSource = false  // Simulate App Store build
+        #endif
         mockStoreManager.hasPro = false
         let feature = PremiumFeatureManager.Feature.automatedBackups
         
@@ -195,7 +211,6 @@ final class FeatureGatingTests: XCTestCase {
         
         // Then - should be locked again
         XCTAssertFalse(featureManager.isUnlocked(feature))
-        #endif
     }
     
     // MARK: - UI Helper Tests
@@ -204,17 +219,17 @@ final class FeatureGatingTests: XCTestCase {
         // Given
         let feature = PremiumFeatureManager.Feature.automatedBackups
         
-        #if OPENSOURCE_BUILD
-        // Should always show badge in open source
-        XCTAssertTrue(featureManager.shouldShowProBadge(for: feature))
-        #else
+        // Test App Store build behavior
+        #if DEBUG
+        featureManager.testModeIsOpenSource = false
+        #endif
+        
         // Should show badge only when locked
         mockStoreManager.hasPro = false
         XCTAssertTrue(featureManager.shouldShowProBadge(for: feature))
         
         mockStoreManager.hasPro = true
         XCTAssertFalse(featureManager.shouldShowProBadge(for: feature))
-        #endif
     }
     
     func testGetUpgradePromptMessage() {

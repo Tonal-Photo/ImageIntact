@@ -19,6 +19,11 @@ class PremiumFeatureManager: ObservableObject, PremiumFeatureManagerProtocol {
     
     private let storeManager: StoreManagerProtocol
     
+    // For testing only - allows overriding build detection
+    #if DEBUG
+    var testModeIsOpenSource: Bool?
+    #endif
+    
     // MARK: - Feature Definition
     
     enum Feature: String, CaseIterable {
@@ -66,7 +71,13 @@ class PremiumFeatureManager: ObservableObject, PremiumFeatureManagerProtocol {
     @MainActor
     func isUnlocked(_ feature: Feature) -> Bool {
         // Check if this is an open source build
-        if BuildConfiguration.isOpenSourceBuild {
+        #if DEBUG
+        let isOpenSource = testModeIsOpenSource ?? BuildConfiguration.isOpenSourceBuild
+        #else
+        let isOpenSource = BuildConfiguration.isOpenSourceBuild
+        #endif
+        
+        if isOpenSource {
             // GitHub version - all premium features locked
             return false
         } else {

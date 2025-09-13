@@ -7,6 +7,11 @@
 
 import Foundation
 import CryptoKit
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 /// Manages privacy-focused analytics and telemetry
 @MainActor
@@ -86,12 +91,21 @@ class AnalyticsManager: ObservableObject {
         self.sessionID = UUID().uuidString
         
         // Register for app lifecycle
+        #if os(macOS)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appWillTerminate),
             name: NSApplication.willTerminateNotification,
             object: nil
         )
+        #elseif os(iOS)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillTerminate),
+            name: UIApplication.willTerminateNotification,
+            object: nil
+        )
+        #endif
         
         // Track app launch
         trackEvent(.appLaunched)
@@ -103,18 +117,23 @@ class AnalyticsManager: ObservableObject {
     func trackEvent(_ type: EventType, properties: [String: String] = [:]) {
         guard isEnabled else { return }
         
+        let currentSessionID = self.sessionID
+        let buildType = BuildConfiguration.editionName
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        
         analyticsQueue.async { [weak self] in
             guard let self = self else { return }
             
             let event = AnalyticsEvent(
                 id: UUID(),
                 timestamp: Date(),
-                sessionID: self.sessionID,
+                sessionID: currentSessionID,
                 type: type,
                 properties: self.sanitizeProperties(properties),
-                buildType: BuildConfiguration.editionName,
-                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown",
-                osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+                buildType: buildType,
+                appVersion: appVersion,
+                osVersion: osVersion
             )
             
             Task { @MainActor in
@@ -183,7 +202,7 @@ class AnalyticsManager: ObservableObject {
     // MARK: - Data Management
     
     /// Sanitize properties to remove PII
-    private func sanitizeProperties(_ properties: [String: String]) -> [String: String] {
+    nonisolated private func sanitizeProperties(_ properties: [String: String]) -> [String: String] {
         var sanitized = properties
         
         // Remove any paths that might contain usernames

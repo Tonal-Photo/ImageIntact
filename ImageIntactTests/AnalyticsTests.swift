@@ -142,7 +142,7 @@ final class AnalyticsTests: XCTestCase {
         )
         
         analytics.trackFeatureUsage(.automatedBackups)
-        analytics.trackFeatureUsage(.cloudDestinations)
+        analytics.trackFeatureUsage(.cloudBackup)
         analytics.trackFeatureUsage(.automatedBackups) // Track twice
         
         // When
@@ -183,7 +183,9 @@ final class AnalyticsTests: XCTestCase {
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<10 {
                 group.addTask { [weak self] in
-                    self?.analytics.trackEvent(.backupStarted, properties: ["index": "\(i)"])
+                    await MainActor.run {
+                        self?.analytics.trackEvent(.backupStarted, properties: ["index": "\(i)"])
+                    }
                 }
             }
         }
@@ -205,7 +207,7 @@ extension AnalyticsTests {
         
         // 2. Track feature usage during backup
         analytics.trackFeatureUsage(.automatedBackups)
-        analytics.trackFeatureUsage(.cloudDestinations)
+        analytics.trackFeatureUsage(.cloudBackup)
         
         // 3. Track backup completion
         analytics.trackBackup(
@@ -228,7 +230,7 @@ extension AnalyticsTests {
         // Simulate purchase flow with analytics
         
         // 1. Track premium feature attempt
-        analytics.trackEvent(.premiumFeatureAttempted, properties: ["feature": "cloudDestinations"])
+        analytics.trackEvent(.premiumFeatureAttempted, properties: ["feature": "cloudBackup"])
         
         // 2. Track purchase flow
         analytics.trackPurchase(initiated: true)
@@ -237,7 +239,7 @@ extension AnalyticsTests {
         analytics.trackPurchase(completed: true)
         
         // 3. Track feature unlocked
-        analytics.trackEvent(.premiumFeatureUnlocked, properties: ["feature": "cloudDestinations"])
+        analytics.trackEvent(.premiumFeatureUnlocked, properties: ["feature": "cloudBackup"])
         
         // Generate report
         let report = analytics.generateUsageReport()
