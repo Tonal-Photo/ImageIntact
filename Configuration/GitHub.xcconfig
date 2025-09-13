@@ -1,0 +1,11 @@
+// GitHub.xcconfig
+// Build configuration for GitHub/Open Source releases
+
+// Define the OPENSOURCE_BUILD flag for Swift
+OTHER_SWIFT_FLAGS = $(inherited) -D OPENSOURCE_BUILD
+
+// Optional: Set a different bundle identifier if needed
+// PRODUCT_BUNDLE_IDENTIFIER = com.imageintact.opensource
+
+// Optional: Different app name
+// PRODUCT_NAME = ImageIntact OS

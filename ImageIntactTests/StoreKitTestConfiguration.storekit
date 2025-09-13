@@ -1,0 +1,97 @@
+{
+  "identifier" : "B8F6D123-4567-89AB-CDEF-1234567890AB",
+  "nonConsumableProducts" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : true,
+      "id" : "com.imageintact.pro",
+      "localizations" : [
+        {
+          "description" : "Unlock all premium features including automated backups, cloud destinations, and advanced organization.",
+          "displayName" : "ImageIntact Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.imageintact.pro",
+      "referenceName" : "ImageIntact Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : true,
+      "id" : "com.imageintact.pro",
+      "localizations" : [
+        {
+          "description" : "Unlock all premium features",
+          "displayName" : "ImageIntact Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.imageintact.pro",
+      "referenceName" : "ImageIntact Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "1234567890",
+    "_developerTeamID" : "TEAM123456",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [],
+  "subscriptions" : [],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

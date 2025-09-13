@@ -175,7 +175,7 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
     /// Get formatted price for Pro upgrade
     var proPriceString: String {
         guard let product = products.first else {
-            return "$19.99" // Fallback price
+            return "$4.99" // Fallback price
         }
         return product.displayPrice
     }

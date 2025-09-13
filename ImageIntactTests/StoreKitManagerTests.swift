@@ -326,7 +326,7 @@ extension StoreKitManagerTests {
             "nonRenewingSubscriptions": [],
             "products": [
                 {
-                    "displayPrice": "19.99",
+                    "displayPrice": "4.99",
                     "familyShareable": true,
                     "id": "com.imageintact.pro",
                     "productID": "com.imageintact.pro",

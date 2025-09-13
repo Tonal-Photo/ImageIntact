@@ -1,0 +1,8 @@
+// AppStore.xcconfig
+// Build configuration for App Store releases
+
+// No special flags needed for App Store build
+// IAP and premium features are enabled by default
+
+// Optional: Ensure App Store specific settings
+// PRODUCT_BUNDLE_IDENTIFIER = com.imageintact.appstore
