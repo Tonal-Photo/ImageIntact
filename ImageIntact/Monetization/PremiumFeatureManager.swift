@@ -75,14 +75,31 @@ class PremiumFeatureManager: ObservableObject, PremiumFeatureManagerProtocol {
         }
     }
     
+    /// Check if a feature can be used (tracks analytics)
+    @MainActor
+    func canUse(_ feature: Feature) -> Bool {
+        let unlocked = isUnlocked(feature)
+        
+        // Track feature usage attempt
+        if unlocked {
+            AnalyticsManager.shared.trackFeatureUsage(feature)
+        } else {
+            AnalyticsManager.shared.trackEvent(.premiumFeatureAttempted, properties: ["feature": feature.rawValue])
+        }
+        
+        return unlocked
+    }
+    
     /// Perform an action if feature is unlocked, otherwise show upgrade prompt
     @MainActor
     func performPremiumAction(_ feature: Feature, 
                              action: () -> Void,
                              fallback: () -> Void) {
         if isUnlocked(feature) {
+            AnalyticsManager.shared.trackFeatureUsage(feature)
             action()
         } else {
+            AnalyticsManager.shared.trackEvent(.premiumFeatureAttempted, properties: ["feature": feature.rawValue])
             fallback()
         }
     }

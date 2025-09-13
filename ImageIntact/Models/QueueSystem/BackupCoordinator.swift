@@ -33,6 +33,9 @@ class BackupCoordinator: ObservableObject {
     
     // MARK: - Main Entry Point
     
+    private var backupStartTime: Date?
+    private var totalBytesProcessed: Int64 = 0
+    
     func startBackup(source: URL, destinations: [URL], manifest: [FileManifestEntry], organizationName: String = "") async {
         guard !isRunning else { return }
         
@@ -41,6 +44,15 @@ class BackupCoordinator: ObservableObject {
         self.manifest = manifest
         destinationQueues.removeAll()
         destinationStatuses.removeAll()
+        
+        // Track backup start
+        backupStartTime = Date()
+        totalBytesProcessed = manifest.reduce(0) { $0 + $1.size }
+        AnalyticsManager.shared.trackEvent(.backupStarted, properties: [
+            "file_count": "\(manifest.count)",
+            "destination_count": "\(destinations.count)",
+            "total_mb": "\(totalBytesProcessed / 1024 / 1024)"
+        ])
         
         print("🎯 Starting queue-based backup with \(destinations.count) destinations")
         statusMessage = "Initializing smart backup system..."
@@ -184,6 +196,9 @@ class BackupCoordinator: ObservableObject {
         guard !shouldCancel else { return }  // Prevent multiple cancellations
         shouldCancel = true
         statusMessage = "Backup cancelled"
+        
+        // Track cancellation
+        AnalyticsManager.shared.trackEvent(.backupCancelled)
         
         // Immediately clear all statuses to stop UI updates
         for (name, _) in destinationStatuses {
@@ -505,6 +520,17 @@ class BackupCoordinator: ObservableObject {
                 }
             }
         }
+        
+        // Track backup completion
+        let duration = backupStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        let success = totalFailed == 0
+        AnalyticsManager.shared.trackBackup(
+            fileCount: totalCompleted,
+            totalBytes: totalBytesProcessed,
+            destinationCount: destinationQueues.count,
+            duration: duration,
+            success: success
+        )
         
         // Generate final status message
         if totalFailed == 0 {

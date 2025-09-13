@@ -119,12 +119,16 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
     
     /// Purchase ImageIntact Pro
     func purchasePro() async throws -> Bool {
+        // Track purchase initiated
+        AnalyticsManager.shared.trackPurchase(initiated: true)
+        
         // Load products if needed
         if products.isEmpty {
             await loadProducts()
         }
         
         guard let product = products.first else {
+            AnalyticsManager.shared.trackPurchase(failed: true)
             throw StoreError.productNotFound
         }
         
@@ -138,6 +142,7 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
         case .success(let verification):
             // Handle successful purchase
             await handle(transactionResult: verification)
+            AnalyticsManager.shared.trackPurchase(completed: true)
             return true
             
         case .userCancelled:
@@ -146,6 +151,7 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
             
         case .pending:
             // Purchase is pending (e.g., waiting for parental approval)
+            AnalyticsManager.shared.trackPurchase(failed: true)
             throw StoreError.purchasePending
             
         @unknown default:
@@ -157,6 +163,9 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
     func restorePurchases() async {
         isLoading = true
         defer { isLoading = false }
+        
+        // Track restore attempt
+        AnalyticsManager.shared.trackPurchase(restored: true)
         
         // Sync with App Store (requires internet)
         do {
