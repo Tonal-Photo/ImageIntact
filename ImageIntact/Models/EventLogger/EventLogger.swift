@@ -756,3 +756,86 @@ extension EventLogger {
         return report
     }
 }
+
+// MARK: - Test Helpers
+
+#if DEBUG
+extension EventLogger {
+    /// Start a session and wait for it to be saved (for testing)
+    func startSessionAndWait(sourceURL: URL, fileCount: Int, totalBytes: Int64) async -> String {
+        let sessionID = UUID()
+        currentSessionID = sessionID
+        
+        // Create session in background context (same as production code)
+        await withCheckedContinuation { continuation in
+            backgroundContext.perform { [weak self] in
+                guard let self = self else {
+                    continuation.resume()
+                    return
+                }
+                
+                let session = BackupSession(context: self.backgroundContext)
+                session.id = sessionID
+                session.startedAt = Date()
+                session.sourceURL = sourceURL.path
+                session.fileCount = Int32(fileCount)
+                session.totalBytes = totalBytes
+                session.status = "running"
+                session.toolVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+                
+                do {
+                    try self.backgroundContext.save()
+                    print("📝 Started logging session in test: \(sessionID.uuidString)")
+                } catch {
+                    print("❌ Failed to save session start in test: \(error)")
+                }
+                
+                continuation.resume()
+            }
+        }
+        
+        // Ensure main context sees the session
+        await MainActor.run {
+            container.viewContext.refreshAllObjects()
+        }
+        
+        return sessionID.uuidString
+    }
+    
+    /// Flush all pending events and wait for completion (for testing)  
+    func flushPendingEventsAndWait() async {
+        // First, flush batch logger
+        await batchLogger.flushEvents()
+        
+        // Wait for background context saves
+        await withCheckedContinuation { continuation in
+            backgroundContext.perform {
+                if self.backgroundContext.hasChanges {
+                    do {
+                        try self.backgroundContext.save()
+                    } catch {
+                        print("Failed to save background context: \(error)")
+                    }
+                }
+                continuation.resume()
+            }
+        }
+        
+        // Merge changes to main context
+        await MainActor.run {
+            // This ensures the main context sees changes from background context
+            container.viewContext.refreshAllObjects()
+            
+            // Force the main context to see the new data
+            do {
+                try container.viewContext.save()
+            } catch {
+                print("Failed to save main context: \(error)")
+            }
+        }
+        
+        // Give Core Data time to fully persist
+        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+    }
+}
+#endif

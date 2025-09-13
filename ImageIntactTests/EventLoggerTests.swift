@@ -101,9 +101,9 @@ class EventLoggerTests: XCTestCase {
     
     // MARK: - Event Logging Tests
     
-    func testLogCopyEvent() {
+    func testLogCopyEvent() async {
         // Given
-        let sessionID = eventLogger.startSession(
+        let sessionID = await eventLogger.startSessionAndWait(
             sourceURL: URL(fileURLWithPath: "/source"),
             fileCount: 1,
             totalBytes: 1000
@@ -123,21 +123,19 @@ class EventLoggerTests: XCTestCase {
             duration: 0.5
         )
         
-        // Then - wait for async save
-        let expectation = expectation(description: "Event saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        // Flush pending events and wait
+        await eventLogger.flushPendingEventsAndWait()
         
         // Verify event was logged
         let report = eventLogger.generateReport(for: sessionID)
-        XCTAssertTrue(report.contains("Files Copied: 1"), "Report should show 1 file copied")
+        print("DEBUG: Report for session \(sessionID):")
+        print(report)
+        XCTAssertTrue(report.contains("Files Copied: 1"), "Report should show 1 file copied, but got: \(report)")
     }
     
-    func testLogVerifyEvent() {
+    func testLogVerifyEvent() async {
         // Given
-        let sessionID = eventLogger.startSession(
+        let sessionID = await eventLogger.startSessionAndWait(
             sourceURL: URL(fileURLWithPath: "/source"),
             fileCount: 1,
             totalBytes: 1000
@@ -153,20 +151,16 @@ class EventLoggerTests: XCTestCase {
             checksum: "abc123"
         )
         
-        // Then - wait for async save
-        let expectation = expectation(description: "Event saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        // Flush pending events and wait
+        await eventLogger.flushPendingEventsAndWait()
         
         let report = eventLogger.generateReport(for: sessionID)
         XCTAssertTrue(report.contains("Files Verified: 1"), "Report should show 1 file verified")
     }
     
-    func testLogErrorEvent() {
+    func testLogErrorEvent() async {
         // Given
-        let sessionID = eventLogger.startSession(
+        let sessionID = await eventLogger.startSessionAndWait(
             sourceURL: URL(fileURLWithPath: "/source"),
             fileCount: 1,
             totalBytes: 1000
@@ -184,21 +178,17 @@ class EventLoggerTests: XCTestCase {
             error: testError
         )
         
-        // Then - wait for async save
-        let expectation = expectation(description: "Event saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        // Flush pending events and wait
+        await eventLogger.flushPendingEventsAndWait()
         
         let report = eventLogger.generateReport(for: sessionID)
         XCTAssertTrue(report.contains("Errors: 1"), "Report should show 1 error")
         XCTAssertTrue(report.contains("Test error message"), "Report should contain error message")
     }
     
-    func testLogSkipEvent() {
+    func testLogSkipEvent() async {
         // Given
-        let sessionID = eventLogger.startSession(
+        let sessionID = await eventLogger.startSessionAndWait(
             sourceURL: URL(fileURLWithPath: "/source"),
             fileCount: 1,
             totalBytes: 1000
@@ -212,12 +202,8 @@ class EventLoggerTests: XCTestCase {
             metadata: ["reason": "Already exists"]
         )
         
-        // Then - wait for async save
-        let expectation = expectation(description: "Event saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        // Flush pending events and wait
+        await eventLogger.flushPendingEventsAndWait()
         
         let report = eventLogger.generateReport(for: sessionID)
         XCTAssertTrue(report.contains("Files Skipped: 1"), "Report should show 1 file skipped")
@@ -258,9 +244,9 @@ class EventLoggerTests: XCTestCase {
     
     // MARK: - Report Generation Tests
     
-    func testGenerateReport() {
+    func testGenerateReport() async {
         // Given
-        let sessionID = eventLogger.startSession(
+        let sessionID = await eventLogger.startSessionAndWait(
             sourceURL: URL(fileURLWithPath: "/test/source"),
             fileCount: 3,
             totalBytes: 3000
@@ -273,12 +259,8 @@ class EventLoggerTests: XCTestCase {
         
         eventLogger.completeSession(status: "completed_with_errors")
         
-        // Wait for saves
-        let expectation = expectation(description: "Events saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        // Flush pending events and wait
+        await eventLogger.flushPendingEventsAndWait()
         
         // When
         let report = eventLogger.generateReport(for: sessionID)
