@@ -128,6 +128,8 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.red)
                 .controlSize(.regular)
+                .disabled(backupManager.isProcessing)
+                .opacity(backupManager.isProcessing ? 0.6 : 1.0)
                 .accessibilityLabel("Clear all selected folders")
                 .help("Remove all source and destination selections")
                 
@@ -139,7 +141,7 @@ struct ContentView: View {
                 .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
-                .disabled(!backupManager.canRunBackup())
+                .disabled(!backupManager.canRunBackup() || backupManager.isProcessing)
                 .accessibilityLabel("Start backup process")
                 .help("Begin copying files to selected destinations")
             }

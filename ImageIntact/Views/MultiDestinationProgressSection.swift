@@ -67,11 +67,12 @@ struct MultiDestinationProgressSection: View {
                                 Button(action: {
                                     backupManager.cancelOperation()
                                 }) {
-                                    Image(systemName: "xmark.circle.fill")
+                                    Label("Cancel", systemImage: "stop.circle.fill")
                                         .foregroundColor(.red)
-                                        .imageScale(.large)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                                .controlSize(.small)
                                 .help("Cancel operation")
                             }
                         }
@@ -173,11 +174,12 @@ struct SimpleBackupProgress: View {
                 Button(action: {
                     backupManager.cancelOperation()
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Label("Cancel", systemImage: "stop.circle.fill")
                         .foregroundColor(.red)
-                        .imageScale(.large)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.small)
                 .help("Cancel backup")
             }
             
@@ -303,11 +305,12 @@ struct MultiDestinationProgress: View {
                 Button(action: {
                     backupManager.cancelOperation()
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Label("Cancel", systemImage: "stop.circle.fill")
                         .foregroundColor(.red)
-                        .imageScale(.large)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.small)
                 .help("Cancel backup")
             }
             

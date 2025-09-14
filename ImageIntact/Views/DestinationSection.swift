@@ -29,6 +29,8 @@ struct DestinationSection: View {
                     .keyboardShortcut("+", modifiers: .command)
                     .buttonStyle(.plain)
                     .foregroundColor(.accentColor)
+                    .disabled(backupManager.isProcessing)
+                    .opacity(backupManager.isProcessing ? 0.6 : 1.0)
                     .accessibilityLabel("Add destination folder")
                     .help("Add another backup destination")
                 }
@@ -58,9 +60,13 @@ struct DestinationSection: View {
                         },
                         showRemoveButton: backupManager.destinationItems.count > 1
                         )
+                        .disabled(backupManager.isProcessing)
+                        .opacity(backupManager.isProcessing ? 0.6 : 1.0)
                         .focused($focusedField, equals: .destination(index))
                         .onTapGesture {
-                            focusedField = .destination(index)
+                            if !backupManager.isProcessing {
+                                focusedField = .destination(index)
+                            }
                         }
                         
                         // Show drive analysis with new DriveStatusView if we have drive info - indented further

@@ -13,8 +13,8 @@ struct SourceFolderSection: View {
             // Inner content - indented
             VStack(alignment: .leading, spacing: 12) {
                 // Backup configuration (presets and filters) - always show for custom presets
-                // Only hide during scanning
-                if !backupManager.isScanning {
+                // Only hide during scanning or processing
+                if !backupManager.isScanning && !backupManager.isProcessing {
                     BackupConfigurationView(backupManager: backupManager)
                 }
                 
@@ -38,9 +38,13 @@ struct SourceFolderSection: View {
                         // Already handled in backupManager.setSource()
                     }
                 )
+                .disabled(backupManager.isProcessing)
+                .opacity(backupManager.isProcessing ? 0.6 : 1.0)
                 .focused($focusedField, equals: .source)
                 .onTapGesture {
-                    focusedField = .source
+                    if !backupManager.isProcessing {
+                        focusedField = .source
+                    }
                 }
                 
                 // File type summary and filter results - indented further

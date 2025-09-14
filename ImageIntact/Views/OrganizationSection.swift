@@ -20,6 +20,8 @@ struct OrganizationSection: View {
                     TextField("Enter folder name", text: $backupManager.organizationName)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 250)
+                        .disabled(backupManager.isProcessing)
+                        .opacity(backupManager.isProcessing ? 0.6 : 1.0)
                         .help("Files will be copied into this folder at each destination")
                         .onAppear {
                             // Set default if empty and source is selected
