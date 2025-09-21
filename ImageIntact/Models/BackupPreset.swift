@@ -449,9 +449,9 @@ class BackupPresetManager: ObservableObject {
     func clearSelectedPresetIfModified() {
         // This is called when user manually modifies the configuration
         // Clear the selected preset to indicate it's no longer using a preset
-        // Use async to avoid publishing during view updates
-        Task { @MainActor in
-            selectedPreset = nil
+        // Use async dispatch to avoid publishing during view updates
+        DispatchQueue.main.async {
+            self.selectedPreset = nil
         }
     }
     
