@@ -3,6 +3,8 @@ import SwiftUI
 struct OrganizationSection: View {
     @Bindable var backupManager: BackupManager
     @State private var showInfoPopover = false
+    @State private var isEditing = false
+    @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,29 +18,54 @@ struct OrganizationSection: View {
                     Text("Organize backups in folder:")
                         .font(.system(size: 13))
                         .foregroundColor(.primary)
-                    
-                    TextField("Enter folder name", text: $backupManager.organizationName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 250)
-                        .disabled(backupManager.isProcessing)
-                        .opacity(backupManager.isProcessing ? 0.6 : 1.0)
-                        .help("Files will be copied into this folder at each destination")
-                        .onAppear {
-                            // Set default if empty and source is selected
-                            if backupManager.organizationName.isEmpty,
-                               let sourceURL = backupManager.sourceURL {
-                                backupManager.organizationName = sourceURL.lastPathComponent
+
+                    if isEditing {
+                        TextField("Enter folder name", text: $backupManager.organizationName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 250)
+                            .disabled(backupManager.isProcessing)
+                            .opacity(backupManager.isProcessing ? 0.6 : 1.0)
+                            .focused($isTextFieldFocused)
+                            .onSubmit {
+                                isEditing = false
                             }
-                        }
-                        .onChange(of: backupManager.sourceURL) { oldValue, newValue in
-                            // Update organization name when source changes (only if it was using the old default)
-                            if let oldURL = oldValue,
-                               let newURL = newValue,
-                               backupManager.organizationName == oldURL.lastPathComponent {
-                                backupManager.organizationName = newURL.lastPathComponent
+                            .onAppear {
+                                isTextFieldFocused = true
                             }
+                            .onKeyPress(.escape) {
+                                isEditing = false
+                                return .handled
+                            }
+
+                        Button("Done") {
+                            isEditing = false
                         }
-                    
+                        .buttonStyle(.borderless)
+                        .foregroundColor(.accentColor)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text(backupManager.organizationName.isEmpty ? "Source folder name" : backupManager.organizationName)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .frame(minWidth: 150, maxWidth: 250, alignment: .leading)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                                )
+                                .cornerRadius(6)
+
+                            Button("Edit") {
+                                isEditing = true
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundColor(.accentColor)
+                            .disabled(backupManager.isProcessing)
+                        }
+                    }
+
                     Button(action: { showInfoPopover.toggle() }) {
                         Image(systemName: "info.circle")
                             .foregroundColor(.secondary)
@@ -99,7 +126,22 @@ struct OrganizationSection: View {
                     
                     Spacer()
                 }
-                
+                .onAppear {
+                    // Set default if empty and source is selected
+                    if backupManager.organizationName.isEmpty,
+                       let sourceURL = backupManager.sourceURL {
+                        backupManager.organizationName = sourceURL.lastPathComponent
+                    }
+                }
+                .onChange(of: backupManager.sourceURL) { oldValue, newValue in
+                    // Update organization name when source changes (only if it was using the old default)
+                    if let oldURL = oldValue,
+                       let newURL = newValue,
+                       backupManager.organizationName == oldURL.lastPathComponent {
+                        backupManager.organizationName = newURL.lastPathComponent
+                    }
+                }
+
                 // Always show the destination structure preview
                 HStack(spacing: 4) {
                     Image(systemName: "folder.badge.person.crop")
