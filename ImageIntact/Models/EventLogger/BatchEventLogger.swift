@@ -261,7 +261,7 @@ extension EventLogger {
             } catch {
                 print("❌ Failed to batch insert events: \(error)")
                 // Fall back to regular batch save
-                await MainActor.run {
+                Task { @MainActor in
                     self.batchInsertEvents(events)
                 }
             }
