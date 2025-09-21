@@ -45,17 +45,8 @@ struct OrganizationSection: View {
                     } else {
                         HStack(spacing: 8) {
                             Text(backupManager.organizationName.isEmpty ? "Source folder name" : backupManager.organizationName)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.primary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .frame(minWidth: 150, maxWidth: 250, alignment: .leading)
-                                .background(Color(NSColor.controlBackgroundColor))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
-                                )
-                                .cornerRadius(6)
 
                             Button("Edit") {
                                 isEditing = true
