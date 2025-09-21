@@ -31,7 +31,14 @@ enum ImageFileType: String, CaseIterable {
     case webm = "WebM"
     case mkv = "MKV"
     case mpeg = "MPEG"
-    
+
+    // Professional cinema formats
+    case braw = "BRAW"        // Blackmagic RAW
+    case r3d = "R3D"          // RED camera RAW
+    case ari = "ARRIRAW"      // ARRI camera RAW
+    case mxf = "MXF"          // Professional container (XAVC, XF-AVC, etc.)
+    case crm = "CRM"          // Canon Cinema RAW Light
+
     // Sidecar and metadata files
     case xmp = "XMP"  // Adobe sidecar
     case aae = "AAE"  // Apple sidecar
@@ -130,6 +137,19 @@ enum ImageFileType: String, CaseIterable {
             return ["mts", "m2t"]
         case .m2ts:
             return ["m2ts"]
+
+        // Professional cinema formats
+        case .braw:
+            return ["braw"]
+        case .r3d:
+            return ["r3d"]
+        case .ari:
+            return ["ari", "arriraw"]
+        case .mxf:
+            return ["mxf"]
+        case .crm:
+            return ["crm"]
+
         // Sidecar files
         case .xmp:
             return ["xmp"]
@@ -223,6 +243,7 @@ enum ImageFileType: String, CaseIterable {
         switch self {
         case .jpeg, .tiff, .png, .heic, .heif, .webp, .bmp, .gif,
              .mov, .mp4, .avi, .m4v, .mpg, .mts, .m2ts, .wmv, .flv, .webm, .mkv, .mpeg,
+             .braw, .r3d, .ari, .mxf, .crm,
              .xmp, .dop, .cos, .pp3, .arp, .aae, .thm, .lrcat, .lrdata, .cocatalog, .cocatalogdb:
             return false
         default:
@@ -232,7 +253,8 @@ enum ImageFileType: String, CaseIterable {
     
     var isVideo: Bool {
         switch self {
-        case .mov, .mp4, .avi, .m4v, .mpg, .mts, .m2ts, .wmv, .flv, .webm, .mkv, .mpeg:
+        case .mov, .mp4, .avi, .m4v, .mpg, .mts, .m2ts, .wmv, .flv, .webm, .mkv, .mpeg,
+             .braw, .r3d, .ari, .mxf, .crm:
             return true
         default:
             return false
@@ -298,7 +320,19 @@ enum ImageFileType: String, CaseIterable {
             return 40_000_000  // ~40 MB (AVCHD)
         case .m4v, .wmv, .flv, .webm, .mkv:
             return 20_000_000  // ~20 MB
-            
+
+        // Professional cinema formats are very large
+        case .braw:
+            return 200_000_000  // ~200 MB (Blackmagic RAW varies widely)
+        case .r3d:
+            return 300_000_000  // ~300 MB (RED RAW is huge)
+        case .ari:
+            return 500_000_000  // ~500 MB (ARRIRAW is massive)
+        case .mxf:
+            return 100_000_000  // ~100 MB (depends on codec)
+        case .crm:
+            return 150_000_000  // ~150 MB (Canon Cinema RAW Light)
+
         // Sidecar files are small
         case .xmp, .aae, .dop, .cos, .pp3, .arp:
             return 50_000     // ~50 KB
