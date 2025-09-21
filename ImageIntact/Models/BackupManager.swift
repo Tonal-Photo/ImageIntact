@@ -685,9 +685,18 @@ class BackupManager {
         if !canProceed {
             let alert = NSAlert()
             alert.messageText = "Insufficient Disk Space"
-            alert.informativeText = errors.joined(separator: "\n\n")
+            // Limit error text length to prevent dialog from being cut off
+            let errorText = errors.joined(separator: "\n")
+            if errorText.count > 200 {
+                alert.informativeText = String(errorText.prefix(200)) + "..."
+            } else {
+                alert.informativeText = errorText
+            }
             alert.alertStyle = .critical
             alert.addButton(withTitle: "OK")
+
+            // Set a minimum window size to ensure button is visible
+            alert.window.minSize = NSSize(width: 300, height: 150)
             alert.runModal()
             return
         }
