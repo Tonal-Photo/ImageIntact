@@ -4,7 +4,7 @@
 
 ImageIntact is the backup app photographers have been waiting for – built by a photographer who understands that losing images isn't an option. Unlike generic backup tools, ImageIntact speaks your language and protects your workflow.
 
-![macOS](https://img.shields.io/badge/macOS-14.0%2B-blue)
+![macOS](https://img.shields.io/badge/macOS-15.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Version](https://img.shields.io/badge/Version-1.2.7-brightgreen)
@@ -84,11 +84,20 @@ Need to copy final images to a client drive? ImageIntact ensures every file is p
 3. Launch and approve folder access when asked
 4. Select your source folder, pick your backup destinations, and click "Run Backup"
 
+#### macOS Permissions
+ImageIntact uses the standard macOS file picker for folder access. When you select folders:
+- You'll be asked to grant access to those specific folders
+- No Full Disk Access required - just approve the folders you want to backup
+- Works seamlessly with macOS Tahoe's enhanced permission system
+- Your selections are remembered between launches
+
 That's it. No complex configuration, no command lines, no stress.
 
 ### System Requirements
-- macOS 14.0 (Sonoma) or later
+- macOS 15.0 (Sequoia) or later
+- Compatible with macOS 26 (Tahoe)
 - Works great on both Intel and Apple Silicon Macs
+- Note: macOS Tahoe (26) is the last version supporting Intel Macs
 
 ## Why Open Source?
 
@@ -127,7 +136,7 @@ cd ImageIntact
 open ImageIntact.xcodeproj
 ```
 
-Build and run in Xcode (requires Xcode 15+).
+Build and run in Xcode (requires Xcode 15+ for releases, Xcode 26+ for development).
 
 ## Roadmap
 
