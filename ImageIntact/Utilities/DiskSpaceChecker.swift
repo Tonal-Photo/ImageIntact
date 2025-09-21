@@ -131,36 +131,54 @@ class DiskSpaceChecker {
     
     /// Get disk space information for a given URL
     private static func getDiskSpaceInfo(for url: URL) -> DiskSpaceInfo? {
+        // Debug logging
+        logInfo("DiskSpaceChecker: Getting disk space for URL: \(url)")
+        logInfo("DiskSpaceChecker: URL absolute string: \(url.absoluteString)")
+        logInfo("DiskSpaceChecker: URL path: \(url.path)")
+        logInfo("DiskSpaceChecker: URL path (unencoded): \(url.path(percentEncoded: false))")
+
+        // Use the actual file system representation of the path
+        let path = url.path(percentEncoded: false)
+
         // Check if this is a network volume
         let isNetworkVolume: Bool = {
             // Check if URL is on a network mount
-            var stat = statfs()
-            if statfs(url.path, &stat) == 0 {
-                let fsTypeName = withUnsafeBytes(of: stat.f_fstypename) { bytes in
-                    let cString = bytes.bindMemory(to: CChar.self)
-                    guard let baseAddress = cString.baseAddress else { return "" }
-                    return String(cString: baseAddress)
+            // Use withCString to ensure proper C string conversion with spaces
+            return path.withCString { cPath in
+                var stat = statfs()
+                if statfs(cPath, &stat) == 0 {
+                    let fsTypeName = withUnsafeBytes(of: stat.f_fstypename) { bytes in
+                        let cString = bytes.bindMemory(to: CChar.self)
+                        guard let baseAddress = cString.baseAddress else { return "" }
+                        return String(cString: baseAddress)
+                    }
+                    // Common network filesystem types
+                    return ["nfs", "smbfs", "afpfs", "webdav", "cifs"].contains(fsTypeName.lowercased())
                 }
-                // Common network filesystem types
-                return ["nfs", "smbfs", "afpfs", "webdav", "cifs"].contains(fsTypeName.lowercased())
+                return false
             }
-            return false
         }()
-        
+
         // For network volumes, use statfs which is more reliable
         if isNetworkVolume {
-            var stat = statfs()
-            if statfs(url.path, &stat) == 0 {
+            let statfsResult = path.withCString { cPath in
+                var stat = statfs()
+                let result = statfs(cPath, &stat)
+                return (result: result, stat: stat)
+            }
+
+            if statfsResult.result == 0 {
+                let stat = statfsResult.stat
                 let totalSpace = Int64(stat.f_blocks) * Int64(stat.f_bsize)
                 let availableSpace = Int64(stat.f_bavail) * Int64(stat.f_bsize)
                 let freeSpace = Int64(stat.f_bfree) * Int64(stat.f_bsize)
-                
+
                 // Some network volumes report 0 or extremely large values
                 // Validate the values are reasonable
                 if totalSpace > 0 && availableSpace >= 0 && freeSpace >= 0 {
                     let percentFree = totalSpace > 0 ? (Double(freeSpace) / Double(totalSpace)) * 100 : 0
                     let percentAvailable = totalSpace > 0 ? (Double(availableSpace) / Double(totalSpace)) * 100 : 0
-                    
+
                     return DiskSpaceInfo(
                         totalSpace: totalSpace,
                         freeSpace: freeSpace,
@@ -174,27 +192,59 @@ class DiskSpaceChecker {
             }
         }
         
+        // First try using FileManager's attributesOfFileSystem which is more reliable for external volumes
         do {
-            // Try to get volume resource values (more accurate for local volumes)
-            let values = try url.resourceValues(forKeys: [
+            // Remove trailing slash from the path if present
+            var cleanPath = url.path(percentEncoded: false)
+            if cleanPath.hasSuffix("/") && cleanPath != "/" {
+                cleanPath = String(cleanPath.dropLast())
+            }
+
+            logInfo("DiskSpaceChecker: Trying FileManager.attributesOfFileSystem with path: \(cleanPath)")
+
+            let attributes = try FileManager.default.attributesOfFileSystem(forPath: cleanPath)
+
+            if let totalSpace = attributes[.systemSize] as? Int64,
+               let freeSpace = attributes[.systemFreeSize] as? Int64 {
+
+                let availableSpace = freeSpace
+                let percentFree = totalSpace > 0 ? (Double(freeSpace) / Double(totalSpace)) * 100 : 0
+                let percentAvailable = percentFree
+
+                logInfo("DiskSpaceChecker: Successfully got disk space from FileManager - Total: \(totalSpace), Free: \(freeSpace)")
+
+                return DiskSpaceInfo(
+                    totalSpace: totalSpace,
+                    freeSpace: freeSpace,
+                    availableSpace: availableSpace,
+                    percentFree: percentFree,
+                    percentAvailable: percentAvailable
+                )
+            }
+
+            // If FileManager fails, try resourceValues API (might trigger the validation errors but worth a try)
+            logInfo("DiskSpaceChecker: FileManager attributes failed, trying resourceValues API")
+
+            let fileURL = URL(fileURLWithPath: cleanPath)
+            let values = try fileURL.resourceValues(forKeys: [
                 .volumeTotalCapacityKey,
                 .volumeAvailableCapacityKey,
                 .volumeAvailableCapacityForImportantUsageKey
             ])
-            
+
             if let totalSpace = values.volumeTotalCapacity {
-                // Convert optional Ints to Int64
                 let importantUsage = values.volumeAvailableCapacityForImportantUsage.map { Int64($0) }
                 let regularCapacity = values.volumeAvailableCapacity.map { Int64($0) }
                 let availableSpace = importantUsage ?? regularCapacity ?? Int64(0)
-                
-                // For free space, use the same as available (macOS doesn't distinguish like it used to)
+
                 let freeSpace = availableSpace
                 let totalSpaceInt = Int64(totalSpace)
-                
-                let percentFree = (Double(freeSpace) / Double(totalSpaceInt)) * 100
+
+                let percentFree = totalSpaceInt > 0 ? (Double(freeSpace) / Double(totalSpaceInt)) * 100 : 0
                 let percentAvailable = percentFree
-                
+
+                logInfo("DiskSpaceChecker: Successfully got disk space from resourceValues - Total: \(totalSpaceInt), Free: \(freeSpace)")
+
                 return DiskSpaceInfo(
                     totalSpace: totalSpaceInt,
                     freeSpace: freeSpace,
@@ -203,27 +253,9 @@ class DiskSpaceChecker {
                     percentAvailable: percentAvailable
                 )
             }
-            
-            // Fall back to the old method if resource values don't work
-            let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
-            
-            guard let totalSpace = attributes[.systemSize] as? Int64,
-                  let freeSpace = attributes[.systemFreeSize] as? Int64 else {
-                logError("Failed to get disk space attributes for \(url.path)")
-                return nil
-            }
-            
-            let availableSpace = freeSpace
-            let percentFree = (Double(freeSpace) / Double(totalSpace)) * 100
-            let percentAvailable = percentFree
-            
-            return DiskSpaceInfo(
-                totalSpace: totalSpace,
-                freeSpace: freeSpace,
-                availableSpace: availableSpace,
-                percentFree: percentFree,
-                percentAvailable: percentAvailable
-            )
+
+            logError("Failed to get disk space for \(url.path) - neither method worked")
+            return nil
         } catch {
             logError("Error getting disk space for \(url.path): \(error)")
             return nil
