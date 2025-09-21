@@ -689,25 +689,33 @@ struct FolderRow: View {
     let onClear: () -> Void
     var onSelect: ((URL) -> Void)? = nil
     var showRemoveButton: Bool = true
-    
+    @State private var isHovering = false
+
     var body: some View {
         HStack(spacing: 12) {
             Button(action: selectFolder) {
                 HStack {
                     Image(systemName: selectedURL == nil ? "folder.badge.plus" : "folder.fill")
                         .foregroundColor(selectedURL == nil ? .secondary : .accentColor)
-                    
+
                     Text(selectedURL?.lastPathComponent ?? title)
                         .foregroundColor(selectedURL == nil ? .secondary : .primary)
-                    
+
                     Spacer()
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(isHovering ? Color(NSColor.controlAccentColor).opacity(0.1) : Color(NSColor.controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isHovering ? Color.accentColor.opacity(0.5) : Color(NSColor.separatorColor), lineWidth: 1)
+                )
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .onHover { hovering in
+                isHovering = hovering
+            }
             
             // Always reserve space for the button to maintain consistent width
             if selectedURL != nil && showRemoveButton {
