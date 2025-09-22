@@ -254,9 +254,15 @@ struct ImageIntactApp: App {
                     }
                 }
                 .keyboardShortcut("?", modifiers: .command)
-                
+
+                Button("Troubleshooting Guide") {
+                    Task { @MainActor in
+                        TroubleshootingWindowManager.shared.showTroubleshooting()
+                    }
+                }
+
                 Divider()
-                
+
                 Button("Report a Bug...") {
                     Task { @MainActor in
                         HelpWindowManager.shared.showBugReport()
