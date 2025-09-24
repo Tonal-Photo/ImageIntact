@@ -326,7 +326,7 @@ struct PerformancePreferencesView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.primary)
                         
-                        Text("Future feature for intelligent photo analysis")
+                        Text("AI-powered photo analysis using Apple's Neural Engine")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     
@@ -334,8 +334,8 @@ struct PerformancePreferencesView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Toggle("Enable Vision Framework features", isOn: $preferences.enableVisionFramework)
                                 .font(.system(size: 13))
-                                .disabled(true) // Not implemented yet
-                                .help("Coming in v1.3 - Intelligent photo search and organization")
+                                .disabled(false) // Now implemented!
+                                .help("AI-powered image analysis for intelligent photo search and organization")
                                 .onChange(of: preferences.enableVisionFramework) { oldValue, newValue in
                                     if !SystemCapabilities.shared.isAppleSilicon && newValue {
                                         showIntelWarning = true

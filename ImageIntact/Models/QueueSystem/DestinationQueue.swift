@@ -392,10 +392,56 @@ actor DestinationQueue {
                         category: .backup
                     )
                 }
-                
+
+                // Trigger Vision analysis for image files if enabled
+                if UserDefaults.standard.bool(forKey: "enableVisionFramework") {
+                    // Check if it's an image file
+                    let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif", "tiff", "bmp", "raw", "dng", "cr2", "nef", "arw"]
+                    let fileExtension = task.sourceURL.pathExtension.lowercased()
+
+                    if imageExtensions.contains(fileExtension) {
+                        // Queue for async analysis (non-blocking)
+                        Task.detached(priority: .background) {
+                            // Check availability on MainActor
+                            let isVisionAvailable = await MainActor.run {
+                                return VisionAnalyzer.shared.isAvailable
+                            }
+
+                            guard isVisionAvailable else { return }
+
+                            do {
+                                // Calculate checksum for the file
+                                let checksum = task.checksum
+
+                                // Analyze the copied file at destination
+                                await MainActor.run {
+                                    Task {
+                                        do {
+                                            try await VisionAnalyzer.shared.analyzeImage(
+                                                at: destPath,
+                                                checksum: checksum
+                                            )
+
+                                            ApplicationLogger.shared.debug(
+                                                "Vision analysis completed for: \(task.relativePath)",
+                                                category: .vision
+                                            )
+                                        } catch {
+                                            ApplicationLogger.shared.warning(
+                                                "Vision analysis failed for \(task.relativePath): \(error)",
+                                                category: .vision
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Note: Don't increment completedFiles here - it's already done in processFileTask
                 // based on the result (success/skipped/failed)
-                
+
                 // Extra confirmation for videos
                 if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
                     print("✅ Video copied successfully: \(task.relativePath)")
