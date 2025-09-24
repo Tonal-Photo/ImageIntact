@@ -122,6 +122,8 @@ class VisionAnalyzer: ObservableObject {
             return
         }
 
+        print("🔍 Starting Vision analysis for: \(url.lastPathComponent)")
+
         // Update UI
         await MainActor.run {
             self.currentImageName = url.lastPathComponent
@@ -160,15 +162,57 @@ class VisionAnalyzer: ObservableObject {
             throw VisionAnalyzerError.analysisFailed(error)
         }
 
+        // Extract results
+        let sceneResults = sceneClassificationRequest?.results as? [VNClassificationObservation]
+        let faceResults = faceDetectionRequest?.results as? [VNFaceObservation]
+        let textResults = textDetectionRequest?.results as? [VNRecognizedTextObservation]
+        let animalResults = objectRecognitionRequest?.results as? [VNRecognizedObjectObservation]
+
+        // Log what we found
+        print("🤖 Vision Analysis for \(url.lastPathComponent):")
+
+        if let scenes = sceneResults?.prefix(3) {
+            let sceneDescriptions = scenes.map { "\($0.identifier.humanReadable) (\(Int($0.confidence * 100))%)" }
+            if !sceneDescriptions.isEmpty {
+                print("  📸 Scenes: \(sceneDescriptions.joined(separator: ", "))")
+            }
+        }
+
+        if let faces = faceResults, !faces.isEmpty {
+            print("  👤 Faces detected: \(faces.count)")
+        }
+
+        if let animals = animalResults, !animals.isEmpty {
+            let animalTypes = animals.compactMap { $0.labels.first?.identifier.humanReadable }
+            print("  🐾 Animals: \(animalTypes.joined(separator: ", "))")
+        }
+
+        if let texts = textResults, !texts.isEmpty {
+            let textSnippets = texts.prefix(2).compactMap { $0.topCandidates(1).first?.string }
+            if !textSnippets.isEmpty {
+                print("  📝 Text found: \"\(textSnippets.joined(separator: ", "))...\"")
+            }
+        }
+
+        // Also log to ApplicationLogger for persistence
+        ApplicationLogger.shared.info(
+            "Vision analysis completed for \(url.lastPathComponent): " +
+            "Scenes: \(sceneResults?.count ?? 0), " +
+            "Faces: \(faceResults?.count ?? 0), " +
+            "Animals: \(animalResults?.count ?? 0), " +
+            "Text blocks: \(textResults?.count ?? 0)",
+            category: .vision
+        )
+
         // Process and store results
         await storeAnalysisResults(
             url: url,
             checksum: checksum,
             image: image,
-            sceneResults: sceneClassificationRequest?.results as? [VNClassificationObservation],
-            faceResults: faceDetectionRequest?.results as? [VNFaceObservation],
-            textResults: textDetectionRequest?.results as? [VNRecognizedTextObservation],
-            animalResults: objectRecognitionRequest?.results as? [VNRecognizedObjectObservation]
+            sceneResults: sceneResults,
+            faceResults: faceResults,
+            textResults: textResults,
+            animalResults: animalResults
         )
     }
 
