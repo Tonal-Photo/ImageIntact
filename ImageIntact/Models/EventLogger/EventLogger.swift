@@ -74,20 +74,24 @@ class EventLogger {
         
         // Configure for performance
         if let description = container.persistentStoreDescriptions.first {
+            // Enable lightweight migration
+            description.shouldMigrateStoreAutomatically = true
+            description.shouldInferMappingModelAutomatically = true
+
             // Enable persistent history tracking for batch operations
-            description.setOption(true as NSNumber, 
+            description.setOption(true as NSNumber,
                                  forKey: NSPersistentHistoryTrackingKey)
-            
+
             // Enable remote change notifications
             description.setOption(true as NSNumber,
                                  forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
-            
+
             // Set SQLite pragmas for performance
             description.setOption(["journal_mode": "WAL",
                                    "synchronous": "NORMAL",
                                    "cache_size": "10000"] as NSDictionary,
                                  forKey: NSSQLitePragmasOption)
-            
+
             // Enable batch operations
             description.type = NSSQLiteStoreType
             description.shouldAddStoreAsynchronously = false
