@@ -98,10 +98,32 @@ class EventLogger {
         }
         
         // Load stores
-        container.loadPersistentStores { storeDescription, error in
+        container.loadPersistentStores { [weak container] storeDescription, error in
             if let error = error {
                 print("❌ EventLogger Core Data error: \(error)")
-                // In production, we'd handle this more gracefully
+
+                // If migration fails, delete the store and try again
+                if let url = storeDescription.url,
+                   error.localizedDescription.contains("migration") ||
+                   error.localizedDescription.contains("Mismatch") {
+                    print("⚠️ Migration failed, removing old store and recreating...")
+
+                    // Remove the old store files
+                    try? FileManager.default.removeItem(at: url)
+                    try? FileManager.default.removeItem(at: url.appendingPathExtension("shm"))
+                    try? FileManager.default.removeItem(at: url.appendingPathExtension("wal"))
+
+                    // Try loading again with a fresh store
+                    container?.loadPersistentStores { newStoreDescription, newError in
+                        if let newError = newError {
+                            print("❌ Failed to create new store: \(newError)")
+                            // Fatal error in development, but in production we'd handle gracefully
+                            fatalError("Unable to create Core Data store: \(newError)")
+                        } else {
+                            print("✅ EventLogger Core Data store recreated: \(newStoreDescription.url?.lastPathComponent ?? "unknown")")
+                        }
+                    }
+                }
             } else {
                 print("✅ EventLogger Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")")
                 print("📁 Core Data location: \(storeDescription.url?.path ?? "unknown")")
