@@ -70,8 +70,7 @@ struct MultiDestinationProgressSection: View {
                                     Label("Cancel", systemImage: "stop.circle.fill")
                                         .foregroundColor(.red)
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.red)
+                                .buttonStyle(.bordered)
                                 .controlSize(.small)
                                 .help("Cancel operation")
                             }
@@ -175,10 +174,9 @@ struct SimpleBackupProgress: View {
                     backupManager.cancelOperation()
                 }) {
                     Label("Cancel", systemImage: "stop.circle.fill")
-                        .foregroundColor(.white)
+                        .foregroundColor(.red)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Cancel backup")
             }
@@ -306,10 +304,9 @@ struct MultiDestinationProgress: View {
                     backupManager.cancelOperation()
                 }) {
                     Label("Cancel", systemImage: "stop.circle.fill")
-                        .foregroundColor(.white)
+                        .foregroundColor(.red)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Cancel backup")
             }
