@@ -10,9 +10,23 @@ import CoreData
 
 class SystemCapabilities {
     static let shared = SystemCapabilities()
-    
+
     private let container: NSPersistentContainer
-    
+
+    enum ProcessorGeneration {
+        case m1
+        case m2
+        case m3
+        case m4
+        case unknown
+    }
+
+    enum ProcessorArchitecture {
+        case appleSilicon
+        case intel
+        case unknown
+    }
+
     enum ProcessorType: String, CaseIterable {
         // Apple Silicon
         case appleM1 = "Apple M1"
@@ -352,21 +366,50 @@ class SystemCapabilities {
     }
     
     // MARK: - Public API
-    
+
     var displayName: String {
         currentSystemInfo?.processorName ?? "Unknown Processor"
     }
-    
+
     var isAppleSilicon: Bool {
         currentSystemInfo?.processorType.isAppleSilicon ?? false
     }
-    
+
     var hasNeuralEngine: Bool {
         currentSystemInfo?.processorType.hasNeuralEngine ?? false
     }
-    
+
     var shouldEnableVisionByDefault: Bool {
         isAppleSilicon
+    }
+
+    var processorType: ProcessorArchitecture {
+        if isAppleSilicon {
+            return .appleSilicon
+        } else if currentSystemInfo?.architecture.contains("x86") == true {
+            return .intel
+        } else {
+            return .unknown
+        }
+    }
+
+    var processorGeneration: ProcessorGeneration {
+        guard let type = currentSystemInfo?.processorType else {
+            return .unknown
+        }
+
+        switch type {
+        case .appleM1, .appleM1Pro, .appleM1Max, .appleM1Ultra:
+            return .m1
+        case .appleM2, .appleM2Pro, .appleM2Max, .appleM2Ultra:
+            return .m2
+        case .appleM3, .appleM3Pro, .appleM3Max, .appleM3Ultra:
+            return .m3
+        case .appleM4, .appleM4Pro, .appleM4Max, .appleM4Ultra:
+            return .m4
+        default:
+            return .unknown
+        }
     }
     
     // Refresh detection (e.g., after wake from sleep)

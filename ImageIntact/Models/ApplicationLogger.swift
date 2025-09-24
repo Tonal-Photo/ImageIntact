@@ -48,6 +48,7 @@ enum LogCategory: String, CaseIterable {
     case fileSystem = "FileSystem"
     case security = "Security"
     case performance = "Performance"
+    case vision = "Vision"
     case hardware = "Hardware"
     case error = "Error"
     case test = "Test"
