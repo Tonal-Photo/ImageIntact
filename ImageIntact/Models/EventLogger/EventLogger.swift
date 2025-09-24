@@ -71,12 +71,49 @@ class EventLogger {
         
         // Create container with explicit model to prevent duplicate loading
         container = NSPersistentContainer(name: "ImageIntactEvents", managedObjectModel: model)
-        
+
+        // Check if store exists and needs migration
+        if let storeURL = container.persistentStoreDescriptions.first?.url,
+           FileManager.default.fileExists(atPath: storeURL.path) {
+
+            // Check if we can load metadata to detect incompatible store
+            do {
+                let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(
+                    ofType: NSSQLiteStoreType,
+                    at: storeURL
+                )
+
+                // Check if the store is compatible with our model
+                let isCompatible = model.isConfiguration(
+                    withName: nil,
+                    compatibleWithStoreMetadata: metadata
+                )
+
+                if !isCompatible {
+                    print("⚠️ Core Data store incompatible with new model, removing old store...")
+
+                    // Remove all store files
+                    try? FileManager.default.removeItem(at: storeURL)
+                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-shm"))
+                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-wal"))
+
+                    print("✅ Old store removed, will create fresh database")
+                }
+            } catch {
+                print("⚠️ Could not read store metadata, removing potentially corrupt store: \(error)")
+
+                // Remove the store if we can't read its metadata
+                try? FileManager.default.removeItem(at: storeURL)
+                try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-shm"))
+                try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-wal"))
+            }
+        }
+
         // Configure for performance
         if let description = container.persistentStoreDescriptions.first {
-            // Enable lightweight migration
-            description.shouldMigrateStoreAutomatically = true
-            description.shouldInferMappingModelAutomatically = true
+            // Disable automatic migration since we handle it manually above
+            description.shouldMigrateStoreAutomatically = false
+            description.shouldInferMappingModelAutomatically = false
 
             // Enable persistent history tracking for batch operations
             description.setOption(true as NSNumber,
@@ -96,34 +133,13 @@ class EventLogger {
             description.type = NSSQLiteStoreType
             description.shouldAddStoreAsynchronously = false
         }
-        
+
         // Load stores
-        container.loadPersistentStores { [weak container] storeDescription, error in
+        container.loadPersistentStores { storeDescription, error in
             if let error = error {
                 print("❌ EventLogger Core Data error: \(error)")
-
-                // If migration fails, delete the store and try again
-                if let url = storeDescription.url,
-                   error.localizedDescription.contains("migration") ||
-                   error.localizedDescription.contains("Mismatch") {
-                    print("⚠️ Migration failed, removing old store and recreating...")
-
-                    // Remove the old store files
-                    try? FileManager.default.removeItem(at: url)
-                    try? FileManager.default.removeItem(at: url.appendingPathExtension("shm"))
-                    try? FileManager.default.removeItem(at: url.appendingPathExtension("wal"))
-
-                    // Try loading again with a fresh store
-                    container?.loadPersistentStores { newStoreDescription, newError in
-                        if let newError = newError {
-                            print("❌ Failed to create new store: \(newError)")
-                            // Fatal error in development, but in production we'd handle gracefully
-                            fatalError("Unable to create Core Data store: \(newError)")
-                        } else {
-                            print("✅ EventLogger Core Data store recreated: \(newStoreDescription.url?.lastPathComponent ?? "unknown")")
-                        }
-                    }
-                }
+                // Fatal error in development, but in production we'd handle gracefully
+                fatalError("Unable to create Core Data store: \(error)")
             } else {
                 print("✅ EventLogger Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")")
                 print("📁 Core Data location: \(storeDescription.url?.path ?? "unknown")")
