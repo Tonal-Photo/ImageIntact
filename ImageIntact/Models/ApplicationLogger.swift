@@ -55,17 +55,18 @@ enum LogCategory: String, CaseIterable {
 }
 
 // MARK: - Application Logger
-class ApplicationLogger {
+@MainActor
+final class ApplicationLogger: Sendable {
     static let shared = ApplicationLogger()
-    
+
     private let container: NSPersistentContainer
     private let backgroundContext: NSManagedObjectContext
     private let osLog: OSLog
-    
+
     // Settings
-    @Published var minimumLogLevel: LogLevel = .info
-    @Published var enableConsoleOutput: Bool = true
-    @Published var enableOSLogOutput: Bool = true
+    var minimumLogLevel: LogLevel = .info
+    var enableConsoleOutput: Bool = true
+    var enableOSLogOutput: Bool = true
     
     private init() {
         // Create model programmatically
@@ -414,7 +415,9 @@ class ApplicationLogger {
     private func startLogCleanupTask() {
         // Clean up old logs periodically
         Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { _ in
-            self.cleanupOldLogs()
+            Task { @MainActor in
+                self.cleanupOldLogs()
+            }
         }
     }
     
@@ -443,7 +446,9 @@ class ApplicationLogger {
                 try self?.backgroundContext.execute(perfDeleteRequest)
                 try self?.backgroundContext.save()
                 
-                self?.info("Cleaned up logs older than \(daysToKeep) days", category: .database)
+                Task { @MainActor [weak self] in
+                    self?.info("Cleaned up logs older than \(daysToKeep) days", category: .database)
+                }
             } catch {
                 print("Failed to cleanup old logs: \(error)")
             }
@@ -465,26 +470,31 @@ class ApplicationLogger {
 
 // MARK: - Global Convenience Functions
 
+@MainActor
 func logDebug(_ message: String, category: LogCategory = .app,
               file: String = #file, function: String = #function, line: Int = #line) {
     ApplicationLogger.shared.debug(message, category: category, file: file, function: function, line: line)
 }
 
+@MainActor
 func logInfo(_ message: String, category: LogCategory = .app,
              file: String = #file, function: String = #function, line: Int = #line) {
     ApplicationLogger.shared.info(message, category: category, file: file, function: function, line: line)
 }
 
+@MainActor
 func logWarning(_ message: String, category: LogCategory = .app,
                 file: String = #file, function: String = #function, line: Int = #line) {
     ApplicationLogger.shared.warning(message, category: category, file: file, function: function, line: line)
 }
 
+@MainActor
 func logError(_ message: String, category: LogCategory = .app,
               file: String = #file, function: String = #function, line: Int = #line) {
     ApplicationLogger.shared.error(message, category: category, file: file, function: function, line: line)
 }
 
+@MainActor
 func logCritical(_ message: String, category: LogCategory = .app,
                  file: String = #file, function: String = #function, line: Int = #line) {
     ApplicationLogger.shared.critical(message, category: category, file: file, function: function, line: line)

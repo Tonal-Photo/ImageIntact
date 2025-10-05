@@ -412,7 +412,8 @@ class DriveAnalyzer {
             // Check class name first
             var className = [CChar](repeating: 0, count: 128)
             IOObjectGetClass(parent, &className)
-            let classString = String(cString: className)
+            let classData = className.map { UInt8(bitPattern: $0) }
+            let classString = String(decoding: classData, as: UTF8.self)
             
             // Debug output
             print("DriveAnalyzer: Checking class: \(classString)")
@@ -550,7 +551,8 @@ class DriveAnalyzer {
             // Check class name for TB5 controllers
             var className = [CChar](repeating: 0, count: 128)
             IOObjectGetClass(parent, &className)
-            let classString = String(cString: className)
+            let classData = className.map { UInt8(bitPattern: $0) }
+            let classString = String(decoding: classData, as: UTF8.self)
             
             // Check for known TB5 controllers
             if classString.contains("JHL9580") || classString.contains("JHL9480") {
@@ -965,7 +967,8 @@ class DriveAnalyzer {
             totalCapacity = Int64(resourceValues.volumeTotalCapacity ?? 0)
             freeSpace = Int64(resourceValues.volumeAvailableCapacity ?? 0)
         } catch {
-            logError("Failed to get volume attributes: \(error)")
+            // Silent failure - function returns default values
+            // Cannot log from static non-async context
         }
         
         return VolumeAttributes(uuid: uuid, totalCapacity: totalCapacity, freeSpace: freeSpace)

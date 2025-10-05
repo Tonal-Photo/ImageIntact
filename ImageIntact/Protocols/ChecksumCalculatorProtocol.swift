@@ -9,9 +9,9 @@
 import Foundation
 
 /// Protocol defining checksum calculation operations
-/// WARNING: Checksum accuracy is critical for data integrity. 
+/// WARNING: Checksum accuracy is critical for data integrity.
 /// Any implementation MUST produce bit-identical results to the default implementation.
-protocol ChecksumCalculatorProtocol {
+protocol ChecksumCalculatorProtocol: Sendable {
     
     /// Calculate SHA256 checksum for a file
     /// - Parameters:
@@ -25,7 +25,7 @@ protocol ChecksumCalculatorProtocol {
     /// 2. Exactly 64 characters for SHA256
     /// 3. Deterministic - same file always produces same checksum
     /// 4. Match the output of standard SHA256 implementations
-    func calculateSHA256(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String
+    func calculateSHA256(for url: URL, shouldCancel: @escaping @Sendable () -> Bool) async throws -> String
     
     /// Verify that a file matches an expected checksum
     /// - Parameters:
@@ -34,14 +34,14 @@ protocol ChecksumCalculatorProtocol {
     ///   - shouldCancel: Closure to check if operation should be cancelled
     /// - Returns: true if checksums match, false otherwise
     /// - Throws: Error if verification fails (not for mismatch, but for I/O errors)
-    func verifyChecksum(for url: URL, expectedChecksum: String, shouldCancel: @escaping () -> Bool) async throws -> Bool
+    func verifyChecksum(for url: URL, expectedChecksum: String, shouldCancel: @escaping @Sendable () -> Bool) async throws -> Bool
 }
 
 // MARK: - Default Implementation
 
 extension ChecksumCalculatorProtocol {
     /// Default verification implementation using calculateSHA256
-    func verifyChecksum(for url: URL, expectedChecksum: String, shouldCancel: @escaping () -> Bool) async throws -> Bool {
+    func verifyChecksum(for url: URL, expectedChecksum: String, shouldCancel: @escaping @Sendable () -> Bool) async throws -> Bool {
         let actualChecksum = try await calculateSHA256(for: url, shouldCancel: shouldCancel)
         return actualChecksum == expectedChecksum
     }

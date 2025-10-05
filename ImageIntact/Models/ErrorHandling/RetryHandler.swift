@@ -8,7 +8,7 @@
 import Foundation
 
 /// Statistics about retry operations
-struct RetryStatistics {
+struct RetryStatistics: Sendable {
     var totalRetries: Int = 0
     var successfulRetries: Int = 0
     var failedRetries: Int = 0
@@ -34,7 +34,7 @@ actor RetryHandler {
     /// Execute an operation with automatic retry on transient failures
     func executeWithRetry<T>(
         operation: String,
-        task: () async throws -> T
+        task: @Sendable () async throws -> T
     ) async throws -> T {
         let strategy = RetryStrategy.transientError
         var lastError: Error?
@@ -144,9 +144,9 @@ actor RetryHandler {
     // MARK: - Batch Retry
     
     /// Retry a batch of failed operations
-    func retryFailedBatch<T>(
+    func retryFailedBatch<T: Sendable>(
         _ failedItems: [(item: T, error: Error)],
-        operation: (T) async throws -> Void
+        operation: @Sendable (T) async throws -> Void
     ) async -> [(item: T, error: Error)] {
         var stillFailed: [(item: T, error: Error)] = []
         

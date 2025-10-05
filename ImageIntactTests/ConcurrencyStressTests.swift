@@ -65,7 +65,9 @@ class ConcurrencyStressTests: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: "checksum_\(i)",
-                size: Int64(data.count)
+                size: Int64(data.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         
@@ -117,7 +119,9 @@ class ConcurrencyStressTests: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: "checksum_\(i)",
-                size: Int64(data.count)
+                size: Int64(data.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         
@@ -165,7 +169,9 @@ class ConcurrencyStressTests: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: "c_\(i)",
-                size: 1
+                size: 1,
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         
@@ -219,7 +225,9 @@ class ConcurrencyStressTests: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: "skip_\(i)",
-                size: Int64(data.count)
+                size: Int64(data.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         
@@ -312,7 +320,9 @@ class ConcurrencyStressTests: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: checksum,
-                size: Int64(data.count)
+                size: Int64(data.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         
@@ -359,7 +369,9 @@ class ConcurrencyStressTests: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: "m_\(i)",
-                size: Int64(data.count)
+                size: Int64(data.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         

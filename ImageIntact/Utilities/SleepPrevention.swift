@@ -9,15 +9,14 @@ import Foundation
 import IOKit.pwr_mgt
 
 /// Manages system sleep prevention during backup operations
-class SleepPrevention {
+actor SleepPrevention {
     static let shared = SleepPrevention()
-    
+
     private var assertionID: IOPMAssertionID = 0
     private var isPreventingSleep = false
-    private let lock = NSLock()
     private var timeoutTimer: Timer?
     private let maxDuration: TimeInterval = 14400 // 4 hours maximum
-    
+
     private init() {}
     
     /// Start preventing system sleep
@@ -26,20 +25,18 @@ class SleepPrevention {
     ///   - timeout: Optional custom timeout in seconds (default: 4 hours)
     /// - Returns: True if sleep prevention was successfully enabled
     @discardableResult
-    func startPreventingSleep(reason: String = "ImageIntact Backup in Progress", timeout: TimeInterval? = nil) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
+    func startPreventingSleep(reason: String = "ImageIntact Backup in Progress", timeout: TimeInterval? = nil) async -> Bool {
         
         // If already preventing sleep, cancel the old timer and reset
         if isPreventingSleep {
-            logInfo("Sleep prevention already active - resetting timeout")
+            await ApplicationLogger.shared.info("Sleep prevention already active - resetting timeout", category: .performance)
             timeoutTimer?.invalidate()
             timeoutTimer = nil
         }
         
         // Check if the preference is enabled
-        guard PreferencesManager.shared.preventSleepDuringBackup else {
-            logInfo("Sleep prevention disabled by user preference")
+        guard await PreferencesManager.shared.preventSleepDuringBackup else {
+            await ApplicationLogger.shared.info("Sleep prevention disabled by user preference", category: .performance)
             return false
         }
         
@@ -54,11 +51,9 @@ class SleepPrevention {
             
             if result == kIOReturnSuccess {
                 isPreventingSleep = true
-                logInfo("Sleep prevention enabled: \(reason)")
-                ApplicationLogger.shared.info("Sleep prevention enabled", category: .performance)
+                await ApplicationLogger.shared.info("Sleep prevention enabled: \(reason)", category: .performance)
             } else {
-                logError("Failed to prevent sleep: IOKit error \(result)")
-                ApplicationLogger.shared.error("Failed to prevent sleep: IOKit error \(result)", category: .performance)
+                await ApplicationLogger.shared.error("Failed to prevent sleep: IOKit error \(result)", category: .performance)
                 return false
             }
         }
@@ -73,28 +68,41 @@ class SleepPrevention {
     /// Set up a timeout timer to automatically stop sleep prevention
     private func setupTimeoutTimer(duration: TimeInterval) {
         // Run on main thread to ensure timer works properly
-        DispatchQueue.main.async { [weak self] in
-            self?.timeoutTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
-                self?.handleTimeout()
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
+                Task { [weak self] in
+                    await self?.handleTimeout()
+                }
+            }
+            Task { [weak self] in
+                await self?.setTimeoutTimer(timer)
             }
         }
         
         let hours = Int(duration / 3600)
         let minutes = Int((duration.truncatingRemainder(dividingBy: 3600)) / 60)
-        logInfo("Sleep prevention timeout set: \(hours)h \(minutes)m")
+        Task { @MainActor in
+            ApplicationLogger.shared.info("Sleep prevention timeout set: \(hours)h \(minutes)m", category: .performance)
+        }
     }
     
+    /// Helper to set the timeout timer
+    private func setTimeoutTimer(_ timer: Timer?) {
+        self.timeoutTimer = timer
+    }
+
     /// Handle timeout expiration
     private func handleTimeout() {
-        logWarning("Sleep prevention timeout reached - automatically stopping")
-        ApplicationLogger.shared.warning("Sleep prevention timeout reached after \(maxDuration/3600) hours", category: .performance)
-        stopPreventingSleep()
+        Task {
+            await ApplicationLogger.shared.warning("Sleep prevention timeout reached - automatically stopping", category: .performance)
+            await ApplicationLogger.shared.warning("Sleep prevention timeout reached after \(self.maxDuration/3600) hours", category: .performance)
+            await stopPreventingSleep()
+        }
     }
     
     /// Stop preventing system sleep
-    func stopPreventingSleep() {
-        lock.lock()
-        defer { lock.unlock() }
+    func stopPreventingSleep() async {
         
         // Cancel timeout timer
         timeoutTimer?.invalidate()
@@ -111,25 +119,16 @@ class SleepPrevention {
         if result == kIOReturnSuccess {
             isPreventingSleep = false
             assertionID = 0
-            logInfo("Sleep prevention disabled")
-            ApplicationLogger.shared.info("Sleep prevention disabled", category: .performance)
+            await ApplicationLogger.shared.info("Sleep prevention disabled", category: .performance)
         } else {
-            logError("Failed to release sleep prevention: IOKit error \(result)")
-            ApplicationLogger.shared.error("Failed to release sleep prevention: IOKit error \(result)", category: .performance)
+            await ApplicationLogger.shared.error("Failed to release sleep prevention: IOKit error \(result)", category: .performance)
         }
     }
     
     /// Check if sleep is currently being prevented
     var isPreventing: Bool {
-        lock.lock()
-        defer { lock.unlock() }
         return isPreventingSleep
     }
     
-    /// Ensure sleep prevention is stopped (e.g., on app termination)
-    deinit {
-        if isPreventingSleep {
-            stopPreventingSleep()
-        }
-    }
+    // Actor cannot have deinit, sleep prevention will be cleaned up on app termination
 }

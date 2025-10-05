@@ -44,7 +44,9 @@ class UIUpdateThrottler {
         }
     }
     
-    deinit {
+    func invalidate() {
         updateTimer?.invalidate()
+        updateTimer = nil
+        pendingUpdate = nil
     }
 }

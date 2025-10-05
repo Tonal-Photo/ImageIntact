@@ -18,7 +18,29 @@ class BackupCoordinator: ObservableObject {
     
     // Serial queue to protect dictionary access and prevent heap corruption
     private let statusUpdateQueue = DispatchQueue(label: "com.imageintact.statusUpdates", qos: .userInitiated)
-    
+
+    // Debug logging
+    private func debugLog(_ message: String) {
+        let timestamp = Date().timeIntervalSince1970
+        let logMessage = "[\(String(format: "%.3f", timestamp))] \(message)"
+        print(logMessage)
+
+        // Also write to debug file
+        let debugFile = FileManager.default.temporaryDirectory.appendingPathComponent("imageintact_progress_debug.txt")
+        if let data = "\(logMessage)\n".data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: debugFile.path) {
+                if let handle = try? FileHandle(forWritingTo: debugFile) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try? data.write(to: debugFile)
+                print("📝 Debug log file created at: \(debugFile.path)")
+            }
+        }
+    }
+
     struct DestinationStatus {
         let name: String
         var completed: Int
@@ -38,7 +60,13 @@ class BackupCoordinator: ObservableObject {
     
     func startBackup(source: URL, destinations: [URL], manifest: [FileManifestEntry], organizationName: String = "") async {
         guard !isRunning else { return }
-        
+
+        // Clear and announce debug log file location
+        let debugFile = FileManager.default.temporaryDirectory.appendingPathComponent("imageintact_progress_debug.txt")
+        try? FileManager.default.removeItem(at: debugFile)
+        debugLog("🚀 Starting backup - Debug log at: \(debugFile.path)")
+        print("📝 To view debug log, run in Terminal: tail -f '\(debugFile.path)'")
+
         isRunning = true
         shouldCancel = false
         self.manifest = manifest
@@ -87,18 +115,21 @@ class BackupCoordinator: ObservableObject {
             
             // Set up callbacks before adding to array to avoid retain issues
             // Use destName consistently to avoid capturing destination in closures
-            
+
+            // Get task count before closures to avoid capturing tasksByDestination
+            let destinationTaskCount = tasksByDestination[index]?.count ?? 0
+
             // Verification callback - use serial queue for dictionary access
-            await queue.setVerificationCallback { [weak self] isVerifying, verifiedCount async in
+            await queue.setVerificationCallback { @Sendable [weak self] isVerifying, verifiedCount async in
                 guard let self = self else { return }
-                // Use serial queue to prevent concurrent dictionary access
-                let destinationTasks = tasksByDestination[index] ?? []
-                await self.updateStatusSafely(destName: destName, isVerifying: isVerifying, verifiedCount: verifiedCount, totalFiles: destinationTasks.count)
+                // Use pre-computed task count
+                await self.updateStatusSafely(destName: destName, isVerifying: isVerifying, verifiedCount: verifiedCount, totalFiles: destinationTaskCount)
             }
-            
-            // Progress callback - use serial queue for dictionary access  
-            await queue.setProgressCallback { [weak self] completed, total async in
+
+            // Progress callback - use serial queue for dictionary access
+            await queue.setProgressCallback { @Sendable [weak self] completed, total async in
                 guard let self = self else { return }
+                await self.debugLog("📊 Progress callback from \(destName): \(completed)/\(total)")
                 // Use serial queue to prevent concurrent dictionary access
                 await self.updateProgressSafely(destName: destName, completed: completed, total: total)
             }
@@ -326,10 +357,13 @@ class BackupCoordinator: ObservableObject {
                 
                 Task { @MainActor in
                     if var status = self.destinationStatuses[destName] {
+                        let oldCompleted = status.completed
                         status.completed = completed
                         self.destinationStatuses[destName] = status
-                        print("📊 Progress update: \(destName) - \(completed)/\(total)")
+                        self.debugLog("📊 Progress update: \(destName) - \(completed)/\(total) (was \(oldCompleted))")
                         self.updateOverallProgress(totalFiles: total)
+                    } else {
+                        self.debugLog("⚠️ No status found for destination: \(destName)")
                     }
                     continuation.resume()
                 }

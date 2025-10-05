@@ -373,7 +373,9 @@ struct DuplicateWarningView_Previews: PreviewProvider {
                         relativePath: "photo1.jpg",
                         sourceURL: URL(fileURLWithPath: "/source/photo1.jpg"),
                         checksum: "abc123",
-                        size: 1024 * 1024 * 5
+                        size: 1024 * 1024 * 5,
+                        imageWidth: nil,
+                        imageHeight: nil
                     ),
                     destinationPath: "/dest/photo1.jpg",
                     checksum: "abc123",
@@ -387,7 +389,9 @@ struct DuplicateWarningView_Previews: PreviewProvider {
                         relativePath: "photo2.jpg",
                         sourceURL: URL(fileURLWithPath: "/source/photo2.jpg"),
                         checksum: "def456",
-                        size: 1024 * 1024 * 3
+                        size: 1024 * 1024 * 3,
+                        imageWidth: nil,
+                        imageHeight: nil
                     ),
                     destinationPath: "/dest/renamed_photo.jpg",
                     checksum: "def456",

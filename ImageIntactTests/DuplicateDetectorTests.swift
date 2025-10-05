@@ -60,13 +60,17 @@ class DuplicateDetectorTests: XCTestCase {
                 relativePath: "photo1.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo1.jpg"),
                 checksum: "abc123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             ),
             FileManifestEntry(
                 relativePath: "photo2.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo2.jpg"),
                 checksum: "def456",
-                size: 2048
+                size: 2048,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         let destination = tempDir!
@@ -94,13 +98,17 @@ class DuplicateDetectorTests: XCTestCase {
                 relativePath: "photo1.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo1.jpg"),
                 checksum: "abc123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             ),
             FileManifestEntry(
                 relativePath: "photo2.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo2.jpg"),
                 checksum: "def456",
-                size: 2048
+                size: 2048,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -141,13 +149,17 @@ class DuplicateDetectorTests: XCTestCase {
                 relativePath: "photo1.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo1.jpg"),
                 checksum: "abc123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             ),
             FileManifestEntry(
                 relativePath: "photo2.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo2.jpg"),
                 checksum: "def456",
-                size: 2048
+                size: 2048,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -188,19 +200,25 @@ class DuplicateDetectorTests: XCTestCase {
                 relativePath: "photo1.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo1.jpg"),
                 checksum: "abc123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             ),
             FileManifestEntry(
                 relativePath: "photo2.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo2.jpg"),
                 checksum: "def456",
-                size: 2048
+                size: 2048,
+                imageWidth: nil,
+                imageHeight: nil
             ),
             FileManifestEntry(
                 relativePath: "photo3.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo3.jpg"),
                 checksum: "ghi789",
-                size: 3072
+                size: 3072,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -253,7 +271,9 @@ class DuplicateDetectorTests: XCTestCase {
                     relativePath: "test.jpg",
                     sourceURL: URL(fileURLWithPath: "/test.jpg"),
                     checksum: "test",
-                    size: 1024 * 1024
+                    size: 1024 * 1024,
+                    imageWidth: nil,
+                    imageHeight: nil
                 ),
                 destinationPath: "/dest/test.jpg",
                 checksum: "test",
@@ -265,7 +285,9 @@ class DuplicateDetectorTests: XCTestCase {
                     relativePath: "test2.jpg",
                     sourceURL: URL(fileURLWithPath: "/test2.jpg"),
                     checksum: "test2",
-                    size: 1024 * 1024
+                    size: 1024 * 1024,
+                    imageWidth: nil,
+                    imageHeight: nil
                 ),
                 destinationPath: "/dest/renamed.jpg",
                 checksum: "test2",
@@ -298,7 +320,9 @@ class DuplicateDetectorTests: XCTestCase {
                 relativePath: "photo1.jpg",
                 sourceURL: URL(fileURLWithPath: "/source/photo1.jpg"),
                 checksum: "abc123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         

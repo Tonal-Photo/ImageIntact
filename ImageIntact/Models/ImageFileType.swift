@@ -381,7 +381,7 @@ enum ImageFileType: String, CaseIterable {
 }
 
 // File scanner for analyzing source folders
-class ImageFileScanner {
+actor ImageFileScanner {
     struct ScanInfo {
         let count: Int
         let totalBytes: Int64
@@ -394,8 +394,8 @@ class ImageFileScanner {
     private var currentTask: Task<ScanResult, Error>?
     private var currentDetailedTask: Task<DetailedScanResult, Error>?
     
-    func scan(directory: URL, 
-              progress: @escaping (ScanProgress) -> Void) async throws -> ScanResult {
+    func scan(directory: URL,
+              progress: @escaping @Sendable (ScanProgress) -> Void) async throws -> ScanResult {
         // Cancel any existing scan
         currentTask?.cancel()
         
@@ -471,8 +471,8 @@ class ImageFileScanner {
         return try await task.value
     }
     
-    func scanWithSize(directory: URL, 
-                      progress: @escaping (ScanProgress) -> Void) async throws -> DetailedScanResult {
+    func scanWithSize(directory: URL,
+                      progress: @escaping @Sendable (ScanProgress) -> Void) async throws -> DetailedScanResult {
         // Cancel any existing scan
         currentTask?.cancel()
         

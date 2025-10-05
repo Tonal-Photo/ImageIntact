@@ -58,7 +58,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: "photo.jpg",
                 sourceURL: sourceFile,
                 checksum: try calculateChecksum(for: sourceFile),
-                size: 4
+                size: 4,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -86,7 +88,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: "photo.jpg",
                 sourceURL: sourceFile,
                 checksum: try calculateChecksum(for: sourceFile),
-                size: 4
+                size: 4,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -114,7 +118,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: "photo.jpg",
                 sourceURL: sourceFile,
                 checksum: checksum,
-                size: Int64(content.count)
+                size: Int64(content.count),
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -143,7 +149,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: "photo.jpg",
                 sourceURL: sourceFile,
                 checksum: checksum,
-                size: 14
+                size: 14,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -177,7 +185,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: name,
                 sourceURL: sourceFile,
                 checksum: checksum,
-                size: Int64(content.count)
+                size: Int64(content.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         
@@ -282,7 +292,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: "photo.jpg",
                 sourceURL: sourceFile,
                 checksum: "test",
-                size: 4
+                size: 4,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -311,7 +323,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: "photo.jpg",
                 sourceURL: sourceFile,
                 checksum: checksum,
-                size: 4
+                size: 4,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -342,7 +356,9 @@ class BackupMigrationTests: XCTestCase {
                 relativePath: name,
                 sourceURL: sourceFile,
                 checksum: checksum,
-                size: Int64(content.count)
+                size: Int64(content.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         

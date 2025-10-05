@@ -9,7 +9,7 @@ import Foundation
 import CoreData
 
 /// Event data to be batched
-struct PendingEvent {
+struct PendingEvent: @unchecked Sendable {
     let type: EventType
     let severity: EventSeverity
     let file: URL?

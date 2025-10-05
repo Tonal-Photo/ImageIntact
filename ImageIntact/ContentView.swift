@@ -276,7 +276,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            selectSourceFolder()
+            Task { @MainActor in
+                selectSourceFolder()
+            }
         }
         
         NotificationCenter.default.addObserver(
@@ -328,7 +330,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            showDebugLog()
+            Task { @MainActor in
+                showDebugLog()
+            }
         }
         
         NotificationCenter.default.addObserver(
@@ -336,7 +340,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            exportDebugLog()
+            Task { @MainActor in
+                exportDebugLog()
+            }
         }
         
         NotificationCenter.default.addObserver(
@@ -344,7 +350,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            HelpWindowManager.shared.showHelp()
+            Task { @MainActor in
+                HelpWindowManager.shared.showHelp()
+            }
         }
         
         // Also listen for the ImageIntact Help command
@@ -353,7 +361,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            HelpWindowManager.shared.showHelp()
+            Task { @MainActor in
+                HelpWindowManager.shared.showHelp()
+            }
         }
         
         NotificationCenter.default.addObserver(
@@ -371,7 +381,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            verifyCoreDataStorage()
+            Task { @MainActor in
+                verifyCoreDataStorage()
+            }
         }
         
         // Premium feature notifications
@@ -380,7 +392,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            showPurchaseView = true
+            Task { @MainActor in
+                showPurchaseView = true
+            }
         }
         
         NotificationCenter.default.addObserver(
@@ -388,7 +402,9 @@ struct ContentView: View {
             object: nil,
             queue: .main
         ) { _ in
-            showUpgradeAlert = true
+            Task { @MainActor in
+                showUpgradeAlert = true
+            }
         }
     }
     

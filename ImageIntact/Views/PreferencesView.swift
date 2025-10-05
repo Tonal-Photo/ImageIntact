@@ -240,9 +240,19 @@ struct PerformancePreferencesView: View {
     @State private var showIntelWarning = false
     @State private var showAppleSiliconWarning = false
     @State private var showStreamCopyInfo = false
-    
+    @State private var actualVisionState = false
+
     private var systemInfo: SystemCapabilities.SystemInfo? {
         SystemCapabilities.shared.currentSystemInfo
+    }
+
+    private var visionStateDescription: String {
+        let uiState = preferences.enableVisionFramework
+        let actualState = UserDefaults.standard.bool(forKey: "enableVisionFramework")
+        if uiState != actualState {
+            return "⚠️ Sync issue - UI: \(uiState), Actual: \(actualState)"
+        }
+        return actualState ? "✅ Enabled" : "❌ Disabled"
     }
     
     var body: some View {
@@ -332,17 +342,26 @@ struct PerformancePreferencesView: View {
                     
                         
                         VStack(alignment: .leading, spacing: 10) {
-                            Toggle("Enable Vision Framework features", isOn: $preferences.enableVisionFramework)
-                                .font(.system(size: 13))
-                                .disabled(false) // Now implemented!
-                                .help("AI-powered image analysis for intelligent photo search and organization")
-                                .onChange(of: preferences.enableVisionFramework) { oldValue, newValue in
-                                    if !SystemCapabilities.shared.isAppleSilicon && newValue {
-                                        showIntelWarning = true
-                                    } else if SystemCapabilities.shared.isAppleSilicon && !newValue {
-                                        showAppleSiliconWarning = true
+                            HStack {
+                                Toggle("Enable Vision Framework features", isOn: $preferences.enableVisionFramework)
+                                    .font(.system(size: 13))
+                                    .disabled(false) // Now implemented!
+                                    .help("AI-powered image analysis for intelligent photo search and organization")
+                                    .onChange(of: preferences.enableVisionFramework) { oldValue, newValue in
+                                        if !SystemCapabilities.shared.isAppleSilicon && newValue {
+                                            showIntelWarning = true
+                                        } else if SystemCapabilities.shared.isAppleSilicon && !newValue {
+                                            showAppleSiliconWarning = true
+                                        }
+                                        // Force UserDefaults sync
+                                        UserDefaults.standard.synchronize()
+                                        actualVisionState = newValue
                                     }
-                                }
+
+                                Text(visionStateDescription)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(preferences.enableVisionFramework == actualVisionState ? .secondary : .orange)
+                            }
                             
                             HStack(spacing: 12) {
                                 Text("Processing priority:")
@@ -533,6 +552,15 @@ struct PerformancePreferencesView: View {
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .onAppear {
+            // Sync UI state with actual UserDefaults value
+            actualVisionState = UserDefaults.standard.bool(forKey: "enableVisionFramework")
+            if preferences.enableVisionFramework != actualVisionState {
+                print("⚠️ Vision Framework preference mismatch detected - UI: \(preferences.enableVisionFramework), Actual: \(actualVisionState)")
+                // Force UI to match actual state
+                preferences.enableVisionFramework = actualVisionState
+            }
+        }
         .alert("Performance Warning", isPresented: $showIntelWarning) {
             Button("Enable Anyway") { }
             Button("Cancel", role: .cancel) {

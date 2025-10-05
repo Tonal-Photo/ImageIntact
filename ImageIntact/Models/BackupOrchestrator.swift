@@ -19,9 +19,10 @@ class BackupOrchestrator {
     private var currentSessionID: String?
     
     // MARK: - Callbacks
-    var onStatusUpdate: ((String) -> Void)?
-    var onFailedFile: ((String, String, String) -> Void)?
+    var onStatusUpdate: (@Sendable (String) -> Void)?
+    var onFailedFile: (@Sendable (String, String, String) -> Void)?
     var onPhaseChange: ((BackupPhase) -> Void)?
+    var onProgressUpdate: (() -> Void)?
     
     // MARK: - Initialization
     
@@ -143,19 +144,22 @@ class BackupOrchestrator {
         onPhaseChange?(.buildingManifest)
         
         // Set up manifest builder callbacks
-        await manifestBuilder.setStatusCallback { [weak self] status in
-            self?.onStatusUpdate?(status)
+        let statusCallback = onStatusUpdate
+        await manifestBuilder.setStatusCallback { status in
+            statusCallback?(status)
         }
-        
-        await manifestBuilder.setErrorCallback { [weak self] file, destination, error in
-            self?.onFailedFile?(file, destination, error)
+
+        let errorCallback = onFailedFile
+        await manifestBuilder.setErrorCallback { file, destination, error in
+            errorCallback?(file, destination, error)
             // Don't capture failedFiles directly - could cause retain cycle
         }
         
         // Build the manifest with filtering
+        let cancelCheck = shouldCancel
         guard let manifest = await manifestBuilder.build(
             source: source,
-            shouldCancel: { [weak self] in self?.shouldCancel ?? false },
+            shouldCancel: { cancelCheck },
             filter: filter
         ) else {
             onStatusUpdate?("Backup cancelled or failed")
@@ -223,10 +227,8 @@ class BackupOrchestrator {
             
             // Check if backup exceeds thresholds
             if filteredManifest.count > fileThreshold || totalBytes > sizeThresholdBytes {
-                // We need to show confirmation on main thread
-                let shouldContinue = await MainActor.run { [weak self] in
-                    guard let self = self else { return false }
-                    
+                // We need to show confirmation (already on MainActor)
+                let shouldContinue: Bool = {
                     let alert = NSAlert()
                     alert.messageText = "Large Backup Confirmation"
                     
@@ -269,7 +271,7 @@ class BackupOrchestrator {
                     }
                     
                     return response == .alertFirstButtonReturn
-                }
+                }()
                 
                 if !shouldContinue {
                     onStatusUpdate?("Backup cancelled by user")
@@ -550,6 +552,9 @@ class BackupOrchestrator {
         progressTracker.processedFiles = min(maxCompleted, progressTracker.totalFiles)
         progressTracker.verifiedFiles = min(maxVerified, progressTracker.totalFiles)
         
+        // Notify UI of progress updates
+        onProgressUpdate?()
+
         // Update phase based on activity
         let verifyingCount = verifyingDestinations.count
         if completeCount == coordinator.destinationStatuses.count {

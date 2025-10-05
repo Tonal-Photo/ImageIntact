@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Update Protocol Definitions
 
 /// Represents an available update
-struct AppUpdate {
+struct AppUpdate: Sendable {
     let version: String
     let releaseNotes: String
     let downloadURL: URL
@@ -18,12 +18,12 @@ struct AppUpdate {
 }
 
 /// Protocol for update checking providers
-protocol UpdateProvider {
+protocol UpdateProvider: Sendable {
     /// Check for available updates
     func checkForUpdates(currentVersion: String) async throws -> AppUpdate?
     
     /// Download an update
-    func downloadUpdate(_ update: AppUpdate, progress: @escaping (Double) -> Void) async throws -> URL
+    func downloadUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async throws -> URL
     
     /// Get the provider name for UI/logging
     var providerName: String { get }
@@ -62,7 +62,7 @@ enum UpdateError: LocalizedError {
 // MARK: - Update Settings
 
 /// Settings for update behavior
-struct UpdateSettings: Codable {
+struct UpdateSettings: Codable, Sendable {
     var automaticallyCheckForUpdates: Bool = true
     var checkInterval: TimeInterval = 86400 // 24 hours
     var lastCheckDate: Date?

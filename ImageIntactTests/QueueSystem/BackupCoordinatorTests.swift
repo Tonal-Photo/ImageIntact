@@ -347,7 +347,9 @@ final class BackupCoordinatorTests: XCTestCase {
                 relativePath: "file\(index).jpg",
                 sourceURL: sourceURL.appendingPathComponent("file\(index).jpg"),
                 checksum: "checksum\(index)",
-                size: Int64(1000 * (index + 1))
+                size: Int64(1000 * (index + 1)),
+                imageWidth: nil,
+                imageHeight: nil
             )
         }
     }

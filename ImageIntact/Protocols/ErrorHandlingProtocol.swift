@@ -10,7 +10,7 @@ import Foundation
 // MARK: - Error Classifier Protocol
 
 /// Protocol for classifying errors
-protocol ErrorClassifierProtocol {
+protocol ErrorClassifierProtocol: Sendable {
     static func classify(_ error: Error) -> ErrorCategory
     static func retryStrategy(for error: Error) -> RetryStrategy
     static func userMessage(for error: Error) -> (message: String, action: String?)
@@ -31,7 +31,7 @@ protocol RetryHandlerProtocol: Actor {
     /// Execute an operation with automatic retry on transient failures
     func executeWithRetry<T>(
         operation: String,
-        task: () async throws -> T
+        task: @Sendable () async throws -> T
     ) async throws -> T
     
     /// Execute a file copy operation with retry
@@ -64,33 +64,34 @@ extension RetryHandler: RetryHandlerProtocol {
 // MARK: - Mock Implementations for Testing
 
 /// Mock error classifier for testing
-class MockErrorClassifier: ErrorClassifierProtocol {
-    
-    static var mockCategory: ErrorCategory = .transient
-    static var mockRetryStrategy = RetryStrategy.transientError
-    static var classifyCallCount = 0
-    
+/// Uses nonisolated(unsafe) for test-only mutable state
+final class MockErrorClassifier: ErrorClassifierProtocol, @unchecked Sendable {
+
+    nonisolated(unsafe) static var mockCategory: ErrorCategory = .transient
+    nonisolated(unsafe) static var mockRetryStrategy = RetryStrategy.transientError
+    nonisolated(unsafe) static var classifyCallCount = 0
+
     static func classify(_ error: Error) -> ErrorCategory {
         classifyCallCount += 1
         return mockCategory
     }
-    
+
     static func retryStrategy(for error: Error) -> RetryStrategy {
         return mockRetryStrategy
     }
-    
+
     static func userMessage(for error: Error) -> (message: String, action: String?) {
         return ("Test error", "Test action")
     }
-    
+
     static func isSafeToRetry(_ error: Error) -> Bool {
         return mockCategory == .transient
     }
-    
+
     static func shouldContinueBackup(after error: Error) -> Bool {
         return mockCategory != .critical
     }
-    
+
     static func reset() {
         classifyCallCount = 0
         mockCategory = .transient
@@ -110,7 +111,7 @@ actor MockRetryHandler: RetryHandlerProtocol {
     
     func executeWithRetry<T>(
         operation: String,
-        task: () async throws -> T
+        task: @Sendable () async throws -> T
     ) async throws -> T {
         executeCallCount += 1
         
@@ -135,9 +136,10 @@ actor MockRetryHandler: RetryHandlerProtocol {
         fileOperations: FileOperationsProtocol
     ) async throws {
         copyCallCount += 1
-        
+        let shouldFail = shouldAlwaysFail
+
         try await executeWithRetry(operation: "Copy \(source.lastPathComponent)") {
-            if !self.shouldAlwaysFail {
+            if !shouldFail {
                 // Simulate successful copy
                 return
             }
@@ -152,9 +154,10 @@ actor MockRetryHandler: RetryHandlerProtocol {
         hasher: HashingProtocol
     ) async throws -> Bool {
         verifyCallCount += 1
-        
+        let shouldFail = shouldAlwaysFail
+
         return try await executeWithRetry(operation: "Verify \(source.lastPathComponent)") {
-            return !self.shouldAlwaysFail
+            return !shouldFail
         }
     }
     

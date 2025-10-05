@@ -29,23 +29,23 @@ actor DestinationQueue {
     private var assignedTasks: [FileTask] = []
     
     // Callbacks for UI updates (needs to be set from async context)
-    private var onProgress: ((Int, Int) async -> Void)?
-    private var onStatusUpdate: ((String) async -> Void)?
-    private var onVerificationStateChange: ((Bool, Int) async -> Void)?
+    private var onProgress: (@Sendable (Int, Int) async -> Void)?
+    private var onStatusUpdate: (@Sendable (String) async -> Void)?
+    private var onVerificationStateChange: (@Sendable (Bool, Int) async -> Void)?
     
     // Throttling for progress updates
     private var lastProgressUpdate = Date()
     private let progressUpdateInterval: TimeInterval = 0.1 // Update at most 10 times per second
     
-    func setProgressCallback(_ callback: @escaping (Int, Int) async -> Void) {
+    func setProgressCallback(_ callback: @escaping @Sendable (Int, Int) async -> Void) {
         self.onProgress = callback
     }
     
-    func setStatusCallback(_ callback: @escaping (String) async -> Void) {
+    func setStatusCallback(_ callback: @escaping @Sendable (String) async -> Void) {
         self.onStatusUpdate = callback
     }
     
-    func setVerificationCallback(_ callback: @escaping (Bool, Int) async -> Void) {
+    func setVerificationCallback(_ callback: @escaping @Sendable (Bool, Int) async -> Void) {
         self.onVerificationStateChange = callback
     }
     
@@ -179,7 +179,10 @@ actor DestinationQueue {
                 
                 // Report progress update
                 if let progressCallback = onProgress {
+                    print("📈 Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent) (SUCCESS)")
                     await progressCallback(completedFiles, totalFiles)
+                } else {
+                    print("⚠️ No progress callback set for \(destination.lastPathComponent)")
                 }
                 
             case .skipped(let reason):
@@ -192,7 +195,10 @@ actor DestinationQueue {
                 
                 // Report progress update
                 if let progressCallback = onProgress {
+                    print("📈 Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent) (SUCCESS)")
                     await progressCallback(completedFiles, totalFiles)
+                } else {
+                    print("⚠️ No progress callback set for \(destination.lastPathComponent)")
                 }
                 
             case .failed(let error):
@@ -310,12 +316,13 @@ actor DestinationQueue {
                 if let destSize = fileOperations.fileSize(at: destPath),
                    destSize == task.size {
                     // Size matches, verify checksum with retry for transient read errors
+                    let currentlyCancelled = shouldCancel
                     let checksumMatches = try await RetryHandler.shared.executeWithRetry(
                         operation: "Verify checksum for \(task.relativePath)"
                     ) {
                         let existingChecksum = try await fileOperations.calculateChecksum(
                             for: destPath,
-                            shouldCancel: { shouldCancel }
+                            shouldCancel: { currentlyCancelled }
                         )
                         return existingChecksum == task.checksum
                     }
@@ -393,51 +400,8 @@ actor DestinationQueue {
                     )
                 }
 
-                // Trigger Vision analysis for image files if enabled
-                if UserDefaults.standard.bool(forKey: "enableVisionFramework") {
-                    // Check if it's an image file
-                    let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif", "tiff", "bmp", "raw", "dng", "cr2", "nef", "arw"]
-                    let fileExtension = task.sourceURL.pathExtension.lowercased()
-
-                    if imageExtensions.contains(fileExtension) {
-                        // Queue for async analysis (non-blocking)
-                        Task.detached(priority: .background) {
-                            // Check availability on MainActor
-                            let isVisionAvailable = await MainActor.run {
-                                return VisionAnalyzer.shared.isAvailable
-                            }
-
-                            guard isVisionAvailable else { return }
-
-                            do {
-                                // Calculate checksum for the file
-                                let checksum = task.checksum
-
-                                // Analyze the copied file at destination
-                                await MainActor.run {
-                                    Task {
-                                        do {
-                                            try await VisionAnalyzer.shared.analyzeImage(
-                                                at: destPath,
-                                                checksum: checksum
-                                            )
-
-                                            ApplicationLogger.shared.debug(
-                                                "Vision analysis completed for: \(task.relativePath)",
-                                                category: .vision
-                                            )
-                                        } catch {
-                                            ApplicationLogger.shared.warning(
-                                                "Vision analysis failed for \(task.relativePath): \(error)",
-                                                category: .vision
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // Vision analysis moved to verification phase to avoid permission issues
+                // and IOSurface exhaustion during rapid file copying
 
                 // Note: Don't increment completedFiles here - it's already done in processFileTask
                 // based on the result (success/skipped/failed)
@@ -579,14 +543,86 @@ actor DestinationQueue {
         
         print("✅ Copying complete for \(destination.lastPathComponent), starting verification...")
         print("📊 Debug: assignedTasks.count = \(assignedTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)")
-        
+
         // Debug: Check what files are in assignedTasks
         let sampleFiles = assignedTasks.prefix(5).map { $0.relativePath }
         print("📊 Sample of assignedTasks for \(destination.lastPathComponent): \(sampleFiles)")
-        
+
         // Debug: Check what files were successfully copied
         let copiedSample = Array(successfullyCopiedFiles.prefix(5))
         print("📊 Sample of successfullyCopiedFiles for \(destination.lastPathComponent): \(copiedSample)")
+
+        // Collect all successfully copied image files for Vision analysis
+        let visionEnabled = UserDefaults.standard.bool(forKey: "enableVisionFramework")
+        var imageFilesForVision: [(url: URL, checksum: String)] = []
+
+        if visionEnabled {
+            let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif", "tiff", "bmp", "raw", "dng", "cr2", "nef", "arw"]
+
+            for task in assignedTasks {
+                // Only process files that were successfully copied to this destination
+                guard successfullyCopiedFiles.contains(task.relativePath) else { continue }
+
+                let fileExtension = task.sourceURL.pathExtension.lowercased()
+                if imageExtensions.contains(fileExtension) {
+                    // Use SOURCE URL instead of destination to avoid permission issues
+                    // Vision analysis results are stored by checksum, so they apply to all copies
+                    imageFilesForVision.append((url: task.sourceURL, checksum: task.checksum))
+                }
+            }
+
+            if !imageFilesForVision.isEmpty {
+                print("🔍 Queuing \(imageFilesForVision.count) source images for Vision analysis during verification phase")
+
+                // Get the source root folder URL (need to go up to the originally selected folder)
+                // The source files are in /Users/konrad/Pictures/C1/outputs/jpeg_full_res/
+                // We need to pass the originally selected source folder, not a subfolder
+                var sourceFolderURL: URL? = nil
+                if let firstTask = assignedTasks.first {
+                    // Get the parent directory that was originally selected
+                    // This is typically the folder that has the security-scoped bookmark
+                    var currentURL = firstTask.sourceURL.deletingLastPathComponent()
+
+                    // Keep going up until we find a folder we can access (the bookmarked one)
+                    // or reach a reasonable root (e.g., Pictures folder)
+                    while currentURL.pathComponents.count > 3 {
+                        if currentURL.startAccessingSecurityScopedResource() {
+                            currentURL.stopAccessingSecurityScopedResource()
+                            sourceFolderURL = currentURL
+                            print("🔐 Found accessible source folder: \(currentURL.path)")
+                            break
+                        }
+                        currentURL = currentURL.deletingLastPathComponent()
+                    }
+
+                    // If we couldn't find an accessible folder, use the immediate parent
+                    if sourceFolderURL == nil {
+                        sourceFolderURL = firstTask.sourceURL.deletingLastPathComponent()
+                        print("⚠️ Using immediate parent folder: \(sourceFolderURL?.path ?? "nil")")
+                    }
+                }
+
+                // Queue all images for Vision analysis using SOURCE files
+                // This avoids sandbox permission issues with external drives
+                Task.detached(priority: .background) {
+                    // Check if Vision is available
+                    let isVisionAvailable = await MainActor.run {
+                        return VisionAnalyzer.shared.isAvailable
+                    }
+
+                    guard isVisionAvailable else {
+                        print("⚠️ Vision Framework not available on this system")
+                        return
+                    }
+
+                    // Queue source files with their checksums and source folder for security scope
+                    await VisionAnalyzer.shared.queueImagesForAnalysisWithChecksums(
+                        imageFilesForVision,
+                        sourceFolderURL: sourceFolderURL
+                    )
+                }
+            }
+        }
         
         // Small delay before setting isVerifying to ensure UI sees copying complete first
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
@@ -629,9 +665,10 @@ actor DestinationQueue {
                 
                 // Verify checksum
                 let verifyStartTime = Date()
+                let currentlyCancelled = shouldCancel
                 let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
-                    shouldCancel: { shouldCancel }
+                    shouldCancel: { currentlyCancelled }
                 )
                 
                 if actualChecksum == task.checksum {

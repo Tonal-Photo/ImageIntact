@@ -8,7 +8,8 @@
 import SwiftUI
 import AppKit
 
-class TroubleshootingWindowManager: ObservableObject {
+@MainActor
+final class TroubleshootingWindowManager: ObservableObject, Sendable {
     static let shared = TroubleshootingWindowManager()
     private var troubleshootingWindow: NSWindow?
 

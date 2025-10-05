@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol abstraction for file system operations to enable testing
-protocol FileSystemProtocol {
+protocol FileSystemProtocol: Sendable {
     func fileExists(at url: URL) -> Bool
     func fileExists(atPath path: String) -> Bool
     func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws
@@ -15,7 +15,7 @@ protocol FileSystemProtocol {
 }
 
 /// Real implementation using FileManager
-final class RealFileSystem: FileSystemProtocol {
+final class RealFileSystem: FileSystemProtocol, @unchecked Sendable {
     private let fileManager = FileManager.default
     
     func fileExists(at url: URL) -> Bool {
@@ -60,7 +60,7 @@ final class RealFileSystem: FileSystemProtocol {
 }
 
 /// Mock implementation for testing
-final class MockFileSystem: FileSystemProtocol {
+final class MockFileSystem: FileSystemProtocol, @unchecked Sendable {
     var files: Set<String> = []
     var directories: Set<String> = []
     var fileContents: [String: Data] = [:]

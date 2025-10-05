@@ -79,9 +79,9 @@ actor BatchFileProcessor {
     // MARK: - Batch Processing
     
     /// Process files in batches
-    func processBatch<T>(
+    func processBatch<T: Sendable>(
         _ files: [T],
-        batchOperation: @escaping ([T]) async throws -> Void
+        batchOperation: @escaping @Sendable ([T]) async throws -> Void
     ) async throws {
         for batch in files.chunked(into: batchSize) {
             try await batchOperation(batch)
@@ -91,7 +91,7 @@ actor BatchFileProcessor {
     /// Copy files in batches with optimized buffer usage
     func batchCopyFiles(
         _ tasks: [(source: URL, destination: URL)],
-        progress: @escaping (Int) -> Void
+        progress: @escaping @Sendable (Int) -> Void
     ) async throws {
         var completed = 0
         
@@ -115,10 +115,8 @@ actor BatchFileProcessor {
                             
                             completed += 1
                             let currentProgress = completed
-                            Task {
-                                await MainActor.run {
-                                    progress(currentProgress)
-                                }
+                            Task { @MainActor in
+                                progress(currentProgress)
                             }
                         }
                         continuation.resume()

@@ -8,7 +8,8 @@
 import SwiftUI
 import AppKit
 
-class HelpWindowManager {
+@MainActor
+final class HelpWindowManager: Sendable {
     static let shared = HelpWindowManager()
     private var helpWindow: NSWindow?
     private var bugReportWindow: NSWindow?

@@ -10,12 +10,12 @@ import Foundation
 
 /// Default checksum calculator using the existing optimized implementation
 /// This ensures 100% compatibility with existing checksums
-class DefaultChecksumCalculator: ChecksumCalculatorProtocol {
+final class DefaultChecksumCalculator: ChecksumCalculatorProtocol, Sendable {
     
     /// Singleton instance for convenience
     static let shared = DefaultChecksumCalculator()
     
-    func calculateSHA256(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String {
+    func calculateSHA256(for url: URL, shouldCancel: @escaping @Sendable () -> Bool) async throws -> String {
         // Validate file exists and is readable
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw NSError(domain: "ImageIntact", code: 1, 
@@ -68,7 +68,7 @@ class DefaultChecksumCalculator: ChecksumCalculatorProtocol {
     }
     
     /// Verify checksum with detailed error reporting
-    func verifyChecksum(for url: URL, expectedChecksum: String, shouldCancel: @escaping () -> Bool) async throws -> Bool {
+    func verifyChecksum(for url: URL, expectedChecksum: String, shouldCancel: @escaping @Sendable () -> Bool) async throws -> Bool {
         let actualChecksum = try await calculateSHA256(for: url, shouldCancel: shouldCancel)
         
         // For debugging/logging purposes, we can detect mismatches

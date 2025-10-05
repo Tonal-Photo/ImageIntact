@@ -70,7 +70,9 @@ class MockDuplicateDetector: DuplicateDetectorProtocol {
                     relativePath: "test.jpg",
                     sourceURL: URL(fileURLWithPath: "/test.jpg"),
                     checksum: "abc123",
-                    size: 1024
+                    size: 1024,
+                    imageWidth: nil,
+                    imageHeight: nil
                 ),
                 destinationPath: "/dest/test.jpg",
                 checksum: "abc123",

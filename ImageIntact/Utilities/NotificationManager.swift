@@ -10,7 +10,8 @@ import UserNotifications
 import AppKit
 
 /// Manages system notifications for the application
-class NotificationManager: NSObject {
+@MainActor
+final class NotificationManager: NSObject, Sendable {
     static let shared = NotificationManager()
     
     private var hasRequestedAuthorization = false
@@ -31,31 +32,39 @@ class NotificationManager: NSObject {
             switch settings.authorizationStatus {
             case .notDetermined:
                 // User hasn't been asked yet, request permission
-                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-                    self?.isAuthorized = granted
-                    
-                    if let error = error {
-                        logWarning("Failed to request notification authorization: \(error)")
-                    } else if granted {
-                        logInfo("Notification authorization granted")
-                    } else {
-                        logInfo("Notification authorization denied by user")
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
+                    Task { @MainActor in
+                        self?.isAuthorized = granted
+
+                        if let error = error {
+                            logWarning("Failed to request notification authorization: \(error)")
+                        } else if granted {
+                            logInfo("Notification authorization granted")
+                        } else {
+                            logInfo("Notification authorization denied by user")
+                        }
                     }
                 }
                 
             case .denied:
                 // User has explicitly denied permission
-                self?.isAuthorized = false
-                logInfo("Notifications are disabled (user denied permission)")
-                
+                Task { @MainActor [weak self] in
+                    self?.isAuthorized = false
+                    logInfo("Notifications are disabled (user denied permission)")
+                }
+
             case .authorized, .provisional, .ephemeral:
                 // User has granted permission
-                self?.isAuthorized = true
-                logInfo("Notifications are already authorized")
-                
+                Task { @MainActor [weak self] in
+                    self?.isAuthorized = true
+                    logInfo("Notifications are already authorized")
+                }
+
             @unknown default:
-                self?.isAuthorized = false
-                logInfo("Unknown notification authorization status")
+                Task { @MainActor [weak self] in
+                    self?.isAuthorized = false
+                    logInfo("Unknown notification authorization status")
+                }
             }
         }
         
@@ -93,10 +102,12 @@ class NotificationManager: NSObject {
         
         // Schedule the notification
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                logError("Failed to send completion notification: \(error)")
-            } else {
-                logInfo("Backup completion notification sent")
+            Task { @MainActor in
+                if let error = error {
+                    logError("Failed to send completion notification: \(error)")
+                } else {
+                    logInfo("Backup completion notification sent")
+                }
             }
         }
     }
@@ -120,8 +131,10 @@ class NotificationManager: NSObject {
         
         // Schedule the notification
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                logError("Failed to send failure notification: \(error)")
+            Task { @MainActor in
+                if let error = error {
+                    logError("Failed to send failure notification: \(error)")
+                }
             }
         }
     }
@@ -142,8 +155,10 @@ class NotificationManager: NSObject {
         )
         
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                logError("Failed to send warning notification: \(error)")
+            Task { @MainActor in
+                if let error = error {
+                    logError("Failed to send warning notification: \(error)")
+                }
             }
         }
     }
@@ -181,7 +196,7 @@ class NotificationManager: NSObject {
 
 // MARK: - UNUserNotificationCenterDelegate
 
-extension NotificationManager: UNUserNotificationCenterDelegate {
+extension NotificationManager: @preconcurrency UNUserNotificationCenterDelegate {
     /// Handle notifications when app is in foreground
     func userNotificationCenter(_ center: UNUserNotificationCenter, 
                                 willPresent notification: UNNotification, 

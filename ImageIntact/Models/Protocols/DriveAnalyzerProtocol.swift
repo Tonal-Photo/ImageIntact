@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol abstraction for drive analysis operations
-protocol DriveAnalyzerProtocol {
+protocol DriveAnalyzerProtocol: Sendable {
     func analyzeDrive(at url: URL) -> DriveInfo?
     func getBSDName(for url: URL) -> String?
     func isNetworkVolume(at url: URL) -> Bool
@@ -14,7 +14,7 @@ typealias ConnectionType = DriveAnalyzer.ConnectionType
 typealias DriveType = DriveAnalyzer.DriveType
 
 /// Real implementation using IOKit
-final class RealDriveAnalyzer: DriveAnalyzerProtocol {
+final class RealDriveAnalyzer: DriveAnalyzerProtocol, Sendable {
     
     func analyzeDrive(at url: URL) -> DriveInfo? {
         // Use the existing static method
@@ -61,7 +61,7 @@ final class RealDriveAnalyzer: DriveAnalyzerProtocol {
 }
 
 /// Mock implementation for testing
-final class MockDriveAnalyzer: DriveAnalyzerProtocol {
+final class MockDriveAnalyzer: DriveAnalyzerProtocol, @unchecked Sendable {
     
     /// Mock drive configurations
     var mockDrives: [URL: DriveInfo] = [:]

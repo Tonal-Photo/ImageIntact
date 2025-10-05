@@ -10,8 +10,8 @@ import UniformTypeIdentifiers
 import CoreServices
 
 /// Modern file type detection using macOS Uniform Type Identifiers
-class UTIFileTypeDetector {
-    
+final class UTIFileTypeDetector: Sendable {
+
     static let shared = UTIFileTypeDetector()
     
     private init() {}

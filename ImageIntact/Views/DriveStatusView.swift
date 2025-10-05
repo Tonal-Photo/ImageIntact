@@ -187,7 +187,9 @@ struct DriveStatusView: View {
     }
     
     private func checkDriveHealth() {
-        healthReport = SMARTMonitor.getHealthReport(for: driveInfo.mountPath)
+        Task {
+            healthReport = await SMARTMonitor.getHealthReport(for: driveInfo.mountPath)
+        }
     }
     
     private func formatBytes(_ bytes: Int64) -> String {

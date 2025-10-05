@@ -8,7 +8,7 @@
 import Foundation
 
 /// Protocol defining file system operations for backup functionality
-protocol FileOperationsProtocol {
+protocol FileOperationsProtocol: Sendable {
     /// Copy a file from source to destination
     /// - Parameters:
     ///   - source: Source file URL
@@ -46,7 +46,7 @@ protocol FileOperationsProtocol {
     /// - Returns: SHA256 checksum as hex string
     /// - Throws: Error if checksum calculation fails
     /// Note: This method is kept for compatibility but delegates to ChecksumCalculatorProtocol
-    func calculateChecksum(for url: URL, shouldCancel: () -> Bool) async throws -> String
+    func calculateChecksum(for url: URL, shouldCancel: @Sendable () -> Bool) async throws -> String
     
     /// Start accessing a security-scoped resource
     /// - Parameter url: Resource URL

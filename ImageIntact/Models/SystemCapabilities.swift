@@ -8,7 +8,8 @@
 import Foundation
 import CoreData
 
-class SystemCapabilities {
+@MainActor
+final class SystemCapabilities: Sendable {
     static let shared = SystemCapabilities()
 
     private let container: NSPersistentContainer
@@ -86,7 +87,7 @@ class SystemCapabilities {
         let detectedAt: Date
     }
     
-    private(set) var currentSystemInfo: SystemInfo?
+    @MainActor private(set) var currentSystemInfo: SystemInfo?
     
     private init() {
         // Create model programmatically
@@ -177,7 +178,16 @@ class SystemCapabilities {
         
         var brand = [CChar](repeating: 0, count: size)
         sysctlbyname("machdep.cpu.brand_string", &brand, &size, nil, 0)
-        return String(cString: brand).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Find the actual string length (without trailing nulls)
+        var actualLength = brand.count
+        while actualLength > 0 && brand[actualLength - 1] == 0 {
+            actualLength -= 1
+        }
+
+        // Convert to String using the recommended approach
+        let brandData: [UInt8] = brand.prefix(actualLength).map { UInt8(bitPattern: $0) }
+        return String(decoding: brandData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func parseProcessor(brandString: String, arch: String) -> (ProcessorType, String) {

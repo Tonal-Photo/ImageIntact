@@ -11,8 +11,8 @@ enum UpdateCheckResult {
 }
 
 /// Manages application updates using a protocol-based provider system
-@Observable
-class UpdateManager {
+@Observable @MainActor
+final class UpdateManager: Sendable {
     // MARK: - Published Properties
     var isCheckingForUpdates = false
     var availableUpdate: AppUpdate?
@@ -23,8 +23,8 @@ class UpdateManager {
     var updateCheckResult: UpdateCheckResult = .checking
     
     // MARK: - Test Mode Properties
-    static var testMode = false
-    static var mockVersion: String?
+    nonisolated(unsafe) static var testMode = false
+    nonisolated(unsafe) static var mockVersion: String?
     var isTestMode: Bool { UpdateManager.testMode }
     
     private var updateProvider: UpdateProvider
@@ -430,7 +430,7 @@ class UpdateManager {
 
 #if DEBUG
 /// Mock provider for testing update UI without hitting GitHub
-class MockUpdateProvider: UpdateProvider {
+final class MockUpdateProvider: UpdateProvider, Sendable {
     var providerName: String { "Mock Provider" }
     
     func checkForUpdates(currentVersion: String) async throws -> AppUpdate? {
@@ -451,7 +451,7 @@ class MockUpdateProvider: UpdateProvider {
         )
     }
     
-    func downloadUpdate(_ update: AppUpdate, progress: @escaping (Double) -> Void) async throws -> URL {
+    func downloadUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
         // Simulate download progress
         for i in 0...10 {
             try await Task.sleep(nanoseconds: 100_000_000)

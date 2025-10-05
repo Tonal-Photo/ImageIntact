@@ -1,7 +1,7 @@
 import Foundation
 
 /// GitHub-based update provider that checks releases via GitHub API
-class GitHubUpdateProvider: UpdateProvider {
+final class GitHubUpdateProvider: UpdateProvider, Sendable {
     private let owner = "kmichels"
     private let repo = "ImageIntact"
     private let session = URLSession.shared
@@ -105,7 +105,7 @@ class GitHubUpdateProvider: UpdateProvider {
     }
     
     /// Download an update with progress tracking
-    func downloadUpdate(_ update: AppUpdate, progress: @escaping (Double) -> Void) async throws -> URL {
+    func downloadUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
         print("📥 GitHubUpdateProvider: Starting download from \(update.downloadURL)")
         
         // Use URLSession's built-in download with delegate for progress

@@ -92,20 +92,81 @@ class EventLogger {
                 if !isCompatible {
                     print("⚠️ Core Data store incompatible with new model, removing old store...")
 
-                    // Remove all store files
-                    try? FileManager.default.removeItem(at: storeURL)
-                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-shm"))
-                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-wal"))
+                    // Ensure the directory exists for removal operations
+                    let storeDirectory = storeURL.deletingLastPathComponent()
 
-                    print("✅ Old store removed, will create fresh database")
+                    // Remove all SQLite files (including journal files)
+                    let fileManager = FileManager.default
+                    do {
+                        // Remove main database file
+                        if fileManager.fileExists(atPath: storeURL.path) {
+                            try fileManager.removeItem(at: storeURL)
+                        }
+
+                        // Remove shared memory file
+                        let shmURL = storeURL.appendingPathExtension("-shm")
+                        if fileManager.fileExists(atPath: shmURL.path) {
+                            try fileManager.removeItem(at: shmURL)
+                        }
+
+                        // Remove write-ahead log file
+                        let walURL = storeURL.appendingPathExtension("-wal")
+                        if fileManager.fileExists(atPath: walURL.path) {
+                            try fileManager.removeItem(at: walURL)
+                        }
+
+                        // Also remove any journal file if it exists
+                        let journalURL = storeURL.appendingPathExtension("-journal")
+                        if fileManager.fileExists(atPath: journalURL.path) {
+                            try fileManager.removeItem(at: journalURL)
+                        }
+
+                        print("✅ Old store files removed successfully")
+
+                        // Ensure directory still exists and is writable
+                        if !fileManager.fileExists(atPath: storeDirectory.path) {
+                            try fileManager.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+                            print("✅ Recreated store directory")
+                        }
+                    } catch {
+                        print("❌ Error removing old store files: \(error)")
+                        // Try to continue anyway - Core Data might be able to handle it
+                    }
                 }
             } catch {
                 print("⚠️ Could not read store metadata, removing potentially corrupt store: \(error)")
 
                 // Remove the store if we can't read its metadata
-                try? FileManager.default.removeItem(at: storeURL)
-                try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-shm"))
-                try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("-wal"))
+                let fileManager = FileManager.default
+                let storeDirectory = storeURL.deletingLastPathComponent()
+
+                do {
+                    // Remove all SQLite-related files
+                    if fileManager.fileExists(atPath: storeURL.path) {
+                        try fileManager.removeItem(at: storeURL)
+                    }
+                    let shmURL = storeURL.appendingPathExtension("-shm")
+                    if fileManager.fileExists(atPath: shmURL.path) {
+                        try fileManager.removeItem(at: shmURL)
+                    }
+                    let walURL = storeURL.appendingPathExtension("-wal")
+                    if fileManager.fileExists(atPath: walURL.path) {
+                        try fileManager.removeItem(at: walURL)
+                    }
+                    let journalURL = storeURL.appendingPathExtension("-journal")
+                    if fileManager.fileExists(atPath: journalURL.path) {
+                        try fileManager.removeItem(at: journalURL)
+                    }
+
+                    print("✅ Corrupt store files removed")
+
+                    // Ensure directory exists
+                    if !fileManager.fileExists(atPath: storeDirectory.path) {
+                        try fileManager.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+                    }
+                } catch {
+                    print("❌ Failed to remove corrupt store: \(error)")
+                }
             }
         }
 
@@ -138,7 +199,39 @@ class EventLogger {
         container.loadPersistentStores { storeDescription, error in
             if let error = error {
                 print("❌ EventLogger Core Data error: \(error)")
-                // Fatal error in development, but in production we'd handle gracefully
+
+                // Try one more time to clean up and recreate
+                if let storeURL = storeDescription.url {
+                    print("🔄 Attempting final cleanup and retry...")
+
+                    // Remove ALL files in the store directory with the database name
+                    let fileManager = FileManager.default
+                    let directory = storeURL.deletingLastPathComponent()
+                    let baseName = storeURL.deletingPathExtension().lastPathComponent
+
+                    do {
+                        let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                        for file in contents {
+                            if file.lastPathComponent.hasPrefix(baseName) {
+                                try? fileManager.removeItem(at: file)
+                                print("  Removed: \(file.lastPathComponent)")
+                            }
+                        }
+
+                        // Try creating an in-memory store as fallback
+                        print("⚠️ Creating in-memory store as fallback")
+                        storeDescription.url = URL(fileURLWithPath: "/dev/null")
+                        storeDescription.type = NSInMemoryStoreType
+
+                        // Note: This means data won't persist, but app won't crash
+                        print("⚠️ WARNING: Using in-memory store - Vision data will not persist!")
+                    } catch {
+                        print("❌ Final cleanup failed: \(error)")
+                    }
+                }
+
+                // In production, we'd use an in-memory store, but for development let's still crash
+                // to ensure we fix the issue properly
                 fatalError("Unable to create Core Data store: \(error)")
             } else {
                 print("✅ EventLogger Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")")
@@ -148,11 +241,11 @@ class EventLogger {
         
         // Configure contexts
         container.viewContext.automaticallyMergesChangesFromParent = true
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
         
         // Create background context for writes
         backgroundContext = container.newBackgroundContext()
-        backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        backgroundContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
     }
     
     // MARK: - Session Management
@@ -354,20 +447,27 @@ class EventLogger {
         duration: TimeInterval? = nil
     ) {
         guard let sessionID = currentSessionID else { return }
-        
+
+        // Convert metadata to Data before the closure to avoid Sendable issues
+        let metadataData: Data? = if let metadata = metadata {
+            try? JSONSerialization.data(withJSONObject: metadata)
+        } else {
+            nil
+        }
+
         backgroundContext.perform { [weak self] in
             guard let self = self else { return }
-            
+
             // Fetch the session in this context
             let sessionRequest = NSFetchRequest<BackupSession>(entityName: "BackupSession")
             sessionRequest.predicate = NSPredicate(format: "id == %@", sessionID as CVarArg)
             sessionRequest.fetchLimit = 1
-            
+
             guard let session = try? self.backgroundContext.fetch(sessionRequest).first else {
                 print("⚠️ Session not found for event logging")
                 return
             }
-            
+
             let event = BackupEvent(context: self.backgroundContext)
             event.id = UUID()
             event.timestamp = Date()
@@ -379,14 +479,12 @@ class EventLogger {
             event.checksum = checksum
             event.errorMessage = error?.localizedDescription
             event.session = session
-            
+
             if let duration = duration {
                 event.durationMs = Int32(duration * 1000)
             }
-            
-            if let metadata = metadata {
-                event.metadata = try? JSONSerialization.data(withJSONObject: metadata)
-            }
+
+            event.metadata = metadataData
             
             do {
                 try self.backgroundContext.save()

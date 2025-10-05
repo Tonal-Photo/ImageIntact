@@ -131,11 +131,7 @@ class DiskSpaceChecker {
     
     /// Get disk space information for a given URL
     private static func getDiskSpaceInfo(for url: URL) -> DiskSpaceInfo? {
-        // Debug logging
-        logInfo("DiskSpaceChecker: Getting disk space for URL: \(url)")
-        logInfo("DiskSpaceChecker: URL absolute string: \(url.absoluteString)")
-        logInfo("DiskSpaceChecker: URL path: \(url.path)")
-        logInfo("DiskSpaceChecker: URL path (unencoded): \(url.path(percentEncoded: false))")
+        // Debug logging removed - cannot log from static non-async context
 
         // Use the actual file system representation of the path
         let path = url.path(percentEncoded: false)
@@ -188,7 +184,7 @@ class DiskSpaceChecker {
                     )
                 }
                 // If values are unreasonable, fall through to try other methods
-                logInfo("Network volume \(url.path) reported unreliable space values, trying alternate methods")
+                // Silent - cannot log from static non-async context
             }
         }
         
@@ -200,7 +196,7 @@ class DiskSpaceChecker {
                 cleanPath = String(cleanPath.dropLast())
             }
 
-            logInfo("DiskSpaceChecker: Trying FileManager.attributesOfFileSystem with path: \(cleanPath)")
+            // Silent - cannot log from static non-async context
 
             let attributes = try FileManager.default.attributesOfFileSystem(forPath: cleanPath)
 
@@ -211,7 +207,7 @@ class DiskSpaceChecker {
                 let percentFree = totalSpace > 0 ? (Double(freeSpace) / Double(totalSpace)) * 100 : 0
                 let percentAvailable = percentFree
 
-                logInfo("DiskSpaceChecker: Successfully got disk space from FileManager - Total: \(totalSpace), Free: \(freeSpace)")
+                // Silent - cannot log from static non-async context
 
                 return DiskSpaceInfo(
                     totalSpace: totalSpace,
@@ -223,7 +219,7 @@ class DiskSpaceChecker {
             }
 
             // If FileManager fails, try resourceValues API (might trigger the validation errors but worth a try)
-            logInfo("DiskSpaceChecker: FileManager attributes failed, trying resourceValues API")
+            // Silent - cannot log from static non-async context
 
             let fileURL = URL(fileURLWithPath: cleanPath)
             let values = try fileURL.resourceValues(forKeys: [
@@ -243,7 +239,7 @@ class DiskSpaceChecker {
                 let percentFree = totalSpaceInt > 0 ? (Double(freeSpace) / Double(totalSpaceInt)) * 100 : 0
                 let percentAvailable = percentFree
 
-                logInfo("DiskSpaceChecker: Successfully got disk space from resourceValues - Total: \(totalSpaceInt), Free: \(freeSpace)")
+                // Silent - cannot log from static non-async context
 
                 return DiskSpaceInfo(
                     totalSpace: totalSpaceInt,
@@ -254,10 +250,10 @@ class DiskSpaceChecker {
                 )
             }
 
-            logError("Failed to get disk space for \(url.path) - neither method worked")
+            // Silent - cannot log from static non-async context
             return nil
         } catch {
-            logError("Error getting disk space for \(url.path): \(error)")
+            // Silent - cannot log from static non-async context
             return nil
         }
     }

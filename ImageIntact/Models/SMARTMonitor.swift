@@ -155,14 +155,14 @@ class SMARTMonitor {
     // MARK: - Public API
     
     /// Get health report for a drive
-    static func getHealthReport(for url: URL) -> HealthReport? {
+    static func getHealthReport(for url: URL) async -> HealthReport? {
         guard let bsdName = getBSDName(for: url) else {
-            logError("Could not get BSD name for \(url.path)")
+            await logError("Could not get BSD name for \(url.path)")
             return nil
         }
-        
-        guard let smartData = readSMARTData(for: bsdName) else {
-            logInfo("No S.M.A.R.T. data available for \(url.lastPathComponent)")
+
+        guard let smartData = await readSMARTData(for: bsdName) else {
+            await logInfo("No S.M.A.R.T. data available for \(url.lastPathComponent)")
             return createBasicReport(for: url)
         }
         
@@ -170,8 +170,8 @@ class SMARTMonitor {
     }
     
     /// Check if a drive is healthy enough for backup
-    static func isDriveHealthy(for url: URL) -> Bool {
-        guard let report = getHealthReport(for: url) else {
+    static func isDriveHealthy(for url: URL) async -> Bool {
+        guard let report = await getHealthReport(for: url) else {
             // If we can't get S.M.A.R.T. data, assume it's okay
             return true
         }
@@ -193,7 +193,7 @@ class SMARTMonitor {
         return DriveAnalyzer.getBSDName(for: url)
     }
     
-    private static func readSMARTData(for bsdName: String) -> [Int: Int]? {
+    private static func readSMARTData(for bsdName: String) async -> [Int: Int]? {
         var smartData: [Int: Int] = [:]
         
         // This is simplified - actual S.M.A.R.T. reading requires more complex IOKit calls
@@ -229,7 +229,7 @@ class SMARTMonitor {
         if let smartStatus = props["SMART Status"] as? String {
             // Parse S.M.A.R.T. attributes if available
             // This is highly vendor-specific
-            logInfo("S.M.A.R.T. Status: \(smartStatus)")
+            await logInfo("S.M.A.R.T. Status: \(smartStatus)")
         }
         
         // For now, return mock data for testing

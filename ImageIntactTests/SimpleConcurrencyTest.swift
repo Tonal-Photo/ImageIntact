@@ -45,7 +45,9 @@ class SimpleConcurrencyTest: XCTestCase {
                 relativePath: fileName,
                 sourceURL: file,
                 checksum: "test_\(i)",
-                size: Int64(data.count)
+                size: Int64(data.count),
+                imageWidth: nil,
+                imageHeight: nil
             ))
         }
         

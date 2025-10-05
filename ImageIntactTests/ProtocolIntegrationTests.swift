@@ -23,7 +23,9 @@ class ProtocolIntegrationTests: XCTestCase {
                 relativePath: "test.jpg",
                 sourceURL: URL(fileURLWithPath: "/test.jpg"),
                 checksum: "abc123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         
@@ -172,13 +174,17 @@ class ProtocolIntegrationTests: XCTestCase {
                 relativePath: "keep.jpg",
                 sourceURL: URL(fileURLWithPath: "/keep.jpg"),
                 checksum: "keep123",
-                size: 1024
+                size: 1024,
+                imageWidth: nil,
+                imageHeight: nil
             ),
             FileManifestEntry(
                 relativePath: "skip.jpg",
                 sourceURL: URL(fileURLWithPath: "/skip.jpg"),
                 checksum: "skip456",
-                size: 2048
+                size: 2048,
+                imageWidth: nil,
+                imageHeight: nil
             )
         ]
         

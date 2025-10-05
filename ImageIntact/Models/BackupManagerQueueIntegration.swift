@@ -1,11 +1,13 @@
 import Foundation
 
 // MARK: - File Manifest Entry
-public struct FileManifestEntry {
+public struct FileManifestEntry: Sendable {
     public let relativePath: String
     public let sourceURL: URL
     public let checksum: String
     public let size: Int64
+    public let imageWidth: Int32?
+    public let imageHeight: Int32?
 }
 
 // MARK: - Queue-Based Backup Integration
@@ -79,27 +81,36 @@ extension BackupManager {
         )
         
         // Set up callbacks
-        orchestrator.onStatusUpdate = { [weak self] status in
-            self?.statusMessage = status
+        orchestrator.onStatusUpdate = { @Sendable status in
+            Task { @MainActor in
+                self.statusMessage = status
+            }
         }
-        
-        orchestrator.onFailedFile = { [weak self] file, destination, error in
-            self?.failedFiles.append((file: file, destination: destination, error: error))
-            
-            // Track in statistics
-            if let fileURL = URL(string: file),
-               let fileType = ImageFileType.from(fileExtension: fileURL.pathExtension) {
-                self?.statistics.recordFileProcessed(
-                    fileType: fileType,
-                    size: 0,
-                    destination: destination,
-                    success: false
-                )
+
+        orchestrator.onFailedFile = { @Sendable file, destination, error in
+            Task { @MainActor in
+                self.failedFiles.append((file: file, destination: destination, error: error))
+
+                // Track in statistics
+                if let fileURL = URL(string: file),
+                   let fileType = ImageFileType.from(fileExtension: fileURL.pathExtension) {
+                    self.statistics.recordFileProcessed(
+                        fileType: fileType,
+                        size: 0,
+                        destination: destination,
+                        success: false
+                    )
+                }
             }
         }
         
         orchestrator.onPhaseChange = { [weak self] phase in
             self?.currentPhase = phase
+        }
+
+        // Add callback to sync progress updates to UI
+        orchestrator.onProgressUpdate = { [weak self] in
+            self?.syncProgressFromTracker()
         }
         
         // Store reference for cancellation
@@ -185,7 +196,7 @@ extension BackupManager {
         statistics.completeBackup()
         
         // Stop preventing sleep
-        SleepPrevention.shared.stopPreventingSleep()
+        await SleepPrevention.shared.stopPreventingSleep()
         
         // Show completion report if not cancelled
         if !shouldCancel {
@@ -434,9 +445,10 @@ extension BackupManager {
         
         // Build a quick manifest for checking - now with cancellation support
         let manifestBuilder = ManifestBuilder()
+        let cancelCheck = shouldCancel
         guard let manifest = await manifestBuilder.build(
             source: source,
-            shouldCancel: { [weak self] in self?.shouldCancel ?? true },
+            shouldCancel: { cancelCheck },
             filter: fileTypeFilter
         ) else {
             print("❌ Could not build manifest for migration check")
@@ -492,9 +504,10 @@ extension BackupManager {
         
         // Build manifest if needed - with cancellation support
         let manifestBuilder = ManifestBuilder()
+        let cancelCheck = shouldCancel
         guard let manifest = await manifestBuilder.build(
             source: source,
-            shouldCancel: { [weak self] in self?.shouldCancel ?? true },
+            shouldCancel: { cancelCheck },
             filter: fileTypeFilter
         ) else {
             print("❌ Could not build manifest for duplicate check")

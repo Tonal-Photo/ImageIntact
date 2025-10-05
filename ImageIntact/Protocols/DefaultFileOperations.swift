@@ -10,10 +10,9 @@ import CryptoKit
 
 /// Default implementation of FileOperationsProtocol using system FileManager
 /// Uses NSFileCoordinator for network volumes to ensure data integrity
-class DefaultFileOperations: FileOperationsProtocol {
-    
+final class DefaultFileOperations: FileOperationsProtocol, @unchecked Sendable {
+
     private let fileManager = FileManager.default
-    private let fileCoordinator = NSFileCoordinator(filePresenter: nil)
     
     func copyItem(at source: URL, to destination: URL) async throws {
         // Check if source is a symbolic link
@@ -64,8 +63,9 @@ class DefaultFileOperations: FileOperationsProtocol {
         var readError: NSError?
         var writeError: NSError?
         var copyError: Error?
-        
+
         await withCheckedContinuation { continuation in
+            let fileCoordinator = NSFileCoordinator(filePresenter: nil)
             fileCoordinator.coordinate(
                 readingItemAt: source,
                 options: [.withoutChanges],

@@ -3,14 +3,13 @@ import Darwin // For extended attribute functions
 
 /// Cancellable file operations using stream-based copying
 /// Uses NSFileCoordinator for network volumes to ensure data integrity
-class CancellableFileOperations: FileOperationsProtocol {
+final class CancellableFileOperations: FileOperationsProtocol, @unchecked Sendable {
     private let fileManager = FileManager.default
-    private var bufferSize: Int {
+    private func getBufferSize() async -> Int {
         // Use user-configured buffer size for network operations
-        return PreferencesManager.shared.networkBufferSize * 1024 * 1024
+        return await PreferencesManager.shared.networkBufferSize * 1024 * 1024
     }
     private let fileCoordinator = NSFileCoordinator(filePresenter: nil)
-    private let prefs = PreferencesManager.shared
     
     /// Copy a file using streams that can be cancelled
     func copyItem(at source: URL, to destination: URL) async throws {
@@ -28,7 +27,14 @@ class CancellableFileOperations: FileOperationsProtocol {
         // Check if either source or destination is on a network volume
         let isNetwork = isNetworkVolume(url: source) || isNetworkVolume(url: destination)
         
-        if isNetwork && prefs.useStreamCopyForNetwork {
+        let useStreamCopy: Bool
+        if isNetwork {
+            useStreamCopy = await PreferencesManager.shared.useStreamCopyForNetwork
+        } else {
+            useStreamCopy = false
+        }
+
+        if useStreamCopy {
             // Use stream-based copy for network volumes (cancellable and throttleable)
             try await streamCopy(from: source, to: destination, isNetwork: true)
         } else if isNetwork {
@@ -184,7 +190,7 @@ class CancellableFileOperations: FileOperationsProtocol {
     
     /// Coordinated copy with timeout for network volumes
     private func coordinatedCopyWithTimeout(from source: URL, to destination: URL) async throws {
-        let timeout = TimeInterval(prefs.networkCopyTimeout)
+        let timeout = TimeInterval(await PreferencesManager.shared.networkCopyTimeout)
         
         // Race between timeout and copy using withThrowingTaskGroup
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -298,8 +304,8 @@ class CancellableFileOperations: FileOperationsProtocol {
         
         // Track timing for throttling
         var lastChunkTime = Date()
-        let speedLimit = isNetwork ? prefs.networkCopySpeedLimit : 0 // MB/s
-        let chunkSize = isNetwork ? bufferSize : (4 * 1024 * 1024) // Use configured size for network
+        let speedLimit = isNetwork ? await PreferencesManager.shared.networkCopySpeedLimit : 0 // MB/s
+        let chunkSize = isNetwork ? await getBufferSize() : (4 * 1024 * 1024) // Use configured size for network
         
         // Copy in chunks that can be cancelled between iterations
         while true {
@@ -364,7 +370,7 @@ class CancellableFileOperations: FileOperationsProtocol {
         return try fileManager.attributesOfItem(atPath: url.path)
     }
     
-    func calculateChecksum(for url: URL, shouldCancel: () -> Bool) async throws -> String {
+    func calculateChecksum(for url: URL, shouldCancel: @Sendable () -> Bool) async throws -> String {
         // Use the existing static method from BackupManager for consistency
         // This uses SHA-256 which is what the rest of the app expects
         // Pass network volume status for optimized reading

@@ -9,11 +9,11 @@ import Foundation
 import CryptoKit
 
 /// Buffer pool for reusing memory allocations across checksum operations
-final class ChecksumBufferPool {
+final class ChecksumBufferPool: Sendable {
     static let shared = ChecksumBufferPool()
-    
+
     private let lock = NSLock()
-    private var buffersBySize: [Int: [UnsafeMutableRawBufferPointer]] = [:]
+    nonisolated(unsafe) private var buffersBySize: [Int: [UnsafeMutableRawBufferPointer]] = [:]
     private let maxBuffersPerSize = 2 // Keep up to 2 buffers of each size
     
     deinit {
@@ -203,7 +203,7 @@ public struct OptimizedChecksum {
 }
 
 /// Checksum-specific errors
-enum ChecksumError: LocalizedError {
+enum ChecksumError: LocalizedError, Sendable {
     case cancelled
     case readError(String)
     

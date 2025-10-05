@@ -3,6 +3,7 @@ import SwiftUI
 struct MultiDestinationProgressSection: View {
     @Bindable var backupManager: BackupManager
     @State private var networkDestinations: Set<String> = []
+    @StateObject private var visionAnalyzer = VisionAnalyzer.shared
     
     private var destinations: [URL] {
         backupManager.destinationURLs.compactMap { $0 }
@@ -32,8 +33,10 @@ struct MultiDestinationProgressSection: View {
     }
     
     var body: some View {
-        if !backupManager.statusMessage.isEmpty || backupManager.isProcessing {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 8) {
+            // Main backup progress
+            if !backupManager.statusMessage.isEmpty || backupManager.isProcessing {
+                VStack(alignment: .leading, spacing: 12) {
                 Divider()
                     .padding(.horizontal, 20)
                 
@@ -108,15 +111,54 @@ struct MultiDestinationProgressSection: View {
                     }
                     .padding(.horizontal, 20)
                 }
-            }
-            .transition(.opacity)
-            .task {
-                await checkDriveTypes()
-            }
-            .onChange(of: destinations) { _, _ in
-                Task {
+                }
+                .transition(.opacity)
+                .task {
                     await checkDriveTypes()
                 }
+                .onChange(of: destinations) { _, _ in
+                    Task {
+                        await checkDriveTypes()
+                    }
+                }
+            }
+
+            // Vision Analysis Progress - show when analyzing
+            if visionAnalyzer.isAnalyzing && visionAnalyzer.totalAnalysisCount > 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .padding(.horizontal, 20)
+
+                    HStack {
+                        Image(systemName: "eye.circle")
+                            .foregroundColor(.blue)
+                        Text("Vision Analysis")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+
+                        Spacer()
+
+                        Text("\(visionAnalyzer.currentAnalysisCount)/\(visionAnalyzer.totalAnalysisCount) images")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 20)
+
+                    ProgressView(value: visionAnalyzer.analysisProgress)
+                        .progressViewStyle(.linear)
+                        .padding(.horizontal, 20)
+
+                    Text("Analyzing images for objects, scenes, and faces...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 20)
+                }
+                .padding(.vertical, 12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding(.horizontal, 20)
+                .transition(.opacity)
             }
         }
     }

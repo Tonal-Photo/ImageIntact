@@ -192,39 +192,43 @@ class DriveIdentityManager: ObservableObject {
     // MARK: - Event Handlers
     
     private func handleDriveConnected(_ driveInfo: DriveAnalyzer.DriveInfo) {
-        guard let identity = findOrCreateDriveIdentity(for: driveInfo) else {
-            ApplicationLogger.shared.info("Drive connected (no identity): \(driveInfo.deviceName)", category: .app)
-            return
-        }
-        
-        // Check S.M.A.R.T. health
-        if let healthReport = SMARTMonitor.getHealthReport(for: driveInfo.mountPath) {
-            updateDriveHealth(identity, healthReport: healthReport)
-            
-            // Show warning if health is poor
-            if healthReport.status == .poor || healthReport.status == .failing {
+        Task {
+            guard let identity = findOrCreateDriveIdentity(for: driveInfo) else {
+                ApplicationLogger.shared.info("Drive connected (no identity): \(driveInfo.deviceName)", category: .app)
+                return
+            }
+
+            // Check S.M.A.R.T. health
+            if let healthReport = await SMARTMonitor.getHealthReport(for: driveInfo.mountPath) {
+                updateDriveHealth(identity, healthReport: healthReport)
+
+                // Show warning if health is poor
+                if healthReport.status == .poor || healthReport.status == .failing {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ShowDriveHealthWarning"),
+                        object: nil,
+                        userInfo: ["drive": identity, "health": healthReport]
+                    )
+                }
+            }
+
+            // Auto-start backup if configured
+            if identity.autoStartBackup {
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("ShowDriveHealthWarning"),
+                    name: NSNotification.Name("AutoStartBackup"),
                     object: nil,
-                    userInfo: ["drive": identity, "health": healthReport]
+                    userInfo: ["drive": identity, "driveInfo": driveInfo]
                 )
             }
+
+            ApplicationLogger.shared.info("Drive connected: \(identity.userLabel ?? driveInfo.deviceName)", category: .app)
         }
-        
-        // Auto-start backup if configured
-        if identity.autoStartBackup {
-            NotificationCenter.default.post(
-                name: NSNotification.Name("AutoStartBackup"),
-                object: nil,
-                userInfo: ["drive": identity, "driveInfo": driveInfo]
-            )
-        }
-        
-        ApplicationLogger.shared.info("Drive connected: \(identity.userLabel ?? driveInfo.deviceName)", category: .app)
     }
     
     private func handleDriveDisconnected(_ driveInfo: DriveAnalyzer.DriveInfo) {
-        ApplicationLogger.shared.info("Drive disconnected: \(driveInfo.deviceName)", category: .app)
+        Task { @MainActor in
+            ApplicationLogger.shared.info("Drive disconnected: \(driveInfo.deviceName)", category: .app)
+        }
     }
     
     // MARK: - Helper Methods

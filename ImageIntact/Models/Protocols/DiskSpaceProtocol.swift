@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol abstraction for disk space checking operations
-protocol DiskSpaceProtocol {
+protocol DiskSpaceProtocol: Sendable {
     func checkDestinationSpace(destination: URL, requiredBytes: Int64, additionalBuffer: Int64) -> DiskSpaceChecker.SpaceCheckResult
     func checkAllDestinations(destinations: [URL], requiredBytes: Int64) -> [DiskSpaceChecker.SpaceCheckResult]
     func getDiskSpaceInfo(for url: URL) -> DiskSpaceChecker.DiskSpaceInfo?
@@ -10,7 +10,7 @@ protocol DiskSpaceProtocol {
 }
 
 /// Real implementation using FileManager and system calls
-final class RealDiskSpaceChecker: DiskSpaceProtocol {
+final class RealDiskSpaceChecker: DiskSpaceProtocol, Sendable {
     
     func checkDestinationSpace(destination: URL, requiredBytes: Int64, additionalBuffer: Int64 = 100_000_000) -> DiskSpaceChecker.SpaceCheckResult {
         return DiskSpaceChecker.checkDestinationSpace(destination: destination, requiredBytes: requiredBytes, additionalBuffer: additionalBuffer)
@@ -40,7 +40,7 @@ final class RealDiskSpaceChecker: DiskSpaceProtocol {
 }
 
 /// Mock implementation for testing
-final class MockDiskSpaceChecker: DiskSpaceProtocol {
+final class MockDiskSpaceChecker: DiskSpaceProtocol, @unchecked Sendable {
     
     /// Mock configurations
     var mockSpaceInfo: [URL: DiskSpaceChecker.DiskSpaceInfo] = [:]

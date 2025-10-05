@@ -9,7 +9,7 @@ import Foundation
 
 /// Update provider for App Store builds
 /// App Store builds don't need manual update checks since the App Store handles updates
-class AppStoreUpdateProvider: UpdateProvider {
+final class AppStoreUpdateProvider: UpdateProvider, Sendable {
     
     var providerName: String {
         return "App Store"
@@ -24,7 +24,7 @@ class AppStoreUpdateProvider: UpdateProvider {
     }
     
     /// App Store builds don't download updates directly
-    func downloadUpdate(_ update: AppUpdate, progress: @escaping (Double) -> Void) async throws -> URL {
+    func downloadUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
         throw UpdateError.unsupportedPlatform
     }
 }
@@ -32,7 +32,7 @@ class AppStoreUpdateProvider: UpdateProvider {
 /// Alternative: Sparkle-based update provider for direct distribution
 /// This could be implemented later if you want to distribute App Store builds outside the App Store
 /// For example, for beta testing or enterprise distribution
-class SparkleUpdateProvider: UpdateProvider {
+final class SparkleUpdateProvider: UpdateProvider, @unchecked Sendable {
     
     var providerName: String {
         return "Sparkle"
@@ -51,7 +51,7 @@ class SparkleUpdateProvider: UpdateProvider {
         return nil
     }
     
-    func downloadUpdate(_ update: AppUpdate, progress: @escaping (Double) -> Void) async throws -> URL {
+    func downloadUpdate(_ update: AppUpdate, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
         // TODO: Implement Sparkle update download
         throw UpdateError.unsupportedPlatform
     }

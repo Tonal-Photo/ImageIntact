@@ -387,7 +387,9 @@ final class DestinationQueueTests: XCTestCase {
             relativePath: relativePath,
             sourceURL: sourceURL,
             checksum: checksum,
-            size: size
+            size: size,
+            imageWidth: nil,
+            imageHeight: nil
         )
         return FileTask(from: entry, priority: priority)
     }

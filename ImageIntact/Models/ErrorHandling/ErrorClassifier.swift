@@ -8,7 +8,7 @@
 import Foundation
 
 /// Types of errors that can occur during backup operations
-enum ErrorCategory {
+enum ErrorCategory: Sendable {
     case transient      // Can be retried (network timeout, temporary lock)
     case permanent      // Cannot be retried (permission denied, corrupt file)
     case critical       // Should stop backup (disk full, destination unmounted)
@@ -16,7 +16,7 @@ enum ErrorCategory {
 }
 
 /// Retry strategy for handling errors
-struct RetryStrategy {
+struct RetryStrategy: Sendable {
     let shouldRetry: Bool
     let maxAttempts: Int
     let baseDelay: TimeInterval
@@ -50,7 +50,7 @@ struct RetryStrategy {
 }
 
 /// Classifies errors and determines appropriate handling strategies
-class ErrorClassifier {
+final class ErrorClassifier: Sendable {
     
     // MARK: - Error Classification
     

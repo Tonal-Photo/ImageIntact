@@ -76,7 +76,9 @@ struct ImageIntactApp: App {
                         object: nil,
                         queue: .main
                     ) { _ in
-                        showPreferences = true
+                        Task { @MainActor in
+                            showPreferences = true
+                        }
                     }
                 }
         }
@@ -213,9 +215,19 @@ struct ImageIntactApp: App {
                 Button("Verify Core Data Storage") {
                     NotificationCenter.default.post(name: NSNotification.Name("VerifyCoreData"), object: nil)
                 }
-                
+
                 Divider()
-                
+
+                Button("Vision Analysis Results...") {
+                    Task { @MainActor in
+                        VisionResultsWindowManager.shared.showVisionResults()
+                    }
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
+                .help("View AI-analyzed photo metadata")
+
+                Divider()
+
                 Button("Check for Updates...") {
                     NotificationCenter.default.post(name: NSNotification.Name("CheckForUpdates"), object: nil)
                 }

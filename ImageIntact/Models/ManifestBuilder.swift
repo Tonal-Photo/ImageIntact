@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 /// Handles building file manifests for backup operations
 /// Extracted from BackupManager to follow Single Responsibility Principle
@@ -7,10 +8,10 @@ actor ManifestBuilder {
     // MARK: - Properties
     
     /// Callback for status updates
-    private var onStatusUpdate: ((String) -> Void)?
-    
+    private var onStatusUpdate: (@Sendable (String) -> Void)?
+
     /// Callback for failed files
-    private var onFileError: ((String, String, String) -> Void)?
+    private var onFileError: (@Sendable (String, String, String) -> Void)?
     
     /// Batch processor for optimized file operations
     private let batchProcessor = BatchFileProcessor()
@@ -126,11 +127,11 @@ actor ManifestBuilder {
     
     // MARK: - Callbacks
     
-    func setStatusCallback(_ callback: @escaping (String) -> Void) {
+    func setStatusCallback(_ callback: @escaping @Sendable (String) -> Void) {
         self.onStatusUpdate = callback
     }
     
-    func setErrorCallback(_ callback: @escaping (String, String, String) -> Void) {
+    func setErrorCallback(_ callback: @escaping @Sendable (String, String, String) -> Void) {
         self.onFileError = callback
     }
     
@@ -144,7 +145,7 @@ actor ManifestBuilder {
     /// - Returns: Array of manifest entries or nil if cancelled/failed
     func build(
         source: URL,
-        shouldCancel: @escaping () -> Bool,
+        shouldCancel: @escaping @Sendable () -> Bool,
         filter: FileTypeFilter = FileTypeFilter()
     ) async -> [FileManifestEntry]? {
         
@@ -155,7 +156,7 @@ actor ManifestBuilder {
         
         // Set enumerator options based on preferences
         var enumeratorOptions: FileManager.DirectoryEnumerationOptions = []
-        if PreferencesManager.shared.skipHiddenFiles {
+        if await PreferencesManager.shared.skipHiddenFiles {
             enumeratorOptions.insert(.skipsHiddenFiles)
         }
         
@@ -185,7 +186,7 @@ actor ManifestBuilder {
                 guard resourceValues.isRegularFile == true else { continue }
                 
                 // Skip cache and temporary files if preference is enabled
-                if PreferencesManager.shared.excludeCacheFiles && isCacheFile(url) {
+                if await PreferencesManager.shared.excludeCacheFiles && isCacheFile(url) {
                     // Debug: log cache files being skipped
                     print("🗑️ Skipping cache/temp file: \(url.lastPathComponent)")
                     continue
@@ -269,14 +270,28 @@ actor ManifestBuilder {
                 }
                 continue
             }
-            
+
+            // Get image dimensions for image files
+            var imageWidth: Int32? = nil
+            var imageHeight: Int32? = nil
+
+            let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif", "tiff", "bmp", "raw", "dng", "cr2", "nef", "arw"]
+            if imageExtensions.contains(url.pathExtension.lowercased()) {
+                if let dimensions = getImageDimensions(from: url) {
+                    imageWidth = Int32(dimensions.width)
+                    imageHeight = Int32(dimensions.height)
+                }
+            }
+
             let entry = FileManifestEntry(
                 relativePath: relativePath,
                 sourceURL: url,
                 checksum: checksum,
-                size: size
+                size: size,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight
             )
-            
+
             manifest.append(entry)
         }
         
@@ -285,9 +300,23 @@ actor ManifestBuilder {
     }
     
     // MARK: - Private Methods
-    
+
+    /// Get image dimensions without loading full image into memory
+    private func getImageDimensions(from url: URL) -> (width: Int, height: Int)? {
+        guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any] else {
+            return nil
+        }
+
+        let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
+        let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
+
+        guard width > 0 && height > 0 else { return nil }
+        return (width: width, height: height)
+    }
+
     /// Calculate SHA256 checksum for a file
-    private func calculateChecksum(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String {
+    private func calculateChecksum(for url: URL, shouldCancel: @escaping @Sendable () -> Bool) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel())
         }.value

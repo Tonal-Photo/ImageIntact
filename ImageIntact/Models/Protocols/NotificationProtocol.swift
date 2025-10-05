@@ -1,34 +1,40 @@
 import Foundation
 
 /// Protocol abstraction for notification operations
-protocol NotificationProtocol {
+protocol NotificationProtocol: Sendable {
     func sendBackupCompletionNotification(filesCopied: Int, destinations: Int, duration: TimeInterval)
     func sendBackupFailureNotification(error: String)
     func sendWarningNotification(title: String, message: String)
 }
 
 /// Real implementation using NotificationManager
-final class RealNotificationService: NotificationProtocol {
-    
+final class RealNotificationService: NotificationProtocol, Sendable {
+
     func sendBackupCompletionNotification(filesCopied: Int, destinations: Int, duration: TimeInterval) {
-        NotificationManager.shared.sendBackupCompletionNotification(
-            filesCopied: filesCopied,
-            destinations: destinations,
-            duration: duration
-        )
+        Task { @MainActor in
+            NotificationManager.shared.sendBackupCompletionNotification(
+                filesCopied: filesCopied,
+                destinations: destinations,
+                duration: duration
+            )
+        }
     }
-    
+
     func sendBackupFailureNotification(error: String) {
-        NotificationManager.shared.sendBackupFailureNotification(error: error)
+        Task { @MainActor in
+            NotificationManager.shared.sendBackupFailureNotification(error: error)
+        }
     }
-    
+
     func sendWarningNotification(title: String, message: String) {
-        NotificationManager.shared.sendWarningNotification(title: title, message: message)
+        Task { @MainActor in
+            NotificationManager.shared.sendWarningNotification(title: title, message: message)
+        }
     }
 }
 
 /// Mock implementation for testing
-final class MockNotificationService: NotificationProtocol {
+final class MockNotificationService: NotificationProtocol, @unchecked Sendable {
     
     struct Notification {
         let title: String

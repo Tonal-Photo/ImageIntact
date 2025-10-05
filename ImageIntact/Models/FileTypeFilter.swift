@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents the user's file type selection for backup filtering
-public struct FileTypeFilter: Codable, Equatable {
+public struct FileTypeFilter: Codable, Equatable, Sendable {
     /// Set of file extensions to include (e.g., "nef", "jpg", "mov")
     /// Empty set means include all types (no filtering)
     public var includedExtensions: Set<String>

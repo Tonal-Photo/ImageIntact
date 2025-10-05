@@ -38,6 +38,12 @@ class BackupManager {
     internal let notificationService: NotificationProtocol
     internal let driveAnalyzer: DriveAnalyzerProtocol
     internal let diskSpaceChecker: DiskSpaceProtocol
+
+    // Sync progress tracker values to local properties for UI updates
+    func syncProgressFromTracker() {
+        destinationProgress = progressTracker.destinationProgress
+        destinationStates = progressTracker.destinationStates
+    }
     
     // MARK: - Published Properties
     var sourceURL: URL? = nil
@@ -96,8 +102,8 @@ class BackupManager {
         set { progressTracker.totalBytesToCopy = newValue }
     }
     var estimatedSecondsRemaining: TimeInterval? { progressTracker.estimatedSecondsRemaining }
-    var destinationProgress: [String: Int] { progressTracker.destinationProgress }
-    var destinationStates: [String: String] { progressTracker.destinationStates }
+    var destinationProgress: [String: Int] = [:]
+    var destinationStates: [String: String] = [:]
     var currentPhase: BackupPhase = .idle
     var phaseProgress: Double { progressTracker.phaseProgress }
     var overallProgress: Double { progressTracker.overallProgress }
@@ -814,11 +820,10 @@ class BackupManager {
         debugLog = []
         hasWrittenDebugLog = false
         
-        // Start preventing sleep
-        SleepPrevention.shared.startPreventingSleep(reason: "ImageIntact backup to \(destinations.count) destination(s)")
-        
         // Use the new queue-based backup system for parallel destination processing
         Task { [weak self] in
+            // Start preventing sleep
+            await SleepPrevention.shared.startPreventingSleep(reason: "ImageIntact backup to \(destinations.count) destination(s)")
             await self?.performQueueBasedBackup(source: source, destinations: destinations)
         }
     }
@@ -852,7 +857,7 @@ class BackupManager {
             self.progressTracker.resetAll()
             
             // Stop sleep prevention
-            SleepPrevention.shared.stopPreventingSleep()
+            await SleepPrevention.shared.stopPreventingSleep()
         }
         
         // Cancel orchestrator if using new system
@@ -1315,7 +1320,8 @@ extension BackupManager {
         if let status = resourceValues?.ubiquitousItemDownloadingStatus {
             // Status can be: .current, .downloaded, .notDownloaded
             if status == .notDownloaded {
-                logWarning("File is in iCloud but not downloaded locally: \(fileURL.lastPathComponent)")
+                // Can't use logWarning from nonisolated context
+                print("⚠️ File is in iCloud but not downloaded locally: \(fileURL.lastPathComponent)")
                 throw NSError(domain: "ImageIntact", code: 7, userInfo: [NSLocalizedDescriptionKey: "File is in iCloud but not downloaded: \(fileURL.lastPathComponent)"])
             }
         }
