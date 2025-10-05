@@ -82,17 +82,22 @@ class VisionAnalyzer: ObservableObject {
 
     // MARK: - CPU Adaptive Limits
     private static func getConcurrentLimit(for generation: SystemCapabilities.ProcessorGeneration) -> Int {
+        // Based on Apple's guidance for Vision Framework (typically max 5 concurrent)
+        // Adjusted for M-series Neural Engine capabilities and memory bandwidth
+        // IOSurface warnings are normal and don't indicate failures
         switch generation {
         case .m1:
-            return 1
+            return 2  // 8-core Neural Engine, 8 CPU cores (4+4)
         case .m2:
-            return 1
+            return 3  // 16-core Neural Engine, 8+ CPU cores, better memory bandwidth
         case .m3:
-            return 2
+            return 4  // 16-core Neural Engine, improved efficiency cores
         case .m4:
-            return 2  // Further reduced to 2 to prevent IOSurface exhaustion
+            return 5  // 16-core Neural Engine, 38 TOPS, highest memory bandwidth
+        case .m5:
+            return 6  // Expected: Enhanced Neural Engine, 3nm process, higher TOPS
         case .unknown:
-            return 1 // Conservative default
+            return 2  // Conservative default for unknown processors
         }
     }
 

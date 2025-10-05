@@ -19,6 +19,7 @@ final class SystemCapabilities: Sendable {
         case m2
         case m3
         case m4
+        case m5
         case unknown
     }
 
@@ -46,6 +47,10 @@ final class SystemCapabilities: Sendable {
         case appleM4Pro = "Apple M4 Pro"
         case appleM4Max = "Apple M4 Max"
         case appleM4Ultra = "Apple M4 Ultra"
+        case appleM5 = "Apple M5"
+        case appleM5Pro = "Apple M5 Pro"
+        case appleM5Max = "Apple M5 Max"
+        case appleM5Ultra = "Apple M5 Ultra"
         case appleSiliconUnknown = "Apple Silicon"
         
         // Intel
@@ -60,6 +65,7 @@ final class SystemCapabilities: Sendable {
                  .appleM2, .appleM2Pro, .appleM2Max, .appleM2Ultra,
                  .appleM3, .appleM3Pro, .appleM3Max, .appleM3Ultra,
                  .appleM4, .appleM4Pro, .appleM4Max, .appleM4Ultra,
+                 .appleM5, .appleM5Pro, .appleM5Max, .appleM5Ultra,
                  .appleSiliconUnknown:
                 return true
             default:
@@ -231,6 +237,14 @@ final class SystemCapabilities: Sendable {
                 return (.appleM4Pro, "Apple M4 Pro")
             } else if cleanBrand.contains("M4") {
                 return (.appleM4, "Apple M4")
+            } else if cleanBrand.contains("M5 Ultra") {
+                return (.appleM5Ultra, "Apple M5 Ultra")
+            } else if cleanBrand.contains("M5 Max") {
+                return (.appleM5Max, "Apple M5 Max")
+            } else if cleanBrand.contains("M5 Pro") {
+                return (.appleM5Pro, "Apple M5 Pro")
+            } else if cleanBrand.contains("M5") {
+                return (.appleM5, "Apple M5")
             } else {
                 return (.appleSiliconUnknown, "Apple Silicon")
             }
@@ -417,6 +431,8 @@ final class SystemCapabilities: Sendable {
             return .m3
         case .appleM4, .appleM4Pro, .appleM4Max, .appleM4Ultra:
             return .m4
+        case .appleM5, .appleM5Pro, .appleM5Max, .appleM5Ultra:
+            return .m5
         default:
             return .unknown
         }
