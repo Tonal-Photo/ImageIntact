@@ -218,13 +218,13 @@ struct ImageIntactApp: App {
 
                 Divider()
 
-                Button("Vision Analysis Results...") {
+                Button("Image Content Analysis...") {
                     Task { @MainActor in
                         VisionResultsWindowManager.shared.showVisionResults()
                     }
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
-                .help("View AI-analyzed photo metadata")
+                .help("View Vision Framework and Core Image analysis results")
 
                 Divider()
 

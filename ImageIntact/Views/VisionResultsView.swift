@@ -1,7 +1,7 @@
 import SwiftUI
 import CoreData
 
-struct VisionResultsView: View {
+struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab = "overview"
     @State private var searchText = ""
@@ -17,6 +17,14 @@ struct VisionResultsView: View {
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(key: "confidence", ascending: false)]
     ) private var allScenes: FetchedResults<SceneClassification>
+
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(key: "id", ascending: false)]
+    ) private var colorAnalyses: FetchedResults<ImageColorAnalysis>
+
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(key: "id", ascending: false)]
+    ) private var qualityMetrics: FetchedResults<ImageQualityMetrics>
 
     private var filteredImages: [ImageMetadata] {
         var results = Array(allImages)
@@ -83,11 +91,29 @@ struct VisionResultsView: View {
         }.count
     }
 
+    private var monochromeImages: Int {
+        colorAnalyses.filter { $0.isMonochrome }.count
+    }
+
+    private var averageQualityScore: String {
+        let goodCount = qualityMetrics.filter {
+            ($0.overallQuality ?? "") == "Good" || ($0.overallQuality ?? "") == "Excellent"
+        }.count
+        let total = qualityMetrics.count
+        guard total > 0 else { return "N/A" }
+        let percentage = (goodCount * 100) / total
+        return "\(percentage)%"
+    }
+
+    private var blurryImages: Int {
+        qualityMetrics.filter { $0.blurScore > 0.5 }.count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Label("Vision Analysis Results", systemImage: "eye.circle.fill")
+                Label("Image Content Analysis Results", systemImage: "eye.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
 
                 Spacer()
@@ -134,7 +160,7 @@ struct VisionResultsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Summary Statistics
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Analysis Summary")
+                    Text("Vision & Core Image Analysis Summary")
                         .font(.system(size: 16, weight: .semibold))
 
                     LazyVGrid(columns: [
@@ -142,6 +168,7 @@ struct VisionResultsView: View {
                         GridItem(.flexible()),
                         GridItem(.flexible())
                     ], spacing: 16) {
+                        // Vision Framework Stats
                         StatCard(
                             title: "Total Analyzed",
                             value: "\(allImages.count)",
@@ -161,6 +188,28 @@ struct VisionResultsView: View {
                             value: "\(imagesWithText)",
                             icon: "text.magnifyingglass",
                             color: .orange
+                        )
+
+                        // Core Image Stats
+                        StatCard(
+                            title: "Monochrome",
+                            value: "\(monochromeImages)",
+                            icon: "circle.lefthalf.filled",
+                            color: .gray
+                        )
+
+                        StatCard(
+                            title: "Quality Score",
+                            value: averageQualityScore,
+                            icon: "star.fill",
+                            color: .yellow
+                        )
+
+                        StatCard(
+                            title: "Blurry Photos",
+                            value: "\(blurryImages)",
+                            icon: "camera.metering.spot",
+                            color: .red
                         )
                     }
                 }

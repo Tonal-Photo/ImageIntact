@@ -119,6 +119,11 @@ class VisionAnalyzer: ObservableObject {
         // Get original image dimensions first (without loading full image)
         let originalDimensions = getImageDimensions(from: url)
 
+        // Run Core Image analysis in parallel with Vision
+        let coreImageTask = Task {
+            try await CoreImageAnalyzer.shared.analyzeImage(at: url, checksum: checksum)
+        }
+
         // Update UI
         await MainActor.run {
             self.currentImageName = url.lastPathComponent
@@ -246,6 +251,9 @@ class VisionAnalyzer: ObservableObject {
             category: .vision
         )
 
+        // Wait for Core Image analysis to complete
+        let coreImageResult = try? await coreImageTask.value
+
         // Process and store results
         await storeAnalysisResults(
             url: url,
@@ -254,7 +262,8 @@ class VisionAnalyzer: ObservableObject {
             sceneResults: sceneResults,
             faceResults: faceResults,
             textResults: textResults,
-            animalResults: animalResults
+            animalResults: animalResults,
+            coreImageResult: coreImageResult
         )
 
         // Force cleanup of image resources to prevent IOSurface accumulation
@@ -454,6 +463,11 @@ class VisionAnalyzer: ObservableObject {
         // Get original dimensions
         let originalDimensions = getImageDimensions(from: url)
 
+        // Run Core Image analysis in parallel
+        let coreImageTask = Task {
+            try await CoreImageAnalyzer.shared.analyzeImage(at: url, checksum: checksum)
+        }
+
         // Update UI
         await MainActor.run {
             self.currentImageName = url.lastPathComponent
@@ -527,6 +541,9 @@ class VisionAnalyzer: ObservableObject {
             print("  🐾 Animals: \(animalTypes.joined(separator: ", "))")
         }
 
+        // Wait for Core Image analysis to complete
+        let coreImageResult = try? await coreImageTask.value
+
         // Store results
         await storeAnalysisResults(
             url: url,
@@ -535,7 +552,8 @@ class VisionAnalyzer: ObservableObject {
             sceneResults: sceneResults,
             faceResults: faceResults,
             textResults: textResults,
-            animalResults: animalResults
+            animalResults: animalResults,
+            coreImageResult: coreImageResult
         )
 
         // Log completion
@@ -601,7 +619,8 @@ class VisionAnalyzer: ObservableObject {
         sceneResults: [VNClassificationObservation]?,
         faceResults: [VNFaceObservation]?,
         textResults: [VNRecognizedTextObservation]?,
-        animalResults: [VNRecognizedObjectObservation]?
+        animalResults: [VNRecognizedObjectObservation]?,
+        coreImageResult: CoreImageAnalysisResult? = nil
     ) async {
         let context = EventLogger.shared.backgroundContext
 
@@ -687,6 +706,68 @@ class VisionAnalyzer: ObservableObject {
                 exifEntity.setValue(exifData.focalLength, forKey: "focalLength")
                 exifEntity.setValue(exifData.exposureTime, forKey: "exposureTime")
                 exifEntity.setValue(metadata, forKey: "imageMetadata")
+            }
+
+            // Store Core Image analysis results
+            if let coreImage = coreImageResult {
+                // Store color analysis
+                if let colorAnalysis = coreImage.colorAnalysis {
+                    let colorEntity = NSEntityDescription.insertNewObject(forEntityName: "ImageColorAnalysis", into: context)
+                    colorEntity.setValue(UUID(), forKey: "id")
+                    colorEntity.setValue(colorAnalysis.dominantColorHex, forKey: "dominantColorHex")
+                    colorEntity.setValue(colorAnalysis.colorPalette, forKey: "colorPalette")
+                    colorEntity.setValue(Float(colorAnalysis.averageHue), forKey: "averageHue")
+                    colorEntity.setValue(Float(colorAnalysis.averageSaturation), forKey: "averageSaturation")
+                    colorEntity.setValue(Float(colorAnalysis.averageBrightness), forKey: "averageBrightness")
+                    colorEntity.setValue(colorAnalysis.isMonochrome, forKey: "isMonochrome")
+                    colorEntity.setValue(Int32(colorAnalysis.colorTemperature), forKey: "colorTemperature")
+                    colorEntity.setValue(metadata, forKey: "imageMetadata")
+                }
+
+                // Store quality metrics
+                if let qualityMetrics = coreImage.qualityMetrics {
+                    let qualityEntity = NSEntityDescription.insertNewObject(forEntityName: "ImageQualityMetrics", into: context)
+                    qualityEntity.setValue(UUID(), forKey: "id")
+                    qualityEntity.setValue(qualityMetrics.blurScore, forKey: "blurScore")
+                    qualityEntity.setValue(qualityMetrics.sharpnessScore, forKey: "sharpnessScore")
+                    qualityEntity.setValue(qualityMetrics.noiseLevel, forKey: "noiseLevel")
+                    qualityEntity.setValue(qualityMetrics.contrastRatio, forKey: "contrastRatio")
+                    qualityEntity.setValue(qualityMetrics.exposureValue, forKey: "exposureValue")
+                    qualityEntity.setValue(qualityMetrics.highlightsClipped, forKey: "highlightsClipped")
+                    qualityEntity.setValue(qualityMetrics.shadowsClipped, forKey: "shadowsClipped")
+                    qualityEntity.setValue(qualityMetrics.overallQuality, forKey: "overallQuality")
+                    qualityEntity.setValue(metadata, forKey: "imageMetadata")
+                }
+
+                // Store histogram data
+                if let histogram = coreImage.histogram {
+                    let histogramEntity = NSEntityDescription.insertNewObject(forEntityName: "ImageHistogram", into: context)
+                    histogramEntity.setValue(UUID(), forKey: "id")
+                    histogramEntity.setValue(histogram.redChannel, forKey: "redChannel")
+                    histogramEntity.setValue(histogram.greenChannel, forKey: "greenChannel")
+                    histogramEntity.setValue(histogram.blueChannel, forKey: "blueChannel")
+                    histogramEntity.setValue(histogram.luminanceChannel, forKey: "luminanceChannel")
+                    histogramEntity.setValue(Int16(histogram.peakRed), forKey: "peakRed")
+                    histogramEntity.setValue(Int16(histogram.peakGreen), forKey: "peakGreen")
+                    histogramEntity.setValue(Int16(histogram.peakBlue), forKey: "peakBlue")
+                    histogramEntity.setValue(metadata, forKey: "imageMetadata")
+                }
+
+                // Store enhanced EXIF from Core Image (if Vision didn't get it)
+                if self.extractExifData(from: url) == nil, let exifData = coreImage.exifData {
+                    let exifEntity = NSEntityDescription.insertNewObject(forEntityName: "ExifData", into: context)
+                    exifEntity.setValue(UUID(), forKey: "id")
+                    exifEntity.setValue(exifData.cameraModel, forKey: "cameraModel")
+                    exifEntity.setValue(exifData.lens, forKey: "lens")
+                    exifEntity.setValue(exifData.dateTaken, forKey: "dateTaken")
+                    exifEntity.setValue(Int32(exifData.iso ?? 0), forKey: "iso")
+                    exifEntity.setValue(exifData.aperture, forKey: "aperture")
+                    exifEntity.setValue(exifData.focalLength, forKey: "focalLength")
+                    exifEntity.setValue(exifData.exposureTime, forKey: "exposureTime")
+                    exifEntity.setValue(exifData.latitude, forKey: "latitude")
+                    exifEntity.setValue(exifData.longitude, forKey: "longitude")
+                    exifEntity.setValue(metadata, forKey: "imageMetadata")
+                }
             }
 
             // Save context

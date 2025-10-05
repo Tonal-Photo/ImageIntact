@@ -149,7 +149,7 @@ struct MultiDestinationProgressSection: View {
                         .progressViewStyle(.linear)
                         .padding(.horizontal, 20)
 
-                    Text("Analyzing images for objects, scenes, and faces...")
+                    Text("Analyzing images for objects, scenes, faces, colors, and quality...")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 20)
