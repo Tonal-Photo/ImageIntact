@@ -7,7 +7,7 @@ ImageIntact is the backup app photographers have been waiting for – built by a
 ![macOS](https://img.shields.io/badge/macOS-15.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.2.7-brightgreen)
+![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen)
 
 ## Why ImageIntact?
 
@@ -35,17 +35,22 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Complete audit trail** – Know exactly what happened to every file
 - **Sleep prevention** – Your Mac won't sleep mid-backup
 - **Network drive safety** – Enhanced data integrity for NAS and network volumes
-- **SMB timeout protection** – No more indefinite hangs on network issues (v1.2.7)
+- **SMB timeout protection** – No more indefinite hangs on network issues
 
 ### 🎨 Thoughtfully Designed
 - **Clean, native Mac interface** – No Java, no weird UI, just a proper Mac app
-- **Preferences that make sense** – Organized settings, not a maze of options (v1.2.6)
-- **Smart notifications** – Get notified when backups complete (v1.2.6)
-- **Privacy-first** – Anonymize logs when sharing for support (v1.2.6)
+- **Preferences that make sense** – Organized settings, not a maze of options
+- **Smart notifications** – Get notified when backups complete
+- **Privacy-first** – Anonymize logs when sharing for support
 
-## New in Version 1.2.7
+## New in Version 2.0.0
 
-This release brings major improvements to reliability and network performance:
+### Major New Features
+- **Vision Framework Integration** – AI-powered image analysis during backup (Apple Silicon only)
+- **Swift 6 Compliance** – Full strict concurrency checking for enhanced stability
+- **M5 Processor Support** – Ready for next-generation Apple Silicon
+
+### Previous Updates
 
 ### Critical Fixes
 - **Fixed Progress Tracking** – Accurate file counting for multi-destination backups
