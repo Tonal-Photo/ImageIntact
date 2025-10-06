@@ -36,6 +36,9 @@ cp "$DB_PATH" "$BACKUP_PATH"
 # Clear Vision and Core Image related tables
 echo "🗑️  Clearing Vision and Core Image data..."
 
+# Check if Core Image tables exist
+TABLES=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table';")
+
 sqlite3 "$DB_PATH" <<EOF
 -- Delete all Vision analysis data
 DELETE FROM ZIMAGEMETADATA;
@@ -43,12 +46,6 @@ DELETE FROM ZDETECTEDOBJECT;
 DELETE FROM ZSCENECLASSIFICATION;
 DELETE FROM ZFACERECTANGLE;
 DELETE FROM ZEXIFDATA;
-
--- Delete all Core Image analysis data (these tables will exist after first run with v3 schema)
--- Note: These table names are anticipated based on Core Data naming conventions
-DELETE FROM ZIMAGECOLORANALYSIS 2>/dev/null;
-DELETE FROM ZIMAGEQUALITYMETRICS 2>/dev/null;
-DELETE FROM ZIMAGEHISTOGRAM 2>/dev/null;
 
 -- Vacuum to reclaim space
 VACUUM;
@@ -60,13 +57,24 @@ SELECT 'Detected Objects:', COUNT(*) FROM ZDETECTEDOBJECT;
 SELECT 'Scene Classifications:', COUNT(*) FROM ZSCENECLASSIFICATION;
 SELECT 'Face Rectangles:', COUNT(*) FROM ZFACERECTANGLE;
 SELECT 'EXIF Data:', COUNT(*) FROM ZEXIFDATA;
+EOF
+
+# Try to clear Core Image tables if they exist
+if echo "$TABLES" | grep -q "ZIMAGECOLORANALYSIS"; then
+    echo "Clearing Core Image tables..."
+    sqlite3 "$DB_PATH" <<EOF
+DELETE FROM ZIMAGECOLORANALYSIS;
+DELETE FROM ZIMAGEQUALITYMETRICS;
+DELETE FROM ZIMAGEHISTOGRAM;
 SELECT '' AS '';
 SELECT '=== Core Image Data ===' AS '';
--- These will show errors until tables exist
-SELECT 'Color Analysis:', COUNT(*) FROM ZIMAGECOLORANALYSIS 2>/dev/null;
-SELECT 'Quality Metrics:', COUNT(*) FROM ZIMAGEQUALITYMETRICS 2>/dev/null;
-SELECT 'Histograms:', COUNT(*) FROM ZIMAGEHISTOGRAM 2>/dev/null;
+SELECT 'Color Analysis:', COUNT(*) FROM ZIMAGECOLORANALYSIS;
+SELECT 'Quality Metrics:', COUNT(*) FROM ZIMAGEQUALITYMETRICS;
+SELECT 'Histograms:', COUNT(*) FROM ZIMAGEHISTOGRAM;
 EOF
+else
+    echo "Core Image tables not yet created (will be created on first run)"
+fi
 
 echo ""
 echo "✅ Vision and Core Image data cleared successfully!"

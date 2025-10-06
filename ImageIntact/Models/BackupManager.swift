@@ -39,11 +39,6 @@ class BackupManager {
     internal let driveAnalyzer: DriveAnalyzerProtocol
     internal let diskSpaceChecker: DiskSpaceProtocol
 
-    // Sync progress tracker values to local properties for UI updates
-    func syncProgressFromTracker() {
-        destinationProgress = progressTracker.destinationProgress
-        destinationStates = progressTracker.destinationStates
-    }
     
     // MARK: - Published Properties
     var sourceURL: URL? = nil
@@ -102,8 +97,6 @@ class BackupManager {
         set { progressTracker.totalBytesToCopy = newValue }
     }
     var estimatedSecondsRemaining: TimeInterval? { progressTracker.estimatedSecondsRemaining }
-    var destinationProgress: [String: Int] = [:]
-    var destinationStates: [String: String] = [:]
     var currentPhase: BackupPhase = .idle
     var phaseProgress: Double { progressTracker.phaseProgress }
     var overallProgress: Double { progressTracker.overallProgress }

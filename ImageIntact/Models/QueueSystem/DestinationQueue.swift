@@ -86,7 +86,15 @@ actor DestinationQueue {
         await throughputMonitor.start()
         
         print("🚀 Starting queue for \(destination.lastPathComponent) with \(await queue.count) files")
-        
+
+        // Update ProgressPublisher state to copying
+        await MainActor.run {
+            ProgressPublisher.shared.updateDestinationProgress(
+                name: destination.lastPathComponent,
+                state: .copying
+            )
+        }
+
         // Start initial workers
         for _ in 0..<currentWorkerCount {
             let task = Task {
@@ -176,8 +184,17 @@ actor DestinationQueue {
                 successfullyCopiedFiles.insert(task.relativePath)
                 bytesTransferred += task.size
                 await throughputMonitor.recordTransfer(bytes: task.size)
-                
-                // Report progress update
+
+                // Report to ProgressPublisher
+                await MainActor.run {
+                    ProgressPublisher.shared.reportFileCompleted(
+                        destination: destination.lastPathComponent,
+                        fileName: task.relativePath,
+                        size: task.size
+                    )
+                }
+
+                // Report progress update (keep for backward compatibility)
                 if let progressCallback = onProgress {
                     print("📈 Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent) (SUCCESS)")
                     await progressCallback(completedFiles, totalFiles)
@@ -192,8 +209,17 @@ actor DestinationQueue {
                 if reason.contains("Already exists") {
                     successfullyCopiedFiles.insert(task.relativePath)
                 }
-                
-                // Report progress update
+
+                // Report to ProgressPublisher
+                await MainActor.run {
+                    ProgressPublisher.shared.reportFileCompleted(
+                        destination: destination.lastPathComponent,
+                        fileName: task.relativePath,
+                        size: task.size
+                    )
+                }
+
+                // Report progress update (keep for backward compatibility)
                 if let progressCallback = onProgress {
                     print("📈 Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent) (SUCCESS)")
                     await progressCallback(completedFiles, totalFiles)
@@ -204,7 +230,7 @@ actor DestinationQueue {
             case .failed(let error):
                 print("❌ Failed \(task.relativePath): \(error)")
                 failedFiles.append((file: task.relativePath, error: error.localizedDescription))
-                
+
                 // Retry logic
                 if task.attemptCount < 3 {
                     var retryTask = task
@@ -213,8 +239,23 @@ actor DestinationQueue {
                     await queue.enqueue(retryTask)
                 } else {
                     completedFiles += 1 // Count as completed even if failed
-                    
-                    // Report progress update
+
+                    // Report error to ProgressPublisher
+                    await MainActor.run {
+                        ProgressPublisher.shared.reportError(
+                            file: task.relativePath,
+                            destination: destination.lastPathComponent,
+                            error: error.localizedDescription
+                        )
+                        // Still count as "completed" for progress
+                        ProgressPublisher.shared.reportFileCompleted(
+                            destination: destination.lastPathComponent,
+                            fileName: task.relativePath,
+                            size: 0
+                        )
+                    }
+
+                    // Report progress update (keep for backward compatibility)
                     if let progressCallback = onProgress {
                         await progressCallback(completedFiles, totalFiles)
                     }
@@ -629,7 +670,16 @@ actor DestinationQueue {
         
         // NOW set isVerifying to true, right before we actually start verifying
         isVerifying = true
-        
+
+        // Update ProgressPublisher state to verifying
+        await MainActor.run {
+            ProgressPublisher.shared.updateDestinationProgress(
+                name: destination.lastPathComponent,
+                state: .verifying,
+                isVerifying: true
+            )
+        }
+
         // Notify coordinator that verification has started
         if let callback = onVerificationStateChange {
             await callback(true, 0)
@@ -674,6 +724,15 @@ actor DestinationQueue {
                 if actualChecksum == task.checksum {
                     verifiedFiles += 1
                     print("✅ Verified: \(task.relativePath) at \(destination.lastPathComponent) (total verified: \(verifiedFiles))")
+
+                    // Update ProgressPublisher with verification progress
+                    let currentVerifiedCount = verifiedFiles
+                    await MainActor.run {
+                        ProgressPublisher.shared.updateDestinationProgress(
+                            name: destination.lastPathComponent,
+                            verifiedCount: currentVerifiedCount
+                        )
+                    }
                     
                     // Log successful verification
                     let duration = Date().timeIntervalSince(verifyStartTime)
@@ -737,7 +796,20 @@ actor DestinationQueue {
         }
         
         isVerifying = false
-        
+
+        // Update ProgressPublisher state - mark complete if all verified, failed otherwise
+        let hasFailures = !failedFiles.isEmpty
+        let finalVerifiedCount = verifiedFiles
+        await MainActor.run {
+            let state: DestinationState = hasFailures ? .failed : .complete
+            ProgressPublisher.shared.updateDestinationProgress(
+                name: destination.lastPathComponent,
+                state: state,
+                isVerifying: false,
+                verifiedCount: finalVerifiedCount
+            )
+        }
+
         // Notify coordinator that verification has completed
         if let callback = onVerificationStateChange {
             let finalVerified = verifiedFiles

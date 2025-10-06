@@ -1,6 +1,30 @@
 import SwiftUI
 import CoreData
 
+// Color extension for hex support
+extension Color {
+    init?(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let r, g, b: UInt64
+        switch hex.count {
+        case 6: // RGB
+            (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        case 8: // ARGB
+            (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        default:
+            return nil
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255
+        )
+    }
+}
+
 struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab = "overview"
@@ -66,17 +90,47 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
         return results
     }
 
-    private var sceneStatistics: [(scene: String, count: Int)] {
+    private var sceneStatistics: [(scene: String, count: Int, avgQuality: String)] {
         var sceneCounts: [String: Int] = [:]
+        var sceneQualityScores: [String: [Double]] = [:]
 
-        for scene in allScenes {
-            let label = scene.label ?? "Unknown"
-            sceneCounts[label, default: 0] += 1
+        for image in allImages {
+            guard let scenes = image.sceneClassifications as? Set<SceneClassification> else { continue }
+
+            // Get quality score for this image
+            let quality = image.qualityMetrics
+            let qualityScore: Double = {
+                switch quality?.overallQuality ?? "" {
+                case "Excellent": return 1.0
+                case "Good": return 0.75
+                case "Fair": return 0.5
+                case "Poor": return 0.25
+                default: return 0
+                }
+            }()
+
+            for scene in scenes {
+                let label = scene.label ?? "Unknown"
+                sceneCounts[label, default: 0] += 1
+                sceneQualityScores[label, default: []].append(qualityScore)
+            }
         }
 
         return sceneCounts
             .sorted { $0.value > $1.value }
-            .map { (scene: $0.key, count: $0.value) }
+            .map { sceneEntry in
+                let scores = sceneQualityScores[sceneEntry.key] ?? []
+                let avgScore = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
+
+                let avgQuality: String = {
+                    if avgScore >= 0.875 { return "★★★" }
+                    else if avgScore >= 0.625 { return "★★" }
+                    else if avgScore >= 0.375 { return "★" }
+                    else { return "✗" }
+                }()
+
+                return (scene: sceneEntry.key, count: sceneEntry.value, avgQuality: avgQuality)
+            }
     }
 
     private var imagesWithFaces: Int {
@@ -92,21 +146,22 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
     }
 
     private var monochromeImages: Int {
-        colorAnalyses.filter { $0.isMonochrome }.count
+        allImages.filter { $0.colorAnalysis?.isMonochrome == true }.count
     }
 
     private var averageQualityScore: String {
-        let goodCount = qualityMetrics.filter {
-            ($0.overallQuality ?? "") == "Good" || ($0.overallQuality ?? "") == "Excellent"
+        let goodCount = allImages.filter {
+            let quality = $0.qualityMetrics?.overallQuality ?? ""
+            return quality == "Good" || quality == "Excellent"
         }.count
-        let total = qualityMetrics.count
+        let total = allImages.filter { $0.qualityMetrics != nil }.count
         guard total > 0 else { return "N/A" }
         let percentage = (goodCount * 100) / total
         return "\(percentage)%"
     }
 
     private var blurryImages: Int {
-        qualityMetrics.filter { $0.blurScore > 0.5 }.count
+        allImages.filter { ($0.qualityMetrics?.blurScore ?? 0) > 0.5 }.count
     }
 
     var body: some View {
@@ -216,7 +271,7 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
 
                 Divider()
 
-                // Top Scenes
+                // Top Scenes with Quality
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Top Detected Scenes")
                         .font(.system(size: 16, weight: .semibold))
@@ -225,6 +280,18 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
                         HStack {
                             Text(stat.scene)
                                 .font(.system(size: 13))
+
+                            // Average quality indicator
+                            Text(stat.avgQuality)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor({
+                                    switch stat.avgQuality {
+                                    case "★★★": return .green
+                                    case "★★": return .blue
+                                    case "★": return .orange
+                                    default: return .red
+                                    }
+                                }())
 
                             Spacer()
 
@@ -246,6 +313,40 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
                             .cornerRadius(2)
                         }
                         .padding(.vertical, 4)
+                    }
+                }
+
+                Divider()
+
+                // Color Analysis Summary
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Color Analysis")
+                        .font(.system(size: 16, weight: .semibold))
+
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading) {
+                            Text("Monochrome")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Text("\(monochromeImages) photos")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+
+                        VStack(alignment: .leading) {
+                            Text("High Saturation")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Text("\(allImages.filter { ($0.colorAnalysis?.averageSaturation ?? 0) > 0.6 }.count) photos")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+
+                        VStack(alignment: .leading) {
+                            Text("Low Saturation")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Text("\(allImages.filter { ($0.colorAnalysis?.averageSaturation ?? 0) < 0.3 }.count) photos")
+                                .font(.system(size: 14, weight: .medium))
+                        }
                     }
                 }
             }
@@ -323,7 +424,7 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
                                 .fill(Color.accentColor.opacity(0.1))
                                 .frame(height: 80)
 
-                            VStack {
+                            VStack(spacing: 4) {
                                 Text(stat.scene)
                                     .font(.system(size: 14, weight: .medium))
                                     .multilineTextAlignment(.center)
@@ -331,6 +432,18 @@ struct VisionResultsView: View {  // TODO: Rename to ImageContentAnalysisView
                                 Text("\(stat.count) photos")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
+
+                                // Quality indicator
+                                Text(stat.avgQuality)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor({
+                                        switch stat.avgQuality {
+                                        case "★★★": return .green
+                                        case "★★": return .blue
+                                        case "★": return .orange
+                                        default: return .red
+                                        }
+                                    }())
                             }
                         }
 
@@ -414,11 +527,54 @@ struct ImageResultRow: View {
         return "\(width)×\(height)"
     }
 
+    private var quality: ImageQualityMetrics? {
+        image.qualityMetrics
+    }
+
+    private var color: ImageColorAnalysis? {
+        image.colorAnalysis
+    }
+
+    private var qualityBadge: (text: String, color: Color)? {
+        guard let q = quality else { return nil }
+
+        switch q.overallQuality ?? "" {
+        case "Excellent":
+            return ("★★★", .green)
+        case "Good":
+            return ("★★", .blue)
+        case "Fair":
+            return ("★", .orange)
+        case "Poor":
+            return ("✗", .red)
+        default:
+            return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(fileName)
                     .font(.system(size: 13, weight: .medium))
+
+                // Quality badge
+                if let badge = qualityBadge {
+                    Text(badge.text)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(badge.color)
+                }
+
+                // Dominant color swatch
+                if let hexColor = color?.dominantColorHex {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color(hex: hexColor) ?? .gray)
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .strokeBorder(Color.gray.opacity(0.3), lineWidth: 0.5)
+                        )
+                }
 
                 Spacer()
 
@@ -447,7 +603,32 @@ struct ImageResultRow: View {
 
                 Spacer()
 
-                // Indicators
+                // Quality metrics
+                if let q = quality {
+                    if q.blurScore > 0.5 {
+                        Image(systemName: "camera.metering.spot")
+                            .font(.system(size: 11))
+                            .foregroundColor(.red)
+                            .help("Blurry")
+                    }
+
+                    if q.exposureValue < -1.0 || q.exposureValue > 1.0 {
+                        Image(systemName: q.exposureValue < 0 ? "sun.min" : "sun.max")
+                            .font(.system(size: 11))
+                            .foregroundColor(.yellow)
+                            .help(q.exposureValue < 0 ? "Underexposed" : "Overexposed")
+                    }
+                }
+
+                // Color indicators
+                if color?.isMonochrome == true {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray)
+                        .help("Monochrome")
+                }
+
+                // Vision indicators
                 if faceCount > 0 {
                     Label("\(faceCount)", systemImage: "person.crop.square")
                         .font(.system(size: 11))

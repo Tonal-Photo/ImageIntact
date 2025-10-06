@@ -4,6 +4,7 @@ import Darwin
 struct ContentView: View {
     @State private var backupManager = BackupManager()
     @State private var updateManager = UpdateManager()
+    @StateObject private var progressPublisher = ProgressPublisher.shared
     @FocusState private var focusedField: FocusField?
     
     // First-run and help system
@@ -152,6 +153,13 @@ struct ContentView: View {
         .frame(minWidth: 600, idealWidth: 700, maxWidth: .infinity,
                minHeight: 450, idealHeight: 550, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
+        .overlay(alignment: .topTrailing) {
+            #if DEBUG
+            // Debug overlay for monitoring progress in development
+            ProgressDebugOverlay()
+                .padding(8)
+            #endif
+        }
         .onAppear {
             setupKeyboardShortcuts()
             setupMenuCommands()

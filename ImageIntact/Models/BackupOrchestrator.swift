@@ -41,6 +41,7 @@ class BackupOrchestrator {
         Task { @MainActor in
             onStatusUpdate?("Backup cancelled")
             onPhaseChange?(.idle)
+            ProgressPublisher.shared.cancelBackup()
             
             // Clear all destination states in progress tracker
             for dest in progressTracker.destinationProgress.keys {
@@ -142,6 +143,7 @@ class BackupOrchestrator {
         // PHASE 2: Build manifest
         onStatusUpdate?("Building file manifest...")
         onPhaseChange?(.buildingManifest)
+        ProgressPublisher.shared.updatePhase(.buildingManifest)
         
         // Set up manifest builder callbacks
         let statusCallback = onStatusUpdate
@@ -342,6 +344,7 @@ class BackupOrchestrator {
         
         // Start the actual backup
         onPhaseChange?(.copyingFiles)
+        ProgressPublisher.shared.updatePhase(.copyingFiles)
         progressTracker.startCopyTracking()
         
         await coordinator.startBackup(
@@ -366,6 +369,7 @@ class BackupOrchestrator {
         
         // PHASE 5: Complete
         onPhaseChange?(.complete)
+        ProgressPublisher.shared.completeBackup()
         
         let totalTime = Date().timeIntervalSince(backupStartTime)
         let timeString = formatTime(totalTime)
@@ -414,7 +418,11 @@ class BackupOrchestrator {
             if shouldCancel || Task.isCancelled {
                 break
             }
-            
+
+            print("🔄 Monitor loop: checking coordinator statuses...")
+            for (name, status) in coordinator.destinationStatuses {
+                print("  📊 \(name): \(status.completed)/\(status.total)")
+            }
             updateProgressFromCoordinator(coordinator, destinations: destinations)
             
             // Check if all destinations are complete
@@ -528,6 +536,8 @@ class BackupOrchestrator {
                     progressTracker.destinationProgress[name] = status.completed
                     progressTracker.destinationStates[name] = "copying"
                     copyingCount += 1
+                    // Debug log to track progress updates
+                    print("🔄 BackupOrchestrator updating progress: \(name) = \(status.completed)/\(status.total)")
                 }
             }
         }
@@ -559,17 +569,22 @@ class BackupOrchestrator {
         let verifyingCount = verifyingDestinations.count
         if completeCount == coordinator.destinationStatuses.count {
             onPhaseChange?(.complete)
+            ProgressPublisher.shared.updatePhase(.complete)
             onStatusUpdate?("All destinations complete and verified!")
         } else if copyingCount > 0 && verifyingCount > 0 {
             onStatusUpdate?("\(copyingCount) copying, \(verifyingCount) verifying")
-            onPhaseChange?(copyingCount > verifyingCount ? .copyingFiles : .verifyingDestinations)
+            let phase = copyingCount > verifyingCount ? BackupPhase.copyingFiles : BackupPhase.verifyingDestinations
+            onPhaseChange?(phase)
+            ProgressPublisher.shared.updatePhase(phase)
         } else if verifyingCount > 0 {
             let names = verifyingDestinations.joined(separator: ", ")
             onStatusUpdate?("Verifying: \(names)")
             onPhaseChange?(.verifyingDestinations)
+            ProgressPublisher.shared.updatePhase(.verifyingDestinations)
         } else if copyingCount > 0 {
             onStatusUpdate?("\(copyingCount) destination\(copyingCount == 1 ? "" : "s") copying...")
             onPhaseChange?(.copyingFiles)
+            ProgressPublisher.shared.updatePhase(.copyingFiles)
         }
     }
     

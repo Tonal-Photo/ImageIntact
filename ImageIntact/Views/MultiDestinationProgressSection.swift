@@ -2,8 +2,8 @@ import SwiftUI
 
 struct MultiDestinationProgressSection: View {
     @Bindable var backupManager: BackupManager
+    @ObservedObject var progressPublisher = ProgressPublisher.shared
     @State private var networkDestinations: Set<String> = []
-    @StateObject private var visionAnalyzer = VisionAnalyzer.shared
     
     private var destinations: [URL] {
         backupManager.destinationURLs.compactMap { $0 }
@@ -35,12 +35,14 @@ struct MultiDestinationProgressSection: View {
     var body: some View {
         VStack(spacing: 8) {
             // Main backup progress
-            if !backupManager.statusMessage.isEmpty || backupManager.isProcessing {
+            if !progressPublisher.statusMessage.isEmpty || progressPublisher.isBackupRunning {
                 VStack(alignment: .leading, spacing: 12) {
                 Divider()
                     .padding(.horizontal, 20)
-                
-                if backupManager.isProcessing && backupManager.totalFiles > 0 {
+
+                if progressPublisher.isBackupRunning && progressPublisher.totalFiles > 0 &&
+                   progressPublisher.currentPhase != .analyzingSource &&
+                   progressPublisher.currentPhase != .buildingManifest {
                     // Show different UI based on destination count
                     if destinations.count <= 1 {
                         // Single destination - show simple progress
@@ -49,24 +51,24 @@ struct MultiDestinationProgressSection: View {
                         // Multiple destinations - show per-destination progress
                         MultiDestinationProgress(backupManager: backupManager, destinations: destinations)
                     }
-                } else {
+                } else if progressPublisher.isBackupRunning {
                     // Preparing or simple status with phase indicator
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            if backupManager.isProcessing {
+                            if progressPublisher.isBackupRunning {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle())
                                     .scaleEffect(0.8)
                             }
-                            
-                            Text(backupManager.statusMessage)
+
+                            Text(progressPublisher.statusMessage)
                                 .font(.system(.body, design: .monospaced))
                                 .foregroundColor(.secondary)
                             
                             Spacer()
                             
                             // Add cancel button during preparation phases too
-                            if backupManager.isProcessing {
+                            if progressPublisher.isBackupRunning {
                                 Button(action: {
                                     backupManager.cancelOperation()
                                 }) {
@@ -80,10 +82,10 @@ struct MultiDestinationProgressSection: View {
                         }
                         
                         // Add network drive warning if applicable
-                        if backupManager.isProcessing && 
-                           (backupManager.statusMessage.contains("Checking") || 
-                            backupManager.statusMessage.contains("checksum") ||
-                            backupManager.currentPhase == .buildingManifest) {
+                        if progressPublisher.isBackupRunning &&
+                           (progressPublisher.statusMessage.contains("Checking") ||
+                            progressPublisher.statusMessage.contains("checksum") ||
+                            progressPublisher.currentPhase == .buildingManifest) {
                             if let networkDrives = checkForNetworkDrives() {
                                 Label(networkDrives, systemImage: "network")
                                     .font(.caption)
@@ -93,18 +95,18 @@ struct MultiDestinationProgressSection: View {
                         }
                         
                         // Show phase progress if in phase-based backup
-                        if backupManager.isProcessing {
+                        if progressPublisher.isBackupRunning {
                             HStack(spacing: 4) {
-                                PhaseIndicator(label: "Analyze", isActive: backupManager.currentPhase == .analyzingSource, 
-                                             isComplete: backupManager.currentPhase.rawValue > BackupPhase.analyzingSource.rawValue)
-                                PhaseIndicator(label: "Manifest", isActive: backupManager.currentPhase == .buildingManifest,
-                                             isComplete: backupManager.currentPhase.rawValue > BackupPhase.buildingManifest.rawValue)
-                                PhaseIndicator(label: "Copy", isActive: backupManager.currentPhase == .copyingFiles,
-                                             isComplete: backupManager.currentPhase.rawValue > BackupPhase.copyingFiles.rawValue)
-                                PhaseIndicator(label: "Flush", isActive: backupManager.currentPhase == .flushingToDisk,
-                                             isComplete: backupManager.currentPhase.rawValue > BackupPhase.flushingToDisk.rawValue)
-                                PhaseIndicator(label: "Verify", isActive: backupManager.currentPhase == .verifyingDestinations,
-                                             isComplete: backupManager.currentPhase.rawValue > BackupPhase.verifyingDestinations.rawValue)
+                                PhaseIndicator(label: "Analyze", isActive: progressPublisher.currentPhase == .analyzingSource,
+                                             isComplete: progressPublisher.currentPhase.rawValue > BackupPhase.analyzingSource.rawValue)
+                                PhaseIndicator(label: "Manifest", isActive: progressPublisher.currentPhase == .buildingManifest,
+                                             isComplete: progressPublisher.currentPhase.rawValue > BackupPhase.buildingManifest.rawValue)
+                                PhaseIndicator(label: "Copy", isActive: progressPublisher.currentPhase == .copyingFiles,
+                                             isComplete: progressPublisher.currentPhase.rawValue > BackupPhase.copyingFiles.rawValue)
+                                PhaseIndicator(label: "Flush", isActive: progressPublisher.currentPhase == .flushingToDisk,
+                                             isComplete: progressPublisher.currentPhase.rawValue > BackupPhase.flushingToDisk.rawValue)
+                                PhaseIndicator(label: "Verify", isActive: progressPublisher.currentPhase == .verifyingDestinations,
+                                             isComplete: progressPublisher.currentPhase.rawValue > BackupPhase.verifyingDestinations.rawValue)
                             }
                             .font(.caption2)
                         }
@@ -123,8 +125,42 @@ struct MultiDestinationProgressSection: View {
                 }
             }
 
+            // Network Operation Status - show when retrying network operations
+            if progressPublisher.networkOperationInProgress && !progressPublisher.networkOperationMessage.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .padding(.horizontal, 20)
+
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .scaleEffect(0.7)
+
+                        Image(systemName: "network")
+                            .foregroundColor(.orange)
+
+                        Text(progressPublisher.networkOperationMessage)
+                            .font(.caption)
+                            .foregroundColor(.orange)
+
+                        if progressPublisher.networkRetryAttempt > 0 {
+                            Spacer()
+                            Text("Attempt \(progressPublisher.networkRetryAttempt)/\(progressPublisher.networkRetryMaxAttempts)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal, 20)
+                .transition(.opacity)
+            }
+
             // Vision Analysis Progress - show when analyzing
-            if visionAnalyzer.isAnalyzing && visionAnalyzer.totalAnalysisCount > 0 {
+            if progressPublisher.isAnalyzing && progressPublisher.totalImagesToAnalyze > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
                         .padding(.horizontal, 20)
@@ -132,20 +168,20 @@ struct MultiDestinationProgressSection: View {
                     HStack {
                         Image(systemName: "eye.circle")
                             .foregroundColor(.blue)
-                        Text("Vision Analysis")
+                        Text("Vision & Core Image Analysis")
                             .font(.subheadline)
                             .foregroundColor(.primary)
 
                         Spacer()
 
-                        Text("\(visionAnalyzer.currentAnalysisCount)/\(visionAnalyzer.totalAnalysisCount) images")
+                        Text("\(progressPublisher.analyzedImages)/\(progressPublisher.totalImagesToAnalyze) images")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .monospacedDigit()
                     }
                     .padding(.horizontal, 20)
 
-                    ProgressView(value: visionAnalyzer.analysisProgress)
+                    ProgressView(value: Double(progressPublisher.analyzedImages) / Double(progressPublisher.totalImagesToAnalyze))
                         .progressViewStyle(.linear)
                         .padding(.horizontal, 20)
 
@@ -177,6 +213,7 @@ struct MultiDestinationProgressSection: View {
 
 struct SimpleBackupProgress: View {
     @Bindable var backupManager: BackupManager
+    @ObservedObject var progressPublisher = ProgressPublisher.shared
     
     private func formatDataProgress() -> String {
         let copiedMB = Double(backupManager.totalBytesCopied) / (1024 * 1024)
@@ -261,7 +298,7 @@ struct SimpleBackupProgress: View {
                 
                 // Overall progress across all phases
                 HStack(spacing: 8) {
-                    ProgressView(value: backupManager.overallProgress)
+                    ProgressView(value: progressPublisher.overallProgress)
                         .progressViewStyle(.linear)
                     
                     // Data progress indicator
@@ -301,6 +338,7 @@ struct SimpleBackupProgress: View {
 
 struct MultiDestinationProgress: View {
     @Bindable var backupManager: BackupManager
+    @ObservedObject var progressPublisher = ProgressPublisher.shared
     let destinations: [URL]
     @State private var networkDrives: Set<String> = []
     
@@ -318,7 +356,7 @@ struct MultiDestinationProgress: View {
     
     private func checkDriveTypes() async {
         networkDrives.removeAll()
-        
+
         for destination in destinations {
             if let driveInfo = DriveAnalyzer.analyzeDrive(at: destination),
                driveInfo.connectionType == .network {
@@ -326,7 +364,7 @@ struct MultiDestinationProgress: View {
             }
         }
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -336,8 +374,8 @@ struct MultiDestinationProgress: View {
                 Spacer()
                 
                 // Show aggregate progress
-                if backupManager.overallProgress > 0 {
-                    Text("\(Int(backupManager.overallProgress * 100))% Complete")
+                if progressPublisher.overallProgress > 0 {
+                    Text("\(Int(progressPublisher.overallProgress * 100))% Complete")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -374,7 +412,7 @@ struct MultiDestinationProgress: View {
                             .foregroundColor(.green)
                     }
                 }
-                ProgressView(value: backupManager.overallProgress)
+                ProgressView(value: progressPublisher.overallProgress)
                     .progressViewStyle(.linear)
             }
             
@@ -387,19 +425,6 @@ struct MultiDestinationProgress: View {
                         .foregroundColor(.secondary)
                     ProgressView(value: backupManager.phaseProgress)
                         .progressViewStyle(.linear)
-                }
-            } else if backupManager.currentPhase != .idle && backupManager.currentPhase != .analyzingSource {
-                // Show destination rows for all other phases
-                ForEach(destinations, id: \.lastPathComponent) { destination in
-                    DestinationProgressRow(
-                        destinationName: destination.lastPathComponent,
-                        completedFiles: backupManager.destinationProgress[destination.lastPathComponent] ?? 0,
-                        totalFiles: backupManager.progressTracker.destinationTotalFiles[destination.lastPathComponent] ?? backupManager.totalFiles,
-                        isActive: backupManager.currentDestinationName == destination.lastPathComponent,
-                        phase: backupManager.currentPhase,
-                        state: backupManager.destinationStates[destination.lastPathComponent] ?? "copying",
-                        isNetworkDrive: networkDrives.contains(destination.lastPathComponent)
-                    )
                 }
             }
             
@@ -445,6 +470,8 @@ struct DestinationProgressRow: View {
     var phase: BackupPhase = .copyingFiles
     var state: String = "copying"
     var isNetworkDrive: Bool = false
+    var isVerifying: Bool = false
+    var verifiedCount: Int = 0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

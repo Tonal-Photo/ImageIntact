@@ -27,6 +27,15 @@ extension BackupManager {
         sessionID = UUID().uuidString
         logEntries = []
         debugLog = []
+
+        // Initialize ProgressPublisher immediately so UI shows we're working
+        let destNames = destinations.map { $0.lastPathComponent }
+        ProgressPublisher.shared.startBackup(
+            totalFiles: 0, // Will be updated after manifest
+            totalBytes: 0, // Will be updated after manifest
+            destinationNames: destNames
+        )
+        ProgressPublisher.shared.updatePhase(.analyzingSource)
         
         // Check for migration if organization is enabled
         if !organizationName.isEmpty {
@@ -108,10 +117,7 @@ extension BackupManager {
             self?.currentPhase = phase
         }
 
-        // Add callback to sync progress updates to UI
-        orchestrator.onProgressUpdate = { [weak self] in
-            self?.syncProgressFromTracker()
-        }
+        // Progress is now handled by ProgressPublisher directly
         
         // Store reference for cancellation
         currentOrchestrator = orchestrator
@@ -256,12 +262,7 @@ extension BackupManager {
                 // Don't guess based on counts as that can be wrong during skipping
                 
                 // Debug log when entering verification
-                let wasVerifying = destinationStates[name] == "verifying"
-                if !wasVerifying {
-                    print("🔵 UI UPDATE: \(name) entering verification phase (copied=\(status.completed), verified=\(status.verifiedCount), total=\(status.total), isVerifying=true)")
-                } else {
-                    print("🔵 UI UPDATE: \(name) still verifying (verified=\(status.verifiedCount)/\(status.total))")
-                }
+                print("🔵 UI UPDATE: \(name) entering verification phase (copied=\(status.completed), verified=\(status.verifiedCount), total=\(status.total), isVerifying=true)")
                 
                 // For verification, keep showing full progress (files are already copied)
                 // This prevents the progress bar from resetting to 0 when verification starts

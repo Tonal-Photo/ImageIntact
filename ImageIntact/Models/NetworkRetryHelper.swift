@@ -15,7 +15,12 @@ struct NetworkRetryHelper {
         
         for attempt in 1...maxAttempts {
             do {
-                return try await operation()
+                let result = try await operation()
+                // Clear network status on success
+                await MainActor.run {
+                    ProgressPublisher.shared.updateNetworkOperation(inProgress: false)
+                }
+                return result
             } catch {
                 lastError = error
                 
@@ -28,14 +33,41 @@ struct NetworkRetryHelper {
                 guard attempt < maxAttempts else {
                     break
                 }
-                
+
                 // Exponential backoff: 1s, 2s, 4s
                 let delay = retryDelay * UInt64(1 << (attempt - 1))
-                print("⚠️ Operation failed (attempt \(attempt)/\(maxAttempts)), retrying in \(delay/1_000_000_000)s...")
+                let delaySecs = delay/1_000_000_000
+                print("⚠️ Operation failed (attempt \(attempt)/\(maxAttempts)), retrying in \(delaySecs)s...")
+
+                // Report to ProgressPublisher
+                await MainActor.run {
+                    ProgressPublisher.shared.updateNetworkOperation(
+                        inProgress: true,
+                        message: "Network error, retrying in \(delaySecs)s...",
+                        retryAttempt: attempt,
+                        maxAttempts: maxAttempts
+                    )
+                }
+
                 try? await Task.sleep(nanoseconds: delay)
+
+                // Clear retry message before next attempt
+                await MainActor.run {
+                    ProgressPublisher.shared.updateNetworkOperation(
+                        inProgress: true,
+                        message: "Retrying network operation...",
+                        retryAttempt: attempt + 1,
+                        maxAttempts: maxAttempts
+                    )
+                }
             }
         }
         
+        // Clear network status on final failure
+        await MainActor.run {
+            ProgressPublisher.shared.updateNetworkOperation(inProgress: false)
+        }
+
         throw lastError ?? NSError(domain: "NetworkRetry", code: -1, userInfo: [NSLocalizedDescriptionKey: "Operation failed after \(maxAttempts) attempts"])
     }
     

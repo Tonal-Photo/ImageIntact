@@ -72,7 +72,16 @@ class BackupCoordinator: ObservableObject {
         self.manifest = manifest
         destinationQueues.removeAll()
         destinationStatuses.removeAll()
-        
+
+        // Initialize ProgressPublisher
+        let destNames = destinations.map { $0.lastPathComponent }
+        ProgressPublisher.shared.startBackup(
+            totalFiles: manifest.count,
+            totalBytes: manifest.reduce(0) { $0 + $1.size },
+            destinationNames: destNames
+        )
+        ProgressPublisher.shared.updatePhase(.copyingFiles)
+
         // Track backup start
         backupStartTime = Date()
         totalBytesProcessed = manifest.reduce(0) { $0 + $1.size }
@@ -227,7 +236,8 @@ class BackupCoordinator: ObservableObject {
         guard !shouldCancel else { return }  // Prevent multiple cancellations
         shouldCancel = true
         statusMessage = "Backup cancelled"
-        
+        ProgressPublisher.shared.cancelBackup()
+
         // Track cancellation
         AnalyticsManager.shared.trackEvent(.backupCancelled)
         
@@ -361,9 +371,11 @@ class BackupCoordinator: ObservableObject {
                         status.completed = completed
                         self.destinationStatuses[destName] = status
                         self.debugLog("📊 Progress update: \(destName) - \(completed)/\(total) (was \(oldCompleted))")
+                        print("🔄 BackupCoordinator.updateProgressSafely: \(destName) progress = \(completed)/\(total)")
                         self.updateOverallProgress(totalFiles: total)
                     } else {
                         self.debugLog("⚠️ No status found for destination: \(destName)")
+                        print("❌ BackupCoordinator.updateProgressSafely: No status found for \(destName)")
                     }
                     continuation.resume()
                 }
@@ -580,8 +592,11 @@ class BackupCoordinator: ObservableObject {
                 }
             }
         }
+
+        // Complete the backup in ProgressPublisher
+        ProgressPublisher.shared.completeBackup()
     }
-    
+
     // MARK: - Work Stealing (Future Enhancement)
     
     func enableWorkStealing() {

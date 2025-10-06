@@ -279,6 +279,8 @@ class VisionAnalyzer: ObservableObject {
             self.currentAnalysisCount = 0
             self.isAnalyzing = true
             self.analysisProgress = 0.0
+            // Report to ProgressPublisher
+            ProgressPublisher.shared.updateAnalysisProgress(current: 0, total: images.count)
         }
 
         // Process images SEQUENTIALLY to avoid IOSurface exhaustion
@@ -326,6 +328,8 @@ class VisionAnalyzer: ObservableObject {
                     await MainActor.run {
                         self.currentAnalysisCount = index + 1
                         self.analysisProgress = Double(self.currentAnalysisCount) / Double(self.totalAnalysisCount)
+                        // Report to ProgressPublisher
+                        ProgressPublisher.shared.updateAnalysisProgress(current: self.currentAnalysisCount, total: self.totalAnalysisCount)
                         print("📊 Vision progress: \(self.currentAnalysisCount)/\(self.totalAnalysisCount)")
                     }
                 } catch {
