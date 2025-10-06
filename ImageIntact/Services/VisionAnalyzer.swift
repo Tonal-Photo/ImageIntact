@@ -64,6 +64,49 @@ class VisionAnalyzer: ObservableObject {
         return VNRecognizeAnimalsRequest()
     }()
 
+    private lazy var barcodeDetectionRequest: VNDetectBarcodesRequest? = {
+        guard isEnabled else { return nil }
+        let request = VNDetectBarcodesRequest()
+        // Detect common barcode types
+        request.symbologies = [.qr, .aztec, .pdf417, .dataMatrix, .code128, .code39, .ean13, .ean8, .upce]
+        return request
+    }()
+
+    private lazy var saliencyRequest: VNGenerateAttentionBasedSaliencyImageRequest? = {
+        guard isEnabled else { return nil }
+        return VNGenerateAttentionBasedSaliencyImageRequest()
+    }()
+
+    private lazy var objectnessRequest: VNGenerateObjectnessBasedSaliencyImageRequest? = {
+        guard isEnabled else { return nil }
+        return VNGenerateObjectnessBasedSaliencyImageRequest()
+    }()
+
+    private lazy var horizonDetectionRequest: VNDetectHorizonRequest? = {
+        guard isEnabled else { return nil }
+        return VNDetectHorizonRequest()
+    }()
+
+    private lazy var rectangleDetectionRequest: VNDetectRectanglesRequest? = {
+        guard isEnabled else { return nil }
+        let request = VNDetectRectanglesRequest()
+        request.maximumObservations = 5
+        request.minimumConfidence = 0.5
+        return request
+    }()
+
+    private lazy var featurePrintRequest: VNGenerateImageFeaturePrintRequest? = {
+        guard isEnabled else { return nil }
+        // For future similarity detection
+        return VNGenerateImageFeaturePrintRequest()
+    }()
+
+    private lazy var faceLandmarksRequest: VNDetectFaceLandmarksRequest? = {
+        guard isEnabled else { return nil }
+        // Detailed face features for future face grouping
+        return VNDetectFaceLandmarksRequest()
+    }()
+
     // MARK: - Initialization
     private init() {
         // Check if we're on Apple Silicon
@@ -198,6 +241,24 @@ class VisionAnalyzer: ObservableObject {
         if let animalRequest = objectRecognitionRequest {
             requests.append(animalRequest)
         }
+        if let barcodeRequest = barcodeDetectionRequest {
+            requests.append(barcodeRequest)
+        }
+        if let saliencyReq = saliencyRequest {
+            requests.append(saliencyReq)
+        }
+        if let horizonReq = horizonDetectionRequest {
+            requests.append(horizonReq)
+        }
+        if let rectangleReq = rectangleDetectionRequest {
+            requests.append(rectangleReq)
+        }
+        if let featureReq = featurePrintRequest {
+            requests.append(featureReq)
+        }
+        if let landmarksReq = faceLandmarksRequest {
+            requests.append(landmarksReq)
+        }
 
         // Perform analysis in autorelease pool for better memory management
         do {
@@ -214,6 +275,12 @@ class VisionAnalyzer: ObservableObject {
         let faceResults = faceDetectionRequest?.results as? [VNFaceObservation]
         let textResults = textDetectionRequest?.results as? [VNRecognizedTextObservation]
         let animalResults = objectRecognitionRequest?.results as? [VNRecognizedObjectObservation]
+        let barcodeResults = barcodeDetectionRequest?.results as? [VNBarcodeObservation]
+        let saliencyResults = saliencyRequest?.results as? [VNSaliencyImageObservation]
+        let horizonResults = horizonDetectionRequest?.results as? [VNHorizonObservation]
+        let rectangleResults = rectangleDetectionRequest?.results as? [VNRectangleObservation]
+        let featurePrintResults = featurePrintRequest?.results as? [VNFeaturePrintObservation]
+        let faceLandmarkResults = faceLandmarksRequest?.results as? [VNFaceObservation]
 
         // Log what we found
         print("🤖 Vision Analysis for \(url.lastPathComponent):")
@@ -238,6 +305,37 @@ class VisionAnalyzer: ObservableObject {
             let textSnippets = texts.prefix(2).compactMap { $0.topCandidates(1).first?.string }
             if !textSnippets.isEmpty {
                 print("  📝 Text found: \"\(textSnippets.joined(separator: ", "))...\"")
+            }
+        }
+
+        if let barcodes = barcodeResults, !barcodes.isEmpty {
+            for barcode in barcodes {
+                if let payload = barcode.payloadStringValue {
+                    print("  📊 Barcode (\(barcode.symbology.rawValue)): \(payload)")
+                }
+            }
+        }
+
+        if let saliency = saliencyResults?.first {
+            print("  🎯 Saliency map generated (attention-based)")
+        }
+
+        if let horizon = horizonResults?.first {
+            print("  🌅 Horizon angle: \(String(format: "%.1f°", horizon.angle * 180 / .pi))")
+        }
+
+        if let rectangles = rectangleResults, !rectangles.isEmpty {
+            print("  ⬜ Rectangles detected: \(rectangles.count)")
+        }
+
+        if let featurePrint = featurePrintResults?.first {
+            print("  🔍 Feature print generated (for similarity detection)")
+        }
+
+        if let landmarks = faceLandmarkResults, !landmarks.isEmpty {
+            let landmarkCount = landmarks.compactMap { $0.landmarks }.count
+            if landmarkCount > 0 {
+                print("  👁 Face landmarks detected: \(landmarkCount) faces with detailed features")
             }
         }
 
@@ -512,6 +610,24 @@ class VisionAnalyzer: ObservableObject {
             }
             if let textRequest = textDetectionRequest {
                 requests.append(textRequest)
+            }
+            if let barcodeRequest = barcodeDetectionRequest {
+                requests.append(barcodeRequest)
+            }
+            if let saliencyReq = saliencyRequest {
+                requests.append(saliencyReq)
+            }
+            if let horizonReq = horizonDetectionRequest {
+                requests.append(horizonReq)
+            }
+            if let rectangleReq = rectangleDetectionRequest {
+                requests.append(rectangleReq)
+            }
+            if let featureReq = featurePrintRequest {
+                requests.append(featureReq)
+            }
+            if let landmarksReq = faceLandmarksRequest {
+                requests.append(landmarksReq)
             }
 
             // Perform Vision analysis using sequence handler

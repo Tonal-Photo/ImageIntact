@@ -185,9 +185,9 @@ actor DestinationQueue {
                 bytesTransferred += task.size
                 await throughputMonitor.recordTransfer(bytes: task.size)
 
-                // Report to ProgressPublisher
+                // Report to ProgressPublisher (with batching for high-frequency)
                 await MainActor.run {
-                    ProgressPublisher.shared.reportFileCompleted(
+                    ProgressPublisher.shared.reportFileCompletedBatched(
                         destination: destination.lastPathComponent,
                         fileName: task.relativePath,
                         size: task.size
@@ -210,9 +210,9 @@ actor DestinationQueue {
                     successfullyCopiedFiles.insert(task.relativePath)
                 }
 
-                // Report to ProgressPublisher
+                // Report to ProgressPublisher (with batching for high-frequency)
                 await MainActor.run {
-                    ProgressPublisher.shared.reportFileCompleted(
+                    ProgressPublisher.shared.reportFileCompletedBatched(
                         destination: destination.lastPathComponent,
                         fileName: task.relativePath,
                         size: task.size

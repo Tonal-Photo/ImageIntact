@@ -210,12 +210,20 @@ final class ProgressPublisher: ObservableObject {
         updateOverallProgress()
     }
 
+    private let maxFailedFiles = 1000  // Prevent unbounded growth
+
     /// Report an error
     func reportError(file: String? = nil, destination: String? = nil, error: String) {
         self.lastError = error
 
         if let file = file, let dest = destination {
             failedFiles.append((file: file, destination: dest, error: error))
+
+            // Limit array size to prevent memory issues
+            if failedFiles.count > maxFailedFiles {
+                failedFiles.removeFirst(failedFiles.count - maxFailedFiles)
+            }
+
             print("❌ ProgressPublisher: Error for \(file) at \(dest): \(error)")
         } else {
             print("❌ ProgressPublisher: Error: \(error)")
@@ -247,16 +255,25 @@ final class ProgressPublisher: ObservableObject {
 
     /// Complete the backup
     func completeBackup() {
+        // Flush any pending batched updates first
+        ProgressUpdateBatcher.shared.flush()
+
         self.isBackupRunning = false
         self.currentPhase = .complete
         self.overallProgress = 1.0
         self.statusMessage = failedFiles.isEmpty ? "Backup completed successfully!" : "Backup completed with \(failedFiles.count) errors"
+
+        // Reset the batcher for next backup
+        ProgressUpdateBatcher.shared.reset()
 
         print("✅ ProgressPublisher: Backup complete")
     }
 
     /// Cancel the backup
     func cancelBackup() {
+        // Flush any pending batched updates first
+        ProgressUpdateBatcher.shared.flush()
+
         self.isBackupRunning = false
         self.currentPhase = .idle
         self.statusMessage = "Backup cancelled"
@@ -267,11 +284,17 @@ final class ProgressPublisher: ObservableObject {
             destinations[name] = progress
         }
 
+        // Reset the batcher
+        ProgressUpdateBatcher.shared.reset()
+
         print("🛑 ProgressPublisher: Backup cancelled")
     }
 
     /// Reset all progress
     func reset() {
+        // Reset batcher first
+        ProgressUpdateBatcher.shared.reset()
+
         self.isBackupRunning = false
         self.currentPhase = .idle
         self.overallProgress = 0.0

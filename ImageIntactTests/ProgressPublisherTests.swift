@@ -231,4 +231,158 @@ final class ProgressPublisherTests: XCTestCase {
         XCTAssertEqual(ProgressPublisher.formatETA(90), "1 minute")
         XCTAssertEqual(ProgressPublisher.formatETA(3700), "1h 1m")
     }
+
+    // MARK: - Error Boundary Tests
+
+    func testFailedFilesArrayLimit() async {
+        // Test that failedFiles array is limited to prevent unbounded growth
+        let maxErrors = 1100 // More than the limit of 1000
+
+        for i in 1...maxErrors {
+            publisher.reportError(
+                file: "file\(i).txt",
+                destination: "dest1",
+                error: "Error \(i)"
+            )
+        }
+
+        // Should only keep last 1000 errors
+        XCTAssertEqual(publisher.failedFiles.count, 1000)
+        // First 100 errors should have been removed
+        XCTAssertEqual(publisher.failedFiles.first?.file, "file101.txt")
+        XCTAssertEqual(publisher.failedFiles.last?.file, "file1100.txt")
+    }
+
+    func testEmptyDestinationsDivisionByZero() async {
+        // Test that updateOverallProgress doesn't crash with empty destinations
+        publisher.startBackup(totalFiles: 100, totalBytes: 10000, destinationNames: [])
+
+        // This should not crash
+        publisher.updateDestinationProgress(name: "non-existent", filesCompleted: 10)
+
+        XCTAssertEqual(publisher.overallProgress, 0.0)
+        XCTAssertTrue(publisher.destinations.isEmpty)
+    }
+
+    func testNegativeValues() async {
+        // Test that negative values don't break calculations
+        publisher.startBackup(totalFiles: -10, totalBytes: -1000, destinationNames: ["dest1"])
+
+        XCTAssertEqual(publisher.totalFiles, -10)
+        XCTAssertEqual(publisher.totalBytes, -1000)
+
+        // Should handle negative gracefully
+        publisher.updateDestinationProgress(name: "dest1", filesCompleted: -5, bytesTransferred: -500)
+
+        let progress = publisher.destinations["dest1"]
+        XCTAssertEqual(progress?.filesCompleted, -5)
+        XCTAssertEqual(progress?.bytesTransferred, -500)
+    }
+
+    func testExtremellyLargeValues() async {
+        // Test with extremely large values
+        let largeFiles = Int.max / 2
+        let largeBytes = Int64.max / 2
+
+        publisher.startBackup(
+            totalFiles: largeFiles,
+            totalBytes: largeBytes,
+            destinationNames: ["dest1"]
+        )
+
+        publisher.reportFileCompleted(
+            destination: "dest1",
+            fileName: "huge.file",
+            size: largeBytes
+        )
+
+        XCTAssertEqual(publisher.destinations["dest1"]?.bytesTransferred, largeBytes)
+        XCTAssertEqual(publisher.transferredBytes, largeBytes)
+    }
+
+    func testRapidStateChanges() async {
+        // Test rapid state changes don't cause issues
+        publisher.startBackup(totalFiles: 10, totalBytes: 1000, destinationNames: ["dest1"])
+
+        for _ in 1...100 {
+            publisher.updatePhase(.analyzingSource)
+            publisher.updatePhase(.copyingFiles)
+            publisher.updatePhase(.verifyingDestinations)
+            publisher.updatePhase(.complete)
+            publisher.updatePhase(.idle)
+        }
+
+        // Should end in idle state
+        XCTAssertEqual(publisher.currentPhase, .idle)
+        XCTAssertFalse(publisher.isBackupRunning)
+    }
+
+    func testConcurrentErrorReporting() async {
+        // Test concurrent error reporting doesn't corrupt state
+        publisher.startBackup(totalFiles: 100, totalBytes: 10000, destinationNames: ["dest1"])
+
+        await withTaskGroup(of: Void.self) { group in
+            for i in 1...200 {
+                group.addTask { [publisher] in
+                    await publisher?.reportError(
+                        file: "file\(i).txt",
+                        destination: "dest1",
+                        error: "Concurrent error \(i)"
+                    )
+                }
+            }
+        }
+
+        // Should have exactly 200 errors (or 1000 if limit reached)
+        XCTAssertLessThanOrEqual(publisher.failedFiles.count, 1000)
+        XCTAssertGreaterThan(publisher.failedFiles.count, 0)
+    }
+
+    func testVerificationProgressWithNoFiles() async {
+        // Test verification with no files to verify
+        publisher.startBackup(totalFiles: 0, totalBytes: 0, destinationNames: ["dest1"])
+
+        publisher.updateDestinationProgress(
+            name: "dest1",
+            state: .verifying,
+            isVerifying: true,
+            verifiedCount: 10
+        )
+
+        // Should handle gracefully even with filesTotal = 0
+        XCTAssertEqual(publisher.destinations["dest1"]?.verifiedCount, 10)
+        XCTAssertEqual(publisher.destinations["dest1"]?.filesTotal, 0)
+    }
+
+    func testNetworkOperationEdgeCases() async {
+        // Test network operation with extreme values
+        publisher.updateNetworkOperation(
+            inProgress: true,
+            message: String(repeating: "A", count: 10000), // Very long message
+            retryAttempt: Int.max,
+            maxAttempts: Int.max
+        )
+
+        XCTAssertTrue(publisher.networkOperationInProgress)
+        XCTAssertEqual(publisher.networkRetryAttempt, Int.max)
+        XCTAssertEqual(publisher.networkRetryMaxAttempts, Int.max)
+    }
+
+    func testAnalysisProgressOverflow() async {
+        // Test analysis progress with more analyzed than total
+        publisher.updateAnalysisProgress(current: 150, total: 100)
+
+        XCTAssertEqual(publisher.analyzedImages, 150)
+        XCTAssertEqual(publisher.totalImagesToAnalyze, 100)
+        XCTAssertFalse(publisher.isAnalyzing) // Should be false when current >= total
+    }
+
+    func testCompleteBackupWithoutStart() async {
+        // Test completing backup without starting it
+        publisher.completeBackup()
+
+        XCTAssertFalse(publisher.isBackupRunning)
+        XCTAssertEqual(publisher.currentPhase, .complete)
+        XCTAssertTrue(publisher.destinations.isEmpty)
+    }
 }
