@@ -16,6 +16,9 @@ struct ContentView: View {
     // Premium features
     @State private var showPurchaseView = false
     @State private var showUpgradeAlert = false
+
+    // Smart search
+    @State private var showSmartSearch = false
     
     enum FocusField: Hashable {
         case source
@@ -50,7 +53,17 @@ struct ContentView: View {
                 Text("Verify and backup your photos to multiple locations")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                
+
+                // Smart Search button (only if Vision is enabled)
+                if VisionAnalyzer.shared.isAvailable {
+                    Button(action: { showSmartSearch = true }) {
+                        Label("Search Images", systemImage: "sparkle.magnifyingglass")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.link)
+                    .padding(.top, 4)
+                }
+
                 // Subtle system info display
                 Text(SystemCapabilities.shared.displayName)
                     .font(.system(size: 10))
@@ -249,6 +262,9 @@ struct ContentView: View {
         .sheet(isPresented: $showPurchaseView) {
             PurchaseProView()
                 .frame(minWidth: 500, minHeight: 600)
+        }
+        .sheet(isPresented: $showSmartSearch) {
+            SmartSearchView()
         }
         .alert("Upgrade to Pro", isPresented: $showUpgradeAlert) {
             if !BuildConfiguration.isOpenSourceBuild {
