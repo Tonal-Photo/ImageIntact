@@ -279,18 +279,40 @@ struct SmartSearchView: View {
         isSearching = true
         searchResults = []
 
+        // For now, just show mock results to prevent crashes
+        // Will be replaced with Foundation Models semantic search
         Task {
-            do {
-                let results = try await searchImages(query: searchText)
-                await MainActor.run {
-                    self.searchResults = results
-                    self.isSearching = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.isSearching = false
-                    print("Search failed: \(error)")
-                }
+            await MainActor.run {
+                // Mock results for testing
+                self.searchResults = [
+                    ImageSearchResult(
+                        id: UUID(),
+                        filename: "Example1.jpg",
+                        filePath: "/Users/example/Photos/Example1.jpg",
+                        checksum: "abc123",
+                        analysisDate: Date(),
+                        matchedScenes: ["outdoor", "landscape"],
+                        matchedObjects: ["mountain", "trees"],
+                        extractedText: nil,
+                        dominantColors: ["blue", "green"],
+                        confidence: 0.95
+                    ),
+                    ImageSearchResult(
+                        id: UUID(),
+                        filename: "Example2.jpg",
+                        filePath: "/Users/example/Photos/Example2.jpg",
+                        checksum: "def456",
+                        analysisDate: Date(),
+                        matchedScenes: ["indoor", "event"],
+                        matchedObjects: ["people", "cake"],
+                        extractedText: "Happy Birthday",
+                        dominantColors: ["red", "white"],
+                        confidence: 0.88
+                    )
+                ]
+                self.isSearching = false
+
+                print("Search complete - showing mock results until Foundation Models integration")
             }
         }
     }
