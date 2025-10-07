@@ -9,7 +9,6 @@ import SwiftUI
 import CoreData
 
 struct SmartSearchView: View {
-    @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
@@ -297,7 +296,8 @@ struct SmartSearchView: View {
     }
 
     private func searchImages(query: String) async throws -> [ImageSearchResult] {
-        let context = viewContext
+        // Use EventLogger's background context for searching
+        let context = EventLogger.shared.backgroundContext
 
         return try await context.perform {
             let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
