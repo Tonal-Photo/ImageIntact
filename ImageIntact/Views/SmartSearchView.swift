@@ -302,57 +302,42 @@ struct SmartSearchView: View {
         return try await context.perform {
             let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
 
-            // Build predicates based on search scope and filters
-            var predicates: [NSPredicate] = []
-            let searchTerms = query.lowercased().components(separatedBy: " ")
-
-            for term in searchTerms where !term.isEmpty {
-                var termPredicates: [NSPredicate] = []
-
-                // Search in different fields based on scope and filters
-                if searchScope == .all || searchScope == .scenes {
-                    if filterByScenes {
-                        // Search in scene classifications
-                        termPredicates.append(NSPredicate(format: "ANY sceneClassifications.identifier CONTAINS[cd] %@", term))
-                    }
-                }
-
-                if searchScope == .all || searchScope == .objects {
-                    if filterByObjects {
-                        // Search in detected objects
-                        termPredicates.append(NSPredicate(format: "ANY detectedObjects.label CONTAINS[cd] %@", term))
-                    }
-                }
-
-                if searchScope == .all || searchScope == .text {
-                    if filterByText {
-                        // Search in OCR text
-                        termPredicates.append(NSPredicate(format: "extractedText CONTAINS[cd] %@", term))
-                    }
-                }
-
-                if searchScope == .all || searchScope == .technical {
-                    if filterByColors {
-                        // Search in dominant colors
-                        termPredicates.append(NSPredicate(format: "dominantColors CONTAINS[cd] %@", term))
-                    }
-                }
-
-                if !termPredicates.isEmpty {
-                    predicates.append(NSCompoundPredicate(orPredicateWithSubpredicates: termPredicates))
-                }
-            }
-
-            if !predicates.isEmpty {
-                request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
-            }
-
+            // For now, just fetch all ImageMetadata records to test
+            // We'll add search predicates once we verify the entity structure
             request.fetchLimit = 100
 
-            let results = try context.fetch(request)
+            do {
+                let results = try context.fetch(request)
 
-            return results.compactMap { metadata in
-                ImageSearchResult(from: metadata)
+                print("Search found \(results.count) ImageMetadata records")
+
+                // Convert to search results
+                return results.compactMap { metadata in
+                    // Try to safely extract basic fields
+                    let id = metadata.value(forKey: "id") as? UUID ?? UUID()
+                    let filename = metadata.value(forKey: "filename") as? String ?? "Unknown"
+                    let filePath = metadata.value(forKey: "filePath") as? String ?? ""
+                    let checksum = metadata.value(forKey: "checksum") as? String ?? ""
+                    let analysisDate = metadata.value(forKey: "analysisDate") as? Date ?? Date()
+
+                    print("Found image: \(filename)")
+
+                    return ImageSearchResult(
+                        id: id,
+                        filename: filename,
+                        filePath: filePath,
+                        checksum: checksum,
+                        analysisDate: analysisDate,
+                        matchedScenes: [],
+                        matchedObjects: [],
+                        extractedText: nil,
+                        dominantColors: [],
+                        confidence: 1.0
+                    )
+                }
+            } catch {
+                print("Search error: \(error)")
+                return []
             }
         }
     }
@@ -372,6 +357,32 @@ struct ImageSearchResult: Identifiable {
     let dominantColors: [String]
     let confidence: Double
 
+    // Direct initializer for when we're building results manually
+    init(
+        id: UUID,
+        filename: String,
+        filePath: String,
+        checksum: String,
+        analysisDate: Date,
+        matchedScenes: [String],
+        matchedObjects: [String],
+        extractedText: String?,
+        dominantColors: [String],
+        confidence: Double
+    ) {
+        self.id = id
+        self.filename = filename
+        self.filePath = filePath
+        self.checksum = checksum
+        self.analysisDate = analysisDate
+        self.matchedScenes = matchedScenes
+        self.matchedObjects = matchedObjects
+        self.extractedText = extractedText
+        self.dominantColors = dominantColors
+        self.confidence = confidence
+    }
+
+    // Initializer from Core Data
     init(from managedObject: NSManagedObject) {
         self.id = (managedObject.value(forKey: "id") as? UUID) ?? UUID()
         self.filename = (managedObject.value(forKey: "filename") as? String) ?? "Unknown"
