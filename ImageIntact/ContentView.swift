@@ -57,11 +57,20 @@ struct ContentView: View {
                 // Smart Search button (only if Vision is enabled)
                 if VisionAnalyzer.shared.isAvailable {
                     Button(action: { showSmartSearch = true }) {
-                        Label("Search Images", systemImage: "sparkle.magnifyingglass")
-                            .font(.system(size: 11))
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkle.magnifyingglass")
+                                .font(.system(size: 12))
+                            Text("Smart Search")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor.opacity(0.1))
+                        .foregroundColor(.accentColor)
+                        .cornerRadius(6)
                     }
-                    .buttonStyle(.link)
-                    .padding(.top, 4)
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
                 }
 
                 // Subtle system info display
