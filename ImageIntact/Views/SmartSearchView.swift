@@ -279,12 +279,18 @@ struct SmartSearchView: View {
         isSearching = true
         searchResults = []
 
-        // For now, just show mock results to prevent crashes
-        // Will be replaced with Foundation Models semantic search
         Task {
+            // Try semantic search first
+            let semanticResults = await SemanticImageSearch.shared.search(query: searchText)
+
             await MainActor.run {
-                // Mock results for testing
-                self.searchResults = [
+                if !semanticResults.isEmpty {
+                    // Use real semantic search results
+                    self.searchResults = semanticResults
+                    print("Found \(semanticResults.count) results using semantic search")
+                } else {
+                    // Fall back to mock results if no real results
+                    self.searchResults = [
                     ImageSearchResult(
                         id: UUID(),
                         filename: "Example1.jpg",
@@ -309,10 +315,9 @@ struct SmartSearchView: View {
                         dominantColors: ["red", "white"],
                         confidence: 0.88
                     )
-                ]
+                    ]
+                }
                 self.isSearching = false
-
-                print("Search complete - showing mock results until Foundation Models integration")
             }
         }
     }
