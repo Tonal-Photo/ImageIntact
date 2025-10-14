@@ -71,9 +71,111 @@ class EventLogger {
         
         // Create container with explicit model to prevent duplicate loading
         container = NSPersistentContainer(name: "ImageIntactEvents", managedObjectModel: model)
-        
+
+        // Check if store exists and needs migration
+        if let storeURL = container.persistentStoreDescriptions.first?.url,
+           FileManager.default.fileExists(atPath: storeURL.path) {
+
+            // Check if we can load metadata to detect incompatible store
+            do {
+                let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(
+                    ofType: NSSQLiteStoreType,
+                    at: storeURL
+                )
+
+                // Check if the store is compatible with our model
+                let isCompatible = model.isConfiguration(
+                    withName: nil,
+                    compatibleWithStoreMetadata: metadata
+                )
+
+                if !isCompatible {
+                    print("⚠️ Core Data store incompatible with new model, removing old store...")
+
+                    // Ensure the directory exists for removal operations
+                    let storeDirectory = storeURL.deletingLastPathComponent()
+
+                    // Remove all SQLite files (including journal files)
+                    let fileManager = FileManager.default
+                    do {
+                        // Remove main database file
+                        if fileManager.fileExists(atPath: storeURL.path) {
+                            try fileManager.removeItem(at: storeURL)
+                        }
+
+                        // Remove shared memory file
+                        let shmURL = storeURL.appendingPathExtension("-shm")
+                        if fileManager.fileExists(atPath: shmURL.path) {
+                            try fileManager.removeItem(at: shmURL)
+                        }
+
+                        // Remove write-ahead log file
+                        let walURL = storeURL.appendingPathExtension("-wal")
+                        if fileManager.fileExists(atPath: walURL.path) {
+                            try fileManager.removeItem(at: walURL)
+                        }
+
+                        // Also remove any journal file if it exists
+                        let journalURL = storeURL.appendingPathExtension("-journal")
+                        if fileManager.fileExists(atPath: journalURL.path) {
+                            try fileManager.removeItem(at: journalURL)
+                        }
+
+                        print("✅ Old store files removed successfully")
+
+                        // Ensure directory still exists and is writable
+                        if !fileManager.fileExists(atPath: storeDirectory.path) {
+                            try fileManager.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+                            print("✅ Recreated store directory")
+                        }
+                    } catch {
+                        print("❌ Error removing old store files: \(error)")
+                        // Try to continue anyway - Core Data might be able to handle it
+                    }
+                }
+            } catch {
+                print("⚠️ Could not read store metadata, removing potentially corrupt store: \(error)")
+
+                // Remove the store if we can't read its metadata
+                let fileManager = FileManager.default
+                let storeDirectory = storeURL.deletingLastPathComponent()
+
+                do {
+                    // Remove all SQLite-related files
+                    if fileManager.fileExists(atPath: storeURL.path) {
+                        try fileManager.removeItem(at: storeURL)
+                    }
+                    let shmURL = storeURL.appendingPathExtension("-shm")
+                    if fileManager.fileExists(atPath: shmURL.path) {
+                        try fileManager.removeItem(at: shmURL)
+                    }
+                    let walURL = storeURL.appendingPathExtension("-wal")
+                    if fileManager.fileExists(atPath: walURL.path) {
+                        try fileManager.removeItem(at: walURL)
+                    }
+                    let journalURL = storeURL.appendingPathExtension("-journal")
+                    if fileManager.fileExists(atPath: journalURL.path) {
+                        try fileManager.removeItem(at: journalURL)
+                    }
+
+                    print("✅ Corrupt store files removed")
+
+                    // Ensure directory exists
+                    if !fileManager.fileExists(atPath: storeDirectory.path) {
+                        try fileManager.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+                    }
+                } catch {
+                    print("❌ Failed to remove corrupt store: \(error)")
+                }
+            }
+        }
+
         // Configure for performance
         if let description = container.persistentStoreDescriptions.first {
+            // Disable automatic migration since we handle it manually above
+            description.shouldMigrateStoreAutomatically = false
+            description.shouldInferMappingModelAutomatically = false
+
             // Enable persistent history tracking for batch operations
             description.setOption(true as NSNumber, 
                                  forKey: NSPersistentHistoryTrackingKey)
@@ -97,7 +199,40 @@ class EventLogger {
         container.loadPersistentStores { storeDescription, error in
             if let error = error {
                 print("❌ EventLogger Core Data error: \(error)")
-                // In production, we'd handle this more gracefully
+
+                // Try one more time to clean up and recreate
+                if let storeURL = storeDescription.url {
+                    print("🔄 Attempting final cleanup and retry...")
+
+                    // Remove ALL files in the store directory with the database name
+                    let fileManager = FileManager.default
+                    let directory = storeURL.deletingLastPathComponent()
+                    let baseName = storeURL.deletingPathExtension().lastPathComponent
+
+                    do {
+                        let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                        for file in contents {
+                            if file.lastPathComponent.hasPrefix(baseName) {
+                                try? fileManager.removeItem(at: file)
+                                print("  Removed: \(file.lastPathComponent)")
+                            }
+                        }
+
+                        // Try creating an in-memory store as fallback
+                        print("⚠️ Creating in-memory store as fallback")
+                        storeDescription.url = URL(fileURLWithPath: "/dev/null")
+                        storeDescription.type = NSInMemoryStoreType
+
+                        // Note: This means data won't persist, but app won't crash
+                        print("⚠️ WARNING: Using in-memory store - Vision data will not persist!")
+                    } catch {
+                        print("❌ Final cleanup failed: \(error)")
+                    }
+                }
+
+                // In production, we'd use an in-memory store, but for development let's still crash
+                // to ensure we fix the issue properly
+                fatalError("Unable to create Core Data store: \(error)")
             } else {
                 print("✅ EventLogger Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")")
                 print("📁 Core Data location: \(storeDescription.url?.path ?? "unknown")")
@@ -106,11 +241,11 @@ class EventLogger {
         
         // Configure contexts
         container.viewContext.automaticallyMergesChangesFromParent = true
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        
+        container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
         // Create background context for writes
         backgroundContext = container.newBackgroundContext()
-        backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        backgroundContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
     }
     
     // MARK: - Session Management
