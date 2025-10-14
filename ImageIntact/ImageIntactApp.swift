@@ -82,6 +82,9 @@ struct ImageIntactApp: App {
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 600, height: 400)
+        .defaultPosition(.center)
+        // Ensure window is visible and activates properly
+        .windowStyle(.automatic)
         .commands {
             // Add Preferences to the app menu
             CommandGroup(after: .appInfo) {
