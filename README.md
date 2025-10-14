@@ -7,7 +7,7 @@ ImageIntact is the backup app photographers have been waiting for – built by a
 ![macOS](https://img.shields.io/badge/macOS-14.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.2.9-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.3.0-brightgreen)
 
 ## Why ImageIntact?
 

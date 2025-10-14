@@ -109,7 +109,7 @@ struct HelpWindowView: View {
     
     func subtitleForSection(_ section: HelpSectionID) -> String {
         switch section {
-        case .whatsNew: return "Version 1.2.7"
+        case .whatsNew: return "Version 1.3.0"
         case .gettingStarted: return "Quick start guide"
         case .organization: return "Automatic folder organization"
         case .duplicates: return "Smart duplicate handling"
@@ -847,7 +847,7 @@ struct UpdatesContent: View {
             HStack {
                 Image(systemName: "sparkles")
                     .foregroundColor(.yellow)
-                Text("Current version: 1.2.8")
+                Text("Current version: 1.3.0")
                     .font(.callout)
                     .fontWeight(.medium)
             }
