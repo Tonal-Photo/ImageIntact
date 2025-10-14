@@ -260,8 +260,47 @@ extension EventLogger {
                 }
             } catch {
                 print("❌ Failed to batch insert events: \(error)")
-                // Fall back to regular batch save
-                self.batchInsertEvents(events)
+                // Fall back to regular batch save - manually do it inline to avoid actor isolation issues
+                for pendingEvent in events {
+                    let event = BackupEvent(context: self.backgroundContext)
+                    event.id = UUID()
+                    event.timestamp = pendingEvent.timestamp
+                    event.eventType = pendingEvent.type.rawValue
+                    event.severity = pendingEvent.severity.rawValue
+                    event.filePath = pendingEvent.file?.path
+                    event.fileName = pendingEvent.file?.lastPathComponent
+                    event.destinationPath = pendingEvent.destination?.path
+
+                    if let destination = pendingEvent.destination {
+                        do {
+                            let resourceValues = try destination.resourceValues(forKeys: [.volumeUUIDStringKey])
+                            event.driveUUID = resourceValues.volumeUUIDString
+                        } catch {
+                            // Silently fail if we can't get drive UUID
+                        }
+                    }
+
+                    event.fileSize = pendingEvent.fileSize
+                    event.checksum = pendingEvent.checksum
+                    event.errorMessage = pendingEvent.error?.localizedDescription
+                    event.session = session
+
+                    if let duration = pendingEvent.duration {
+                        event.durationMs = Int32(duration * 1000)
+                    }
+
+                    if let metadata = pendingEvent.metadata {
+                        event.metadata = try? JSONSerialization.data(withJSONObject: metadata)
+                    }
+                }
+
+                // Save fallback events
+                do {
+                    try self.backgroundContext.save()
+                    print("✅ Fallback batch saved \(events.count) events")
+                } catch {
+                    print("❌ Failed to fallback save events: \(error)")
+                }
             }
         }
     }
