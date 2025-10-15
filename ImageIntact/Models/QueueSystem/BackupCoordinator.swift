@@ -281,43 +281,27 @@ class BackupCoordinator: ObservableObject {
     // MARK: - Thread-Safe Status Updates
     
     private func updateStatusSafely(destName: String, isVerifying: Bool, verifiedCount: Int, totalFiles: Int) async {
-        await withCheckedContinuation { continuation in
-            statusUpdateQueue.async { [weak self] in
-                guard let self = self else {
-                    continuation.resume()
-                    return
-                }
-                
-                Task { @MainActor in
-                    if var status = self.destinationStatuses[destName] {
-                        status.isVerifying = isVerifying
-                        status.verifiedCount = verifiedCount
-                        self.destinationStatuses[destName] = status
-                        self.updateOverallProgress(totalFiles: totalFiles)
-                    }
-                    continuation.resume()
-                }
+        await MainActor.run {
+            if var status = self.destinationStatuses[destName] {
+                status.isVerifying = isVerifying
+                status.verifiedCount = verifiedCount
+                self.destinationStatuses[destName] = status
+                // Force SwiftUI update
+                self.objectWillChange.send()
+                self.updateOverallProgress(totalFiles: totalFiles)
             }
         }
     }
     
     private func updateProgressSafely(destName: String, completed: Int, total: Int) async {
-        await withCheckedContinuation { continuation in
-            statusUpdateQueue.async { [weak self] in
-                guard let self = self else {
-                    continuation.resume()
-                    return
-                }
-                
-                Task { @MainActor in
-                    if var status = self.destinationStatuses[destName] {
-                        status.completed = completed
-                        self.destinationStatuses[destName] = status
-                        print("📊 Progress update: \(destName) - \(completed)/\(total)")
-                        self.updateOverallProgress(totalFiles: total)
-                    }
-                    continuation.resume()
-                }
+        await MainActor.run {
+            if var status = self.destinationStatuses[destName] {
+                status.completed = completed
+                self.destinationStatuses[destName] = status
+                print("📊 Progress update: \(destName) - \(completed)/\(total)")
+                // Force SwiftUI update
+                self.objectWillChange.send()
+                self.updateOverallProgress(totalFiles: total)
             }
         }
     }
@@ -370,29 +354,22 @@ class BackupCoordinator: ObservableObject {
                     print("📊 Coordinator: \(destination.lastPathComponent) - completed=\(status.completed)/\(status.total), verified=\(verifiedFiles), isVerifying=\(isVerifying), isComplete=\(queueComplete)")
                 }
                 
-                // Use serial queue for safe dictionary update
+                // Update on MainActor for immediate UI updates
                 let destName = destination.lastPathComponent
-                await withCheckedContinuation { continuation in
-                    statusUpdateQueue.async { [weak self] in
-                        guard let self = self else {
-                            continuation.resume()
-                            return
-                        }
-                        Task { @MainActor in
-                            self.destinationStatuses[destName] = DestinationStatus(
-                                name: destName,
-                                completed: status.completed,
-                                total: status.total,
-                                speed: status.speed,
-                                eta: status.eta,
-                                isComplete: queueComplete,
-                                hasFailed: false,
-                                isVerifying: isVerifying,
-                                verifiedCount: verifiedFiles
-                            )
-                            continuation.resume()
-                        }
-                    }
+                await MainActor.run {
+                    self.destinationStatuses[destName] = DestinationStatus(
+                        name: destName,
+                        completed: status.completed,
+                        total: status.total,
+                        speed: status.speed,
+                        eta: status.eta,
+                        isComplete: queueComplete,
+                        hasFailed: false,
+                        isVerifying: isVerifying,
+                        verifiedCount: verifiedFiles
+                    )
+                    // Force SwiftUI update
+                    self.objectWillChange.send()
                 }
             }
             
