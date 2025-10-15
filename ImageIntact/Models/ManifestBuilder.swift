@@ -164,11 +164,21 @@ actor ManifestBuilder {
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey],
             options: enumeratorOptions
         ) else {
+            print("❌ Failed to create directory enumerator for: \(source.path)")
             return nil
         }
-        
+
+        print("📂 Created enumerator for: \(source.path)")
+        print("   - Skip hidden files: \(PreferencesManager.shared.skipHiddenFiles)")
+        print("   - Exclude cache files: \(PreferencesManager.shared.excludeCacheFiles)")
+
         var fileCount = 0
-        
+        var skippedSymlinks = 0
+        var skippedNonRegular = 0
+        var skippedCache = 0
+        var skippedUnsupported = 0
+        var skippedByFilter = 0
+
         // Collect files first
         while let url = enumerator.nextObject() as? URL {
             guard !shouldCancel() else { return nil }
@@ -179,29 +189,38 @@ actor ManifestBuilder {
                 // Skip symbolic links - we don't follow them for security
                 if resourceValues.isSymbolicLink == true {
                     print("🔗 Skipping symbolic link: \(url.lastPathComponent)")
+                    skippedSymlinks += 1
                     continue
                 }
-                
-                guard resourceValues.isRegularFile == true else { continue }
-                
+
+                guard resourceValues.isRegularFile == true else {
+                    skippedNonRegular += 1
+                    continue
+                }
+
                 // Skip cache and temporary files if preference is enabled
                 if PreferencesManager.shared.excludeCacheFiles && isCacheFile(url) {
                     // Debug: log cache files being skipped
                     print("🗑️ Skipping cache/temp file: \(url.lastPathComponent)")
+                    skippedCache += 1
                     continue
                 }
-                
-                guard ImageFileType.isSupportedFile(url) else { 
+
+                guard ImageFileType.isSupportedFile(url) else {
                     // Debug: log skipped files
                     if url.pathExtension.lowercased() == "mp4" || url.pathExtension.lowercased() == "mov" {
                         print("⚠️ Video file skipped (not supported?): \(url.lastPathComponent)")
+                    } else if url.pathExtension.lowercased() == "tif" || url.pathExtension.lowercased() == "tiff" {
+                        print("⚠️ TIFF file marked as unsupported: \(url.lastPathComponent)")
                     }
-                    continue 
+                    skippedUnsupported += 1
+                    continue
                 }
-                
+
                 // Apply file type filter
                 guard filter.shouldInclude(fileURL: url) else {
                     // File is filtered out
+                    skippedByFilter += 1
                     continue
                 }
                 
@@ -231,7 +250,17 @@ actor ManifestBuilder {
         }
         
         guard !shouldCancel() else { return nil }
-        
+
+        // Print summary of file scanning
+        print("📊 File scanning summary:")
+        print("   - Files found: \(fileCount)")
+        print("   - Skipped (symlinks): \(skippedSymlinks)")
+        print("   - Skipped (non-regular): \(skippedNonRegular)")
+        print("   - Skipped (cache): \(skippedCache)")
+        print("   - Skipped (unsupported): \(skippedUnsupported)")
+        print("   - Skipped (filter): \(skippedByFilter)")
+        print("   - Ready to process: \(filesToProcess.count)")
+
         // Phase 2: Calculate checksums in batches
         print("📋 Processing \(filesToProcess.count) files for checksums...")
         

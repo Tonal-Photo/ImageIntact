@@ -821,9 +821,24 @@ struct AdvancedPreferencesView: View {
                             Toggle("Show summary before starting backup", isOn: $preferences.showPreflightSummary)
                                 .font(.system(size: 13))
                                 .help("Display a summary of what will be backed up before starting. You can also toggle this directly from the summary dialog.")
+
+                            // Reset "Don't Show Again" preferences
+                            if preferences.skipLargeBackupWarning {
+                                HStack(spacing: 8) {
+                                    Text("Note: You've disabled large backup warnings")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.orange)
+
+                                    Button("Re-enable") {
+                                        preferences.skipLargeBackupWarning = false
+                                    }
+                                    .controlSize(.small)
+                                }
+                                .padding(.leading, 20)
+                            }
                         }
                     }
-                    
+
                     Spacer(minLength: 20)
                     
                     Divider()

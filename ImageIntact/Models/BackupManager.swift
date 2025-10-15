@@ -144,6 +144,18 @@ class BackupManager {
     internal let duplicateDetector: DuplicateDetectorProtocol
     var skipExactDuplicates = true
     var skipRenamedDuplicates = false
+
+    // Large backup confirmation state
+    var showLargeBackupConfirmation = false
+    var largeBackupInfo: LargeBackupInfo?
+    var largeBackupContinuation: CheckedContinuation<Bool, Never>?
+
+    struct LargeBackupInfo {
+        let fileCount: Int
+        let totalBytes: Int64
+        let destinationCount: Int
+        let estimatedTimePerDestination: String
+    }
     
     // MARK: - Constants
     let sourceKey = "sourceBookmark"

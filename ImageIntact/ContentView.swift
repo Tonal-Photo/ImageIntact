@@ -203,6 +203,23 @@ struct ContentView: View {
                 )
             }
         }
+        .alert("Large Backup Confirmation", isPresented: $backupManager.showLargeBackupConfirmation) {
+            Button("Continue") {
+                backupManager.respondToLargeBackupConfirmation(shouldContinue: true, dontShowAgain: false)
+            }
+            Button("Cancel", role: .cancel) {
+                backupManager.respondToLargeBackupConfirmation(shouldContinue: false, dontShowAgain: false)
+            }
+            Button("Don't Show Again & Continue") {
+                backupManager.respondToLargeBackupConfirmation(shouldContinue: true, dontShowAgain: true)
+            }
+        } message: {
+            if let info = backupManager.largeBackupInfo {
+                Text(getLargeBackupMessage(info: info))
+            } else {
+                Text("This is a large backup. Do you want to continue?")
+            }
+        }
         .onDisappear {
             // Clean up event monitor when view disappears
             if let monitor = eventMonitor {
@@ -622,6 +639,33 @@ struct ContentView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         return formatter.string(fromByteCount: bytes)
+    }
+
+    func getLargeBackupMessage(info: BackupManager.LargeBackupInfo) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        let sizeString = formatter.string(fromByteCount: info.totalBytes)
+
+        if info.destinationCount > 1 {
+            let totalSize = formatter.string(fromByteCount: info.totalBytes * Int64(info.destinationCount))
+            return """
+            This backup contains \(info.fileCount) files totaling \(sizeString).
+
+            With \(info.destinationCount) destinations, a total of \(totalSize) will be copied.
+
+            Estimated time: ~\(info.estimatedTimePerDestination) per destination
+
+            Do you want to continue?
+            """
+        } else {
+            return """
+            This backup contains \(info.fileCount) files totaling \(sizeString).
+
+            Estimated time: ~\(info.estimatedTimePerDestination)
+
+            Do you want to continue?
+            """
+        }
     }
     
     // MARK: - Core Data Verification

@@ -5,7 +5,7 @@ import AppKit
 /// This is the top-level controller that manages ManifestBuilder, ProgressTracker, and BackupCoordinator
 @MainActor
 class BackupOrchestrator {
-    
+
     // MARK: - Components
     private let manifestBuilder = ManifestBuilder()
     private let progressTracker: ProgressTracker
@@ -24,7 +24,7 @@ class BackupOrchestrator {
     var onPhaseChange: ((BackupPhase) -> Void)?
     
     // MARK: - Initialization
-    
+
     init(progressTracker: ProgressTracker, resourceManager: ResourceManager) {
         self.progressTracker = progressTracker
         self.resourceManager = resourceManager
@@ -70,6 +70,7 @@ class BackupOrchestrator {
     ///   - destinations: Array of destination URLs
     ///   - driveInfo: Dictionary of drive information for destinations
     ///   - sessionID: Optional session ID to use for logging
+    ///   - prebuiltManifest: Optional pre-built manifest to use (skips manifest building phase)
     ///   - duplicateAnalyses: Optional duplicate analysis results for filtering
     ///   - skipExactDuplicates: Whether to skip exact duplicates
     ///   - skipRenamedDuplicates: Whether to skip renamed duplicates
@@ -82,6 +83,7 @@ class BackupOrchestrator {
         filter: FileTypeFilter = FileTypeFilter(),
         organizationName: String = "",
         sessionID: String? = nil,
+        prebuiltManifest: [FileManifestEntry]? = nil,
         duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]? = nil,
         skipExactDuplicates: Bool = false,
         skipRenamedDuplicates: Bool = false
@@ -138,35 +140,45 @@ class BackupOrchestrator {
             }
         }
         
-        // PHASE 2: Build manifest
-        onStatusUpdate?("Building file manifest...")
-        onPhaseChange?(.buildingManifest)
-        
-        // Set up manifest builder callbacks
-        await manifestBuilder.setStatusCallback { [weak self] status in
-            self?.onStatusUpdate?(status)
+        // PHASE 2: Build or use pre-built manifest
+        let manifest: [FileManifestEntry]
+
+        if let prebuiltManifest = prebuiltManifest {
+            // Use the pre-built manifest from preflight checks
+            print("📋 Using pre-built manifest with \(prebuiltManifest.count) files (skipping rebuild)")
+            manifest = prebuiltManifest
+        } else {
+            // Build the manifest
+            onStatusUpdate?("Building file manifest...")
+            onPhaseChange?(.buildingManifest)
+
+            // Set up manifest builder callbacks
+            await manifestBuilder.setStatusCallback { [weak self] status in
+                self?.onStatusUpdate?(status)
+            }
+
+            await manifestBuilder.setErrorCallback { [weak self] file, destination, error in
+                self?.onFailedFile?(file, destination, error)
+                // Don't capture failedFiles directly - could cause retain cycle
+            }
+
+            // Build the manifest with filtering
+            guard let builtManifest = await manifestBuilder.build(
+                source: source,
+                shouldCancel: { [weak self] in self?.shouldCancel ?? false },
+                filter: filter
+            ) else {
+                onStatusUpdate?("Backup cancelled or failed")
+                eventLogger.logEvent(type: .error, severity: .error, metadata: [
+                    "phase": "manifest_build",
+                    "reason": shouldCancel ? "cancelled" : "failed"
+                ])
+                return failedFiles
+            }
+
+            manifest = builtManifest
+            print("📋 Manifest contains \(manifest.count) files")
         }
-        
-        await manifestBuilder.setErrorCallback { [weak self] file, destination, error in
-            self?.onFailedFile?(file, destination, error)
-            // Don't capture failedFiles directly - could cause retain cycle
-        }
-        
-        // Build the manifest with filtering
-        guard let manifest = await manifestBuilder.build(
-            source: source,
-            shouldCancel: { [weak self] in self?.shouldCancel ?? false },
-            filter: filter
-        ) else {
-            onStatusUpdate?("Backup cancelled or failed")
-            eventLogger.logEvent(type: .error, severity: .error, metadata: [
-                "phase": "manifest_build",
-                "reason": shouldCancel ? "cancelled" : "failed"
-            ])
-            return failedFiles
-        }
-        
-        print("📋 Manifest contains \(manifest.count) files")
         
         // Filter manifest based on duplicate preferences if analyses provided
         var filteredManifest = manifest
@@ -215,74 +227,8 @@ class BackupOrchestrator {
             "totalBytes": totalBytes,
             "destinationCount": destinations.count
         ])
-        
-        // Check if we should show large backup confirmation
-        if PreferencesManager.shared.confirmLargeBackups && !PreferencesManager.shared.skipLargeBackupWarning {
-            let fileThreshold = PreferencesManager.shared.largeBackupFileThreshold
-            let sizeThresholdBytes = Int64(PreferencesManager.shared.largeBackupSizeThresholdGB * 1_000_000_000) // Convert GB to bytes
-            
-            // Check if backup exceeds thresholds
-            if filteredManifest.count > fileThreshold || totalBytes > sizeThresholdBytes {
-                // We need to show confirmation on main thread
-                let shouldContinue = await MainActor.run { [weak self] in
-                    guard let self = self else { return false }
-                    
-                    let alert = NSAlert()
-                    alert.messageText = "Large Backup Confirmation"
-                    
-                    // Build informative message
-                    let formatter = ByteCountFormatter()
-                    formatter.countStyle = .file
-                    let sizeString = formatter.string(fromByteCount: totalBytes)
-                    
-                    var message = "This backup contains \(filteredManifest.count) files"
-                    message += " totaling \(sizeString)."
-                    
-                    if destinations.count > 1 {
-                        let totalSize = formatter.string(fromByteCount: totalBytes * Int64(destinations.count))
-                        message += "\n\nWith \(destinations.count) destinations, a total of \(totalSize) will be copied."
-                    }
-                    
-                    // Add generic time estimate
-                    // Assume a conservative speed of 50 MB/s for estimation
-                    let estimatedSpeed = 50.0 // MB/s
-                    let seconds = Double(totalBytes) / (estimatedSpeed * 1_000_000) // Convert MB/s to bytes/s
-                    let timeString = self.formatTime(seconds)
-                    message += "\n\nEstimated time: ~\(timeString) per destination"
-                    
-                    message += "\n\nDo you want to continue?"
-                    
-                    alert.informativeText = message
-                    alert.alertStyle = .informational
-                    alert.addButton(withTitle: "Continue")
-                    alert.addButton(withTitle: "Cancel")
-                    
-                    // Add "Don't show again" checkbox
-                    alert.showsSuppressionButton = true
-                    alert.suppressionButton?.title = "Don't show this warning again"
-                    
-                    let response = alert.runModal()
-                    
-                    // Handle suppression button
-                    if alert.suppressionButton?.state == .on {
-                        PreferencesManager.shared.skipLargeBackupWarning = true
-                    }
-                    
-                    return response == .alertFirstButtonReturn
-                }
-                
-                if !shouldContinue {
-                    onStatusUpdate?("Backup cancelled by user")
-                    eventLogger.logEvent(type: .error, severity: .info, metadata: [
-                        "phase": "large_backup_confirmation",
-                        "reason": "user_cancelled",
-                        "fileCount": filteredManifest.count,
-                        "totalBytes": totalBytes
-                    ])
-                    return failedFiles
-                }
-            }
-        }
+
+        // Note: Large backup confirmation now happens in BackupManager before orchestrator starts
         
         // Also log to ApplicationLogger for debug output
         ApplicationLogger.shared.debug(
