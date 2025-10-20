@@ -215,8 +215,12 @@ class BackupManager {
 
         // Bridge ProgressTracker changes to @Observable
         // When progressTracker updates, increment trigger to notify SwiftUI
+        // Only propagate updates when actively processing to avoid unnecessary work
         progressTracker.objectWillChange.sink { [weak self] _ in
             guard let self = self else { return }
+            // Only trigger UI updates when we're actively backing up
+            // This avoids spawning Tasks when progressTracker changes during idle state
+            guard self.isProcessing else { return }
             Task { @MainActor in
                 self.progressUpdateTrigger += 1
             }
@@ -363,7 +367,7 @@ class BackupManager {
             }
         }
     }
-    
+
     // MARK: - Public Methods
     func clearAllSelections() {
         sourceURL = nil
@@ -837,34 +841,44 @@ class BackupManager {
         guard !shouldCancel else { return }  // Prevent multiple cancellations
         shouldCancel = true
         statusMessage = "Cancelling backup..."
-        
+
+        // Clean up any pending large backup confirmation
+        // This resumes the continuation with false to unblock the waiting backup
+        if let continuation = largeBackupContinuation {
+            print("⚠️ Cleaning up pending large backup continuation due to cancellation")
+            continuation.resume(returning: false)
+            largeBackupContinuation = nil
+            showLargeBackupConfirmation = false
+            largeBackupInfo = nil
+        }
+
         // Immediately clear all progress indicators
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            
+
             // Force clear all destination progress immediately
             for name in self.progressTracker.destinationProgress.keys {
                 self.progressTracker.setDestinationProgress(0, for: name)
                 self.progressTracker.setDestinationState("cancelled", for: name)
             }
-            
+
             // Clear file name displays
             self.currentFileName = ""
             self.currentDestinationName = ""
             self.overallStatusText = "" // Clear this so UI doesn't show "1 destination copying"
-            
+
             // Force UI update
             self.isProcessing = false
             self.currentPhase = .idle
             self.statusMessage = "Backup cancelled"
-            
+
             // Clear progress tracker immediately - this resets all the computed values
             self.progressTracker.resetAll()
-            
+
             // Stop sleep prevention
             SleepPrevention.shared.stopPreventingSleep()
         }
-        
+
         // Cancel orchestrator if using new system
         Task { @MainActor [weak self] in
             self?.currentOrchestrator?.cancel()

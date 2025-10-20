@@ -170,7 +170,12 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
     /// Set destination progress
     func setDestinationProgress(_ progress: Int, for destination: String) {
         destinationProgress[destination] = progress
-        
+
+        // Explicitly trigger SwiftUI update
+        // The @Published property should do this automatically, but being explicit
+        // ensures the notification propagates correctly through the observation chain
+        objectWillChange.send()
+
         // Also update actor state asynchronously
         Task { [weak progressState] in
             await progressState?.setDestinationProgress(progress, for: destination)

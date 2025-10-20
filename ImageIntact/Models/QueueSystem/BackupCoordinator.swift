@@ -309,10 +309,9 @@ class BackupCoordinator: ObservableObject {
 
                 // UPDATE THE PROGRESS TRACKER FOR UI!
                 if let tracker = self.progressTracker {
+                    // ProgressTracker handles its own objectWillChange notification
                     tracker.setDestinationProgress(completed, for: destName)
-                    // CRITICAL: Trigger SwiftUI update on the ProgressTracker
-                    tracker.objectWillChange.send()
-                    print("   ✅ Updated ProgressTracker: \(completed) for \(destName) + triggered objectWillChange")
+                    print("   ✅ Updated ProgressTracker: \(completed) for \(destName)")
                 } else {
                     print("   ⚠️ No ProgressTracker reference!")
                 }

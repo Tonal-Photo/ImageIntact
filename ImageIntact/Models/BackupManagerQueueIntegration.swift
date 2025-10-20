@@ -137,6 +137,31 @@ extension BackupManager {
             print("✅ Stopped preflight security access, orchestrator will start its own")
         }
 
+        // Validate source and destinations are still accessible before proceeding
+        // This catches cases where user removed USB drive during dialogs
+        let validationAccess = source.startAccessingSecurityScopedResource()
+        if !validationAccess {
+            print("❌ Source folder is no longer accessible - permission revoked or drive removed")
+            isProcessing = false
+            statusMessage = "Cannot access source folder - please check permissions and try again"
+            return
+        }
+        source.stopAccessingSecurityScopedResource()
+
+        // Also validate all destinations are accessible
+        for destination in destinations {
+            let destAccess = destination.startAccessingSecurityScopedResource()
+            if !destAccess {
+                print("❌ Destination \(destination.lastPathComponent) is no longer accessible")
+                isProcessing = false
+                statusMessage = "Cannot access destination '\(destination.lastPathComponent)' - please check connection and try again"
+                return
+            }
+            destination.stopAccessingSecurityScopedResource()
+        }
+
+        print("✅ Validated all locations accessible before starting orchestrator")
+
         // Start statistics tracking
         statistics.startBackup(sourceFiles: sourceFileTypes, filter: fileTypeFilter)
         
