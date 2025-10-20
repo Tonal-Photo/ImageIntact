@@ -299,29 +299,19 @@ class BackupCoordinator: ObservableObject {
     }
     
     private func updateProgressSafely(destName: String, completed: Int, total: Int) async {
-        print("🔔 updateProgressSafely called: \(destName) - \(completed)/\(total)")
         await MainActor.run {
             if var status = self.destinationStatuses[destName] {
-                let oldCompleted = status.completed
                 status.completed = completed
                 self.destinationStatuses[destName] = status
-                print("📊 Progress update: \(destName) - \(oldCompleted) → \(completed)/\(total)")
 
-                // UPDATE THE PROGRESS TRACKER FOR UI!
+                // Update the progress tracker for UI
                 if let tracker = self.progressTracker {
-                    // ProgressTracker handles its own objectWillChange notification
                     tracker.setDestinationProgress(completed, for: destName)
-                    print("   ✅ Updated ProgressTracker: \(completed) for \(destName)")
-                } else {
-                    print("   ⚠️ No ProgressTracker reference!")
                 }
 
                 // Also update coordinator for monitoring
                 self.objectWillChange.send()
-                print("   ✅ objectWillChange.send() called on BackupCoordinator")
                 self.updateOverallProgress(totalFiles: total)
-            } else {
-                print("   ⚠️ No status found for \(destName) in destinationStatuses")
             }
         }
     }

@@ -179,14 +179,10 @@ actor DestinationQueue {
 
                 // Report progress update
                 if let progressCallback = onProgress {
-                    print("📈 SUCCESS: Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent)")
                     await progressCallback(completedFiles, totalFiles)
-                } else {
-                    print("⚠️ SUCCESS: No progress callback set for \(destination.lastPathComponent)")
                 }
-                
+
             case .skipped(let reason):
-                print("⏭️ Skipped \(task.relativePath): \(reason)")
                 completedFiles += 1
                 // Add to successfully copied files if it was skipped because it already exists
                 if reason.contains("Already exists") {
@@ -195,10 +191,7 @@ actor DestinationQueue {
 
                 // Report progress update
                 if let progressCallback = onProgress {
-                    print("📈 SKIP: Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent)")
                     await progressCallback(completedFiles, totalFiles)
-                } else {
-                    print("⚠️ SKIP: No progress callback set for \(destination.lastPathComponent)")
                 }
                 
             case .failed(let error):

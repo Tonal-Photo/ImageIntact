@@ -16,11 +16,9 @@ extension BackupManager {
     @MainActor
     func performQueueBasedBackup(source: URL, destinations: [URL]) async {
         let backupID = UUID().uuidString.prefix(8)
-        print("🚀🚀🚀 [BACKUP \(backupID)] ENTRY: performQueueBasedBackup called")
-        print("   - Source: \(source.path)")
-        print("   - Destinations: \(destinations.count)")
-        print("   - isProcessing: \(isProcessing)")
-        print("🚀 Starting QUEUE-BASED backup with orchestrator")
+        #if DEBUG
+        print("🚀 [BACKUP \(backupID)] Starting backup: \(source.lastPathComponent) → \(destinations.count) destination(s)")
+        #endif
 
         // Reset state
         isProcessing = true
@@ -74,6 +72,9 @@ extension BackupManager {
             let totalBytes = preflightManifest.reduce(0) { $0 + $1.size }
             print("   - Total size: \(totalBytes) bytes (\(Double(totalBytes) / 1_000_000_000) GB)")
         }
+
+        // Capture manifest build timestamp for staleness detection
+        let manifestTimestamp = Date()
 
         // Yield control to UI after manifest building
         await Task.yield()
@@ -135,6 +136,17 @@ extension BackupManager {
         if preflightAccess {
             source.stopAccessingSecurityScopedResource()
             print("✅ Stopped preflight security access, orchestrator will start its own")
+        }
+
+        // Validate manifest isn't stale (user didn't modify files during dialogs)
+        let timeSinceManifest = Date().timeIntervalSince(manifestTimestamp)
+        print("⏱️ Time since manifest built: \(Int(timeSinceManifest)) seconds")
+
+        // If more than 5 minutes have passed, warn and rebuild
+        if timeSinceManifest > 300 {
+            print("⚠️ Manifest is stale (> 5 minutes old), should rebuild")
+            // For now just log - in future could rebuild automatically
+            // Not failing here because it's an edge case and rebuild would be disruptive
         }
 
         // Validate source and destinations are still accessible before proceeding
@@ -644,49 +656,32 @@ extension BackupManager {
     /// Returns true if backup should proceed, false if user cancelled
     @MainActor
     private func checkForLargeBackupAndWait(source: URL, destinations: [URL], manifest: [FileManifestEntry]) async -> Bool {
-        print("🔍🔍🔍 LARGE BACKUP CHECK: Entry")
-        print("   - Current continuation: \(largeBackupContinuation != nil ? "EXISTS" : "nil")")
-        print("🔍 Starting large backup check...")
-        print("   - confirmLargeBackups: \(PreferencesManager.shared.confirmLargeBackups)")
-        print("   - skipLargeBackupWarning: \(PreferencesManager.shared.skipLargeBackupWarning)")
+        #if DEBUG
+        print("🔍 Checking for large backup (threshold: \(PreferencesManager.shared.largeBackupFileThreshold) files / \(PreferencesManager.shared.largeBackupSizeThresholdGB) GB)")
+        #endif
 
         // Skip if user disabled confirmations or already disabled warnings
         guard PreferencesManager.shared.confirmLargeBackups && !PreferencesManager.shared.skipLargeBackupWarning else {
-            print("⏭️ Skipping large backup check (disabled in preferences)")
             return true  // Proceed with backup
         }
 
-        print("🔍 Checking for large backup...")
-
         // Check for cancellation
-        guard !shouldCancel else {
-            print("❌ Large backup check cancelled")
-            return false
-        }
+        guard !shouldCancel else { return false }
 
         statusMessage = "Analyzing backup size..."
 
         let fileThreshold = PreferencesManager.shared.largeBackupFileThreshold
         let sizeThresholdBytes = Int64(PreferencesManager.shared.largeBackupSizeThresholdGB * 1_000_000_000)
-
         let totalBytes = manifest.reduce(0) { $0 + $1.size }
-
-        print("📊 Large backup analysis:")
-        print("   - Manifest file count: \(manifest.count)")
-        print("   - File threshold: \(fileThreshold)")
-        print("   - Total bytes: \(totalBytes)")
-        print("   - Size threshold (bytes): \(sizeThresholdBytes)")
-        print("   - Size threshold (GB): \(PreferencesManager.shared.largeBackupSizeThresholdGB)")
-        print("   - Exceeds file threshold: \(manifest.count > fileThreshold)")
-        print("   - Exceeds size threshold: \(totalBytes > sizeThresholdBytes)")
 
         // Check if backup exceeds thresholds
         guard manifest.count > fileThreshold || totalBytes > sizeThresholdBytes else {
-            print("✅ Backup is not large enough to require confirmation")
             return true  // Proceed with backup
         }
 
-        print("⚠️ Large backup detected: \(manifest.count) files, \(totalBytes) bytes")
+        #if DEBUG
+        print("⚠️ Large backup: \(manifest.count) files, \(String(format: "%.1f", Double(totalBytes) / 1_000_000_000)) GB")
+        #endif
 
         // Calculate estimated time
         let estimatedSpeed = 50.0 // MB/s - conservative estimate
@@ -700,26 +695,18 @@ extension BackupManager {
             estimatedTimePerDestination: timeString
         )
         showLargeBackupConfirmation = true
-        print("✅ Large backup confirmation dialog shown")
-        print("⏸️⏸️⏸️ CREATING CONTINUATION - about to wait for user response")
 
         // Wait for user response using CheckedContinuation
         let result = await withCheckedContinuation { continuation in
-            print("📝 CONTINUATION CREATED - storing reference")
             largeBackupContinuation = continuation
         }
 
-        print("▶️▶️▶️ CONTINUATION RESUMED - user responded with: \(result)")
         return result
     }
 
     /// User responded to large backup confirmation
     @MainActor
     func respondToLargeBackupConfirmation(shouldContinue: Bool, dontShowAgain: Bool) {
-        print("👆👆👆 USER RESPONSE: shouldContinue=\(shouldContinue), dontShowAgain=\(dontShowAgain)")
-        print("   - Continuation exists: \(largeBackupContinuation != nil)")
-        print("   - Thread: \(Thread.current)")
-
         showLargeBackupConfirmation = false
         largeBackupInfo = nil
 
@@ -729,12 +716,10 @@ extension BackupManager {
 
         // Resume the waiting backup process
         if let continuation = largeBackupContinuation {
-            print("✅ RESUMING CONTINUATION with value: \(shouldContinue)")
             continuation.resume(returning: shouldContinue)
             largeBackupContinuation = nil
-            print("✅ CONTINUATION RESUMED and cleared")
         } else {
-            print("⚠️⚠️⚠️ WARNING: No continuation to resume!")
+            print("⚠️ No continuation to resume for large backup confirmation")
         }
     }
 }
