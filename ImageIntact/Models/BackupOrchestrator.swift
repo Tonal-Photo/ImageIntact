@@ -275,7 +275,7 @@ class BackupOrchestrator {
         progressTracker.initializeDestinations(destinations)
         
         // PHASE 4: Create and start the queue coordinator
-        let coordinator = BackupCoordinator()
+        let coordinator = BackupCoordinator(progressTracker: progressTracker)
         currentCoordinator = coordinator
         
         // Start monitoring task

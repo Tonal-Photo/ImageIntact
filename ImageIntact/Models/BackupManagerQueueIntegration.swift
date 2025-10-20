@@ -19,7 +19,6 @@ extension BackupManager {
         print("🚀🚀🚀 [BACKUP \(backupID)] ENTRY: performQueueBasedBackup called")
         print("   - Source: \(source.path)")
         print("   - Destinations: \(destinations.count)")
-        print("   - Thread: \(Thread.current)")
         print("   - isProcessing: \(isProcessing)")
         print("🚀 Starting QUEUE-BASED backup with orchestrator")
 

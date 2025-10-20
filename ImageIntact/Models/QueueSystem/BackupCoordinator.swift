@@ -10,14 +10,19 @@ class BackupCoordinator: ObservableObject {
     @Published var totalBytesToCopy: Int64 = 0
     @Published var totalBytesCopied: Int64 = 0
     @Published var currentSpeed: Double = 0.0  // MB/s
-    
+
     private var destinationQueues: [DestinationQueue] = []
     private var manifest: [FileManifestEntry] = []
     private var shouldCancel = false
     private var collectedFailures: [(file: String, destination: String, error: String)] = []
-    
+    private weak var progressTracker: ProgressTracker?  // Reference to BackupManager's progress tracker
+
     // Serial queue to protect dictionary access and prevent heap corruption
     private let statusUpdateQueue = DispatchQueue(label: "com.imageintact.statusUpdates", qos: .userInitiated)
+
+    init(progressTracker: ProgressTracker? = nil) {
+        self.progressTracker = progressTracker
+    }
     
     struct DestinationStatus {
         let name: String
@@ -294,14 +299,30 @@ class BackupCoordinator: ObservableObject {
     }
     
     private func updateProgressSafely(destName: String, completed: Int, total: Int) async {
+        print("🔔 updateProgressSafely called: \(destName) - \(completed)/\(total)")
         await MainActor.run {
             if var status = self.destinationStatuses[destName] {
+                let oldCompleted = status.completed
                 status.completed = completed
                 self.destinationStatuses[destName] = status
-                print("📊 Progress update: \(destName) - \(completed)/\(total)")
-                // Force SwiftUI update
+                print("📊 Progress update: \(destName) - \(oldCompleted) → \(completed)/\(total)")
+
+                // UPDATE THE PROGRESS TRACKER FOR UI!
+                if let tracker = self.progressTracker {
+                    tracker.setDestinationProgress(completed, for: destName)
+                    // CRITICAL: Trigger SwiftUI update on the ProgressTracker
+                    tracker.objectWillChange.send()
+                    print("   ✅ Updated ProgressTracker: \(completed) for \(destName) + triggered objectWillChange")
+                } else {
+                    print("   ⚠️ No ProgressTracker reference!")
+                }
+
+                // Also update coordinator for monitoring
                 self.objectWillChange.send()
+                print("   ✅ objectWillChange.send() called on BackupCoordinator")
                 self.updateOverallProgress(totalFiles: total)
+            } else {
+                print("   ⚠️ No status found for \(destName) in destinationStatuses")
             }
         }
     }

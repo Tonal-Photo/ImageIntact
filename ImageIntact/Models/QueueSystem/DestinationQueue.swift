@@ -176,10 +176,13 @@ actor DestinationQueue {
                 successfullyCopiedFiles.insert(task.relativePath)
                 bytesTransferred += task.size
                 await throughputMonitor.recordTransfer(bytes: task.size)
-                
+
                 // Report progress update
                 if let progressCallback = onProgress {
+                    print("📈 SUCCESS: Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent)")
                     await progressCallback(completedFiles, totalFiles)
+                } else {
+                    print("⚠️ SUCCESS: No progress callback set for \(destination.lastPathComponent)")
                 }
                 
             case .skipped(let reason):
@@ -189,10 +192,13 @@ actor DestinationQueue {
                 if reason.contains("Already exists") {
                     successfullyCopiedFiles.insert(task.relativePath)
                 }
-                
+
                 // Report progress update
                 if let progressCallback = onProgress {
+                    print("📈 SKIP: Calling progress callback: \(completedFiles)/\(totalFiles) for \(destination.lastPathComponent)")
                     await progressCallback(completedFiles, totalFiles)
+                } else {
+                    print("⚠️ SKIP: No progress callback set for \(destination.lastPathComponent)")
                 }
                 
             case .failed(let error):

@@ -2,6 +2,7 @@ import SwiftUI
 import Darwin
 import CryptoKit
 import AppKit
+import Combine
 
 // MARK: - Backup Phase Enum
 enum BackupPhase: Int, Comparable {
@@ -54,9 +55,13 @@ class BackupManager {
     
     // Progress tracking delegated to ProgressTracker
     let progressTracker = ProgressTracker()
-    
+
     // Statistics tracking for completion report
     let statistics = BackupStatistics()
+
+    // Combine subscriptions for bridging ProgressTracker changes
+    private var cancellables = Set<AnyCancellable>()
+    private var progressUpdateTrigger = 0  // Trigger to force @Observable updates
     
     // Expose progress properties for compatibility
     var totalFiles: Int { 
@@ -96,11 +101,23 @@ class BackupManager {
         set { progressTracker.totalBytesToCopy = newValue }
     }
     var estimatedSecondsRemaining: TimeInterval? { progressTracker.estimatedSecondsRemaining }
-    var destinationProgress: [String: Int] { progressTracker.destinationProgress }
-    var destinationStates: [String: String] { progressTracker.destinationStates }
+    var destinationProgress: [String: Int] {
+        _ = progressUpdateTrigger  // Force @Observable to track this
+        return progressTracker.destinationProgress
+    }
+    var destinationStates: [String: String] {
+        _ = progressUpdateTrigger  // Force @Observable to track this
+        return progressTracker.destinationStates
+    }
     var currentPhase: BackupPhase = .idle
-    var phaseProgress: Double { progressTracker.phaseProgress }
-    var overallProgress: Double { progressTracker.overallProgress }
+    var phaseProgress: Double {
+        _ = progressUpdateTrigger  // Force @Observable to track this
+        return progressTracker.phaseProgress
+    }
+    var overallProgress: Double {
+        _ = progressUpdateTrigger  // Force @Observable to track this
+        return progressTracker.overallProgress
+    }
     
     // Thread-safe progress state (still needed for actor isolation)
     let progressState = BackupProgressState()  // Made internal for extension access
@@ -195,7 +212,16 @@ class BackupManager {
         self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
         self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
-        
+
+        // Bridge ProgressTracker changes to @Observable
+        // When progressTracker updates, increment trigger to notify SwiftUI
+        progressTracker.objectWillChange.sink { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                self.progressUpdateTrigger += 1
+            }
+        }.store(in: &cancellables)
+
         // Check for UI test mode and load test paths
         if BackupManager.isRunningTests && ProcessInfo.processInfo.arguments.contains("--uitest") {
             loadUITestPaths()
