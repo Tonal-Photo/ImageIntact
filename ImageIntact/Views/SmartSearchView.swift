@@ -114,6 +114,12 @@ struct SmartSearchView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 300)
+                .onChange(of: searchScope) { _, _ in
+                    // Refocus search field when scope changes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isSearchFieldFocused = true
+                    }
+                }
 
                 // Search field
                 HStack {
@@ -462,29 +468,37 @@ struct SearchResultCard: View {
         Task {
             // Load thumbnail on background thread
             let path = result.filePath
+            let fileURL = URL(fileURLWithPath: path)
+
+            // Get parent directory for security-scoped access
+            let parentURL = fileURL.deletingLastPathComponent()
+
             guard FileManager.default.fileExists(atPath: path) else {
                 print("⚠️ File not found: \(path)")
                 return
             }
 
-            guard let image = NSImage(contentsOfFile: path) else {
+            // Start accessing security-scoped resource (sandboxed app requirement)
+            let didStartAccess = parentURL.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccess {
+                    parentURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            // Try to load image using URL (better for sandboxed apps)
+            guard let imageSource = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+                  let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
                 print("⚠️ Failed to load image: \(path)")
                 return
             }
 
             // Create thumbnail (150x150)
             let thumbnailSize = NSSize(width: 150, height: 150)
-            let thumbnailImage = NSImage(size: thumbnailSize)
-
-            thumbnailImage.lockFocus()
-            image.draw(in: NSRect(origin: .zero, size: thumbnailSize),
-                      from: NSRect(origin: .zero, size: image.size),
-                      operation: .copy,
-                      fraction: 1.0)
-            thumbnailImage.unlockFocus()
+            let nsImage = NSImage(cgImage: cgImage, size: thumbnailSize)
 
             await MainActor.run {
-                self.thumbnail = thumbnailImage
+                self.thumbnail = nsImage
             }
         }
     }
