@@ -26,6 +26,14 @@ struct SmartSearchView: View {
     @State private var filterByQuality = false
     @State private var minConfidence: Double = 0.5
 
+    // macOS version check
+    private var isMacOS26OrLater: Bool {
+        if #available(macOS 26, *) {
+            return true
+        }
+        return false
+    }
+
     enum SearchScope: String, CaseIterable {
         case all = "All"
         case scenes = "Scenes"
@@ -54,7 +62,9 @@ struct SmartSearchView: View {
             Divider()
 
             // Main Content
-            if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
+            if !isMacOS26OrLater {
+                upgradeRequiredState
+            } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
                 emptyState
             } else if isSearching {
                 loadingState
@@ -237,6 +247,48 @@ struct SmartSearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var upgradeRequiredState: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 60))
+                .foregroundColor(.orange)
+
+            Text("macOS 26 (Tahoe) Required")
+                .font(.title2.bold())
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Smart Search uses Apple's Foundation Models framework, which requires macOS 26 (Tahoe) or later.")
+                    .multilineTextAlignment(.center)
+
+                Text("Foundation Models provides:")
+                    .font(.headline)
+                    .padding(.top, 8)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("On-device semantic search", systemImage: "brain")
+                    Label("Natural language queries", systemImage: "text.bubble")
+                    Label("Privacy-first AI processing", systemImage: "lock.shield")
+                    Label("No internet required", systemImage: "wifi.slash")
+                }
+                .padding(.leading, 8)
+
+                Button(action: {
+                    if let url = URL(string: "https://www.apple.com/macos/macos-tahoe/") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    Label("Learn About macOS 26", systemImage: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 8)
+            }
+            .frame(maxWidth: 500)
+
+            Spacer()
+        }
+        .padding()
+    }
+
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "photo.badge.magnifyingglass")
@@ -275,99 +327,27 @@ struct SmartSearchView: View {
 
     private func performSearch() {
         guard !searchText.isEmpty else { return }
+        guard isMacOS26OrLater else {
+            print("❌ Smart Search requires macOS 26 or later")
+            return
+        }
 
         isSearching = true
         searchResults = []
 
         Task {
-            // Try semantic search first
-            let semanticResults = await SemanticImageSearch.shared.search(query: searchText)
+            if #available(macOS 26, *) {
+                // Use Foundation Models semantic search
+                let results = await SemanticImageSearch.shared.search(query: searchText)
 
-            await MainActor.run {
-                if !semanticResults.isEmpty {
-                    // Use real semantic search results
-                    self.searchResults = semanticResults
-                    print("Found \(semanticResults.count) results using semantic search")
-                } else {
-                    // Fall back to mock results if no real results
-                    self.searchResults = [
-                    ImageSearchResult(
-                        id: UUID(),
-                        filename: "Example1.jpg",
-                        filePath: "/Users/example/Photos/Example1.jpg",
-                        checksum: "abc123",
-                        analysisDate: Date(),
-                        matchedScenes: ["outdoor", "landscape"],
-                        matchedObjects: ["mountain", "trees"],
-                        extractedText: nil,
-                        dominantColors: ["blue", "green"],
-                        confidence: 0.95
-                    ),
-                    ImageSearchResult(
-                        id: UUID(),
-                        filename: "Example2.jpg",
-                        filePath: "/Users/example/Photos/Example2.jpg",
-                        checksum: "def456",
-                        analysisDate: Date(),
-                        matchedScenes: ["indoor", "event"],
-                        matchedObjects: ["people", "cake"],
-                        extractedText: "Happy Birthday",
-                        dominantColors: ["red", "white"],
-                        confidence: 0.88
-                    )
-                    ]
+                await MainActor.run {
+                    self.searchResults = results
+                    self.isSearching = false
                 }
-                self.isSearching = false
             }
         }
     }
 
-    private func searchImages(query: String) async throws -> [ImageSearchResult] {
-        // Use EventLogger's background context for searching
-        let context = EventLogger.shared.backgroundContext
-
-        return try await context.perform {
-            let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
-
-            // For now, just fetch all ImageMetadata records to test
-            // We'll add search predicates once we verify the entity structure
-            request.fetchLimit = 100
-
-            do {
-                let results = try context.fetch(request)
-
-                print("Search found \(results.count) ImageMetadata records")
-
-                // Convert to search results
-                return results.compactMap { metadata in
-                    // Try to safely extract basic fields
-                    let id = metadata.value(forKey: "id") as? UUID ?? UUID()
-                    let filename = metadata.value(forKey: "filename") as? String ?? "Unknown"
-                    let filePath = metadata.value(forKey: "filePath") as? String ?? ""
-                    let checksum = metadata.value(forKey: "checksum") as? String ?? ""
-                    let analysisDate = metadata.value(forKey: "analysisDate") as? Date ?? Date()
-
-                    print("Found image: \(filename)")
-
-                    return ImageSearchResult(
-                        id: id,
-                        filename: filename,
-                        filePath: filePath,
-                        checksum: checksum,
-                        analysisDate: analysisDate,
-                        matchedScenes: [],
-                        matchedObjects: [],
-                        extractedText: nil,
-                        dominantColors: [],
-                        confidence: 1.0
-                    )
-                }
-            } catch {
-                print("Search error: \(error)")
-                return []
-            }
-        }
-    }
 }
 
 // MARK: - Search Result Model
@@ -409,21 +389,6 @@ struct ImageSearchResult: Identifiable {
         self.confidence = confidence
     }
 
-    // Initializer from Core Data
-    init(from managedObject: NSManagedObject) {
-        self.id = (managedObject.value(forKey: "id") as? UUID) ?? UUID()
-        self.filename = (managedObject.value(forKey: "filename") as? String) ?? "Unknown"
-        self.filePath = (managedObject.value(forKey: "filePath") as? String) ?? ""
-        self.checksum = (managedObject.value(forKey: "checksum") as? String) ?? ""
-        self.analysisDate = (managedObject.value(forKey: "analysisDate") as? Date) ?? Date()
-
-        // Extract matched data
-        self.matchedScenes = [] // TODO: Extract from relationships
-        self.matchedObjects = [] // TODO: Extract from relationships
-        self.extractedText = managedObject.value(forKey: "extractedText") as? String
-        self.dominantColors = [] // TODO: Parse from colorAnalysis
-        self.confidence = 0.8 // TODO: Calculate from actual confidence scores
-    }
 }
 
 // MARK: - Search Result Card

@@ -2,119 +2,147 @@
 //  SemanticImageSearch.swift
 //  ImageIntact
 //
-//  Semantic search for images using Foundation Models framework (macOS 26)
+//  Semantic search for images using Foundation Models framework (macOS 26+)
 //
 
 import Foundation
 import CoreData
-#if canImport(FoundationModels)
 import FoundationModels
-#endif
+
+// MARK: - Generable Structs for Structured Output
+
+/// Ranked search results from Foundation Models
+@available(macOS 26, *)
+@Generable
+struct ImageRankings {
+    @Guide(description: "List of images ranked by relevance to the search query, with most relevant first")
+    let rankedImages: [RankedImage]
+}
+
+/// A single ranked image result
+@available(macOS 26, *)
+@Generable
+struct RankedImage {
+    @Guide(description: "The index of the image in the provided list (0-based)")
+    let index: Int
+
+    @Guide(description: "Confidence score from 0.0 to 1.0 indicating how well this image matches the query")
+    let confidence: Double
+}
+
+// MARK: - Semantic Image Search
 
 /// Provides intelligent semantic search over image metadata using Apple's Foundation Models
+/// Requires macOS 26 (Tahoe) or later
+@available(macOS 26, *)
 @MainActor
 class SemanticImageSearch: ObservableObject {
     static let shared = SemanticImageSearch()
 
-    #if canImport(FoundationModels)
     private var languageSession: LanguageModelSession?
-    #endif
+
+    /// Check if Foundation Models is available on this system
+    static var isAvailable: Bool {
+        if #available(macOS 26, *) {
+            return true
+        }
+        return false
+    }
 
     private init() {
         setupLanguageModel()
     }
 
     private func setupLanguageModel() {
-        #if canImport(FoundationModels)
         Task {
-            do {
-                // Initialize the language model session
-                // The model runs on-device for privacy
-                let config = LanguageModelConfiguration(
-                    modelType: .general,  // Use general-purpose model for semantic understanding
-                    temperature: 0.3      // Lower temperature for more focused results
-                )
+            // Create session with instructions for image search
+            let instructions = """
+            You are a semantic search engine for photographs and images.
 
-                // Create session with instructions for image search
-                self.languageSession = try await LanguageModelSession(
-                    configuration: config,
-                    systemPrompt: """
-                    You are a semantic search engine for images. Given a natural language query and \
-                    a list of image descriptions (including scenes, objects, text, colors, and metadata), \
-                    rank the images by relevance to the query.
+            You will be given:
+            1. A natural language search query from the user
+            2. A numbered list of images with their metadata (scenes, objects, colors, text, EXIF data)
 
-                    Consider semantic similarity, not just exact matches. For example:
-                    - "sunset" relates to orange/pink colors, evening, horizon
-                    - "party" relates to celebration, people, cake, indoor events
-                    - "nature" relates to outdoor, landscape, trees, mountains, water
+            Your task is to rank the images by relevance to the query, considering semantic similarity.
 
-                    Return results as a ranked list with confidence scores.
-                    """
-                )
+            Examples of semantic understanding:
+            - "sunset" → orange/pink/red colors, evening scenes, horizon, sky
+            - "wedding" → celebration, people, cake, indoor/outdoor events, formal attire
+            - "nature" → outdoor, landscape, trees, mountains, water, wildlife
+            - "beach" → sand, ocean, water, coastal, vacation
+            - "portraits" → people, faces, close-up shots
+            - "food" → meals, restaurants, cooking, dining
 
-                print("✅ Foundation Models initialized for semantic search")
-            } catch {
-                print("❌ Failed to initialize Foundation Models: \(error)")
-            }
+            Return the top 20 most relevant images with confidence scores.
+            If an image has no relevance to the query, don't include it in results.
+            """
+
+            self.languageSession = LanguageModelSession(instructions: instructions)
+            print("✅ Foundation Models initialized for semantic image search")
         }
-        #else
-        print("⚠️ Foundation Models not available - using fallback search")
-        #endif
     }
 
     /// Perform semantic search over image metadata
     func search(query: String) async -> [ImageSearchResult] {
-        #if canImport(FoundationModels)
         guard let session = languageSession else {
-            print("Language model not initialized")
-            return await fallbackSearch(query: query)
+            print("❌ Foundation Models session not initialized")
+            return []
         }
 
         // Fetch all image metadata from Core Data
         let allMetadata = await fetchAllImageMetadata()
 
         guard !allMetadata.isEmpty else {
-            print("No images to search")
+            print("⚠️ No images in database to search")
             return []
         }
 
+        print("🔍 Searching \(allMetadata.count) images for: '\(query)'")
+
         // Convert metadata to searchable documents
-        let documents = allMetadata.map { metadata in
-            createSearchableDocument(from: metadata)
-        }
+        let documents = allMetadata.enumerated().map { index, metadata in
+            "[\(index)] \(createSearchableDocument(from: metadata))"
+        }.joined(separator: "\n\n")
 
         do {
-            // Use Foundation Models to rank documents by relevance
-            let prompt = """
-            Query: "\(query)"
+            // Build the search prompt
+            let searchPrompt = """
+            Search Query: "\(query)"
 
             Images to search:
-            \(documents.enumerated().map { "[\($0.offset)] \($0.element)" }.joined(separator: "\n"))
+            \(documents)
 
-            Rank the images by relevance to the query. Return the indices of the top 10 most relevant images \
-            in order, with confidence scores (0-1). Format: [index]:[score]
-            Example: 3:0.95,1:0.82,5:0.75
+            Rank these images by relevance to the query.
             """
 
-            let response = try await session.generateResponse(prompt: prompt)
+            // Use Foundation Models to get structured rankings
+            let response = try await session.respond(
+                to: searchPrompt,
+                generating: ImageRankings.self
+            )
 
-            // Parse the response to get ranked results
-            let rankings = parseRankings(response, count: allMetadata.count)
+            // Extract the generated value from the response
+            let rankings = response.content
+
+            print("✅ Foundation Models returned \(rankings.rankedImages.count) ranked results")
 
             // Convert to ImageSearchResult objects
-            return rankings.compactMap { ranking in
-                guard ranking.index < allMetadata.count else { return nil }
-                let metadata = allMetadata[ranking.index]
-                return createSearchResult(from: metadata, confidence: ranking.score)
+            let results = rankings.rankedImages.compactMap { rankedImage -> ImageSearchResult? in
+                guard rankedImage.index >= 0 && rankedImage.index < allMetadata.count else {
+                    print("⚠️ Invalid index \(rankedImage.index) returned by model")
+                    return nil
+                }
+
+                let metadata = allMetadata[rankedImage.index]
+                return createSearchResult(from: metadata, confidence: rankedImage.confidence)
             }
 
+            return results
+
         } catch {
-            print("Semantic search failed: \(error)")
-            return await fallbackSearch(query: query)
+            print("❌ Semantic search failed: \(error)")
+            return []
         }
-        #else
-        return await fallbackSearch(query: query)
-        #endif
     }
 
     /// Fetch all image metadata from Core Data
@@ -196,25 +224,6 @@ class SemanticImageSearch: ObservableObject {
         return parts.joined(separator: ". ")
     }
 
-    /// Parse ranking response from language model
-    private func parseRankings(_ response: String, count: Int) -> [(index: Int, score: Double)] {
-        var rankings: [(index: Int, score: Double)] = []
-
-        // Expected format: "3:0.95,1:0.82,5:0.75"
-        let pairs = response.split(separator: ",")
-
-        for pair in pairs {
-            let components = pair.split(separator: ":")
-            if components.count == 2,
-               let index = Int(components[0].trimmingCharacters(in: .whitespaces)),
-               let score = Double(components[1].trimmingCharacters(in: .whitespaces)),
-               index >= 0 && index < count {
-                rankings.append((index: index, score: score))
-            }
-        }
-
-        return rankings
-    }
 
     /// Create search result from metadata
     private func createSearchResult(from metadata: NSManagedObject, confidence: Double) -> ImageSearchResult {
@@ -264,75 +273,4 @@ class SemanticImageSearch: ObservableObject {
         )
     }
 
-    /// Fallback search using simple text matching
-    private func fallbackSearch(query: String) async -> [ImageSearchResult] {
-        print("Using fallback text search")
-
-        let allMetadata = await fetchAllImageMetadata()
-        let queryTerms = query.lowercased().components(separatedBy: " ")
-
-        // Simple scoring based on term matches
-        var scoredResults: [(metadata: NSManagedObject, score: Int)] = []
-
-        for metadata in allMetadata {
-            let document = createSearchableDocument(from: metadata).lowercased()
-            var score = 0
-
-            for term in queryTerms {
-                if document.contains(term) {
-                    score += 1
-                }
-            }
-
-            if score > 0 {
-                scoredResults.append((metadata: metadata, score: score))
-            }
-        }
-
-        // Sort by score and take top results
-        scoredResults.sort { $0.score > $1.score }
-
-        return scoredResults.prefix(20).map { result in
-            createSearchResult(
-                from: result.metadata,
-                confidence: Double(result.score) / Double(queryTerms.count)
-            )
-        }
-    }
 }
-
-// MARK: - Foundation Models Extension (when available)
-
-#if canImport(FoundationModels)
-extension LanguageModelSession {
-    /// Generate a response from the model
-    func generateResponse(prompt: String) async throws -> String {
-        // This would use the actual Foundation Models API
-        // The exact API will depend on the final framework design
-
-        // Placeholder for actual implementation:
-        // let response = try await self.generate(prompt: prompt)
-        // return response.text
-
-        // For now, return empty string as we don't have the actual API
-        return ""
-    }
-}
-
-// Placeholder types until we have the actual Foundation Models framework
-struct LanguageModelConfiguration {
-    enum ModelType {
-        case general
-        case specialized
-    }
-
-    let modelType: ModelType
-    let temperature: Double
-}
-
-class LanguageModelSession {
-    init(configuration: LanguageModelConfiguration, systemPrompt: String) async throws {
-        // Initialize session
-    }
-}
-#endif
