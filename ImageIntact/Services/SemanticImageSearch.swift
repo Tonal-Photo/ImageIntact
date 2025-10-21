@@ -218,7 +218,7 @@ class SemanticImageSearch: ObservableObject {
                 exifParts.append("Camera: \(camera)")
             }
 
-            if let date = exifData.value(forKey: "captureDate") as? Date {
+            if let date = exifData.value(forKey: "dateTaken") as? Date {
                 let formatter = DateFormatter()
                 formatter.dateStyle = .medium
                 exifParts.append("Date: \(formatter.string(from: date))")
