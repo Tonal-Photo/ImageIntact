@@ -166,8 +166,9 @@ class SemanticImageSearch: ObservableObject {
     private func createSearchableDocument(from metadata: NSManagedObject) -> String {
         var parts: [String] = []
 
-        // Add filename
-        if let filename = metadata.value(forKey: "filename") as? String {
+        // Add filename (extract from filePath)
+        if let filePath = metadata.value(forKey: "filePath") as? String {
+            let filename = (filePath as NSString).lastPathComponent
             parts.append("File: \(filename)")
         }
 
@@ -191,15 +192,22 @@ class SemanticImageSearch: ObservableObject {
             }
         }
 
-        // Add extracted text
-        if let text = metadata.value(forKey: "extractedText") as? String, !text.isEmpty {
-            parts.append("Text: \(text)")
+        // Add extracted text from textRegions
+        if let hasText = metadata.value(forKey: "hasText") as? Bool, hasText {
+            if let textRegions = metadata.value(forKey: "textRegions") as? [[String: Any]] {
+                let textStrings = textRegions.compactMap { $0["text"] as? String }
+                if !textStrings.isEmpty {
+                    let combinedText = textStrings.joined(separator: " ")
+                    parts.append("Text: \(combinedText)")
+                }
+            }
         }
 
-        // Add dominant colors
-        if let colorData = metadata.value(forKey: "dominantColors") as? Data,
-           let colors = try? JSONDecoder().decode([String].self, from: colorData) {
-            parts.append("Colors: \(colors.joined(separator: ", "))")
+        // Add dominant colors from colorAnalysis
+        if let colorAnalysis = metadata.value(forKey: "colorAnalysis") as? NSManagedObject {
+            if let colorPalette = colorAnalysis.value(forKey: "colorPalette") as? [String], !colorPalette.isEmpty {
+                parts.append("Colors: \(colorPalette.joined(separator: ", "))")
+            }
         }
 
         // Add EXIF data (camera, location if available)
@@ -228,8 +236,8 @@ class SemanticImageSearch: ObservableObject {
     /// Create search result from metadata
     private func createSearchResult(from metadata: NSManagedObject, confidence: Double) -> ImageSearchResult {
         let id = (metadata.value(forKey: "id") as? UUID) ?? UUID()
-        let filename = (metadata.value(forKey: "filename") as? String) ?? "Unknown"
         let filePath = (metadata.value(forKey: "filePath") as? String) ?? ""
+        let filename = (filePath as NSString).lastPathComponent
         let checksum = (metadata.value(forKey: "checksum") as? String) ?? ""
         let analysisDate = (metadata.value(forKey: "analysisDate") as? Date) ?? Date()
 
@@ -249,14 +257,23 @@ class SemanticImageSearch: ObservableObject {
             }
         }
 
-        // Extract text
-        let extractedText = metadata.value(forKey: "extractedText") as? String
+        // Extract text from textRegions
+        var extractedText: String? = nil
+        if let hasText = metadata.value(forKey: "hasText") as? Bool, hasText {
+            if let textRegions = metadata.value(forKey: "textRegions") as? [[String: Any]] {
+                let textStrings = textRegions.compactMap { $0["text"] as? String }
+                if !textStrings.isEmpty {
+                    extractedText = textStrings.joined(separator: " ")
+                }
+            }
+        }
 
-        // Extract colors
+        // Extract colors from colorAnalysis relationship
         var dominantColors: [String] = []
-        if let colorData = metadata.value(forKey: "dominantColors") as? Data,
-           let colors = try? JSONDecoder().decode([String].self, from: colorData) {
-            dominantColors = colors
+        if let colorAnalysis = metadata.value(forKey: "colorAnalysis") as? NSManagedObject {
+            if let colorPalette = colorAnalysis.value(forKey: "colorPalette") as? [String] {
+                dominantColors = colorPalette
+            }
         }
 
         return ImageSearchResult(
