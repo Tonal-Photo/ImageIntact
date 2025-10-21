@@ -92,10 +92,12 @@ struct SmartSearchView: View {
             if !isMacOS26OrLater {
                 upgradeRequiredState
             } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
+                // Search mode with no results
                 emptyState
             } else if isSearching {
                 loadingState
-            } else if !searchResults.isEmpty {
+            } else if !searchResults.isEmpty || !browseCategories.isEmpty {
+                // Show results (either search results or browse categories)
                 resultsList
             } else {
                 welcomeState
