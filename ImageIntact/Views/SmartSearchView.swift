@@ -36,6 +36,10 @@ struct SmartSearchView: View {
     // Foundation Models readiness
     @State private var searchWhenReady = false
 
+    // Browse mode stats
+    @State private var totalImagesInCategory = 0
+    @State private var isBrowseMode = true
+
     // macOS version check
     private var isMacOS26OrLater: Bool {
         if #available(macOS 26, *) {
@@ -104,6 +108,27 @@ struct SmartSearchView: View {
             // Pre-warm Foundation Models session (triggers initialization)
             if #available(macOS 26, *) {
                 _ = SemanticImageSearch.shared
+            }
+
+            // Load browse mode results for initial category
+            loadBrowseResults()
+        }
+        .onChange(of: searchScope) { _, _ in
+            // Refocus search field when scope changes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isSearchFieldFocused = true
+            }
+
+            // Reload browse results for new category
+            if searchText.isEmpty {
+                loadBrowseResults()
+            }
+        }
+        .onChange(of: searchText) { _, newText in
+            // Switch between browse and search modes
+            isBrowseMode = newText.isEmpty
+            if isBrowseMode {
+                loadBrowseResults()
             }
         }
         .onDisappear {
@@ -393,20 +418,64 @@ struct SmartSearchView: View {
 
     private var resultsList: some View {
         ScrollView {
-            LazyVGrid(columns: [
-                GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)
-            ], spacing: 16) {
-                ForEach(searchResults) { result in
-                    SearchResultCard(result: result, sourceURL: sourceURL)
-                        .onTapGesture {
-                            selectedResult = result
+            VStack(spacing: 16) {
+                // Stats header for browse mode
+                if isBrowseMode && totalImagesInCategory > 0 {
+                    HStack {
+                        Label {
+                            Text(statsText)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        } icon: {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.accentColor)
                         }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                 }
+
+                LazyVGrid(columns: [
+                    GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)
+                ], spacing: 16) {
+                    ForEach(searchResults) { result in
+                        SearchResultCard(result: result, sourceURL: sourceURL)
+                            .onTapGesture {
+                                selectedResult = result
+                            }
+                    }
+                }
+                .padding()
             }
-            .padding()
         }
         .sheet(item: $selectedResult) { result in
             SearchResultDetailView(result: result)
+        }
+    }
+
+    private var statsText: String {
+        let categoryName: String
+        switch searchScope {
+        case .all:
+            categoryName = "images"
+        case .scenes:
+            categoryName = "images with scenes"
+        case .objects:
+            categoryName = "images with objects"
+        case .text:
+            categoryName = "images with text"
+        case .faces:
+            categoryName = "images with faces"
+        case .technical:
+            categoryName = "images with technical data"
+        }
+
+        if searchResults.count < totalImagesInCategory {
+            return "Found \(totalImagesInCategory) \(categoryName) • Showing top \(searchResults.count) by recency"
+        } else {
+            return "Found \(totalImagesInCategory) \(categoryName)"
         }
     }
 
@@ -442,6 +511,143 @@ struct SmartSearchView: View {
                 }
             }
         }
+    }
+
+    private func loadBrowseResults() {
+        guard isMacOS26OrLater else { return }
+
+        isSearching = true
+        searchResults = []
+
+        // Capture the scope before async work
+        let scope = searchScope
+
+        Task {
+            let context = EventLogger.shared.backgroundContext
+
+            let results = await context.perform {
+                let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
+
+                // Category-specific predicates
+                switch scope {
+                case .all:
+                    // No predicate - fetch all images
+                    request.predicate = nil
+                case .scenes:
+                    request.predicate = NSPredicate(format: "sceneClassifications.@count > 0")
+                case .objects:
+                    request.predicate = NSPredicate(format: "detectedObjects.@count > 0")
+                case .text:
+                    request.predicate = NSPredicate(format: "hasText == YES")
+                case .faces:
+                    request.predicate = NSPredicate(format: "faceCount > 0")
+                case .technical:
+                    request.predicate = NSPredicate(format: "colorAnalysis != nil OR exifData != nil")
+                }
+
+                // Prefetch relationships to avoid faulting
+                request.relationshipKeyPathsForPrefetching = [
+                    "sceneClassifications",
+                    "detectedObjects",
+                    "colorAnalysis",
+                    "exifData"
+                ]
+
+                // Sort by analysis date (most recent first)
+                request.sortDescriptors = [NSSortDescriptor(key: "analysisDate", ascending: false)]
+
+                // Limit to 100 results for performance
+                request.fetchLimit = 100
+
+                do {
+                    let metadata = try context.fetch(request)
+                    print("📊 Fetched \(metadata.count) images for category: \(scope.rawValue)")
+
+                    // Get total count for stats (without limit)
+                    let countRequest = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
+                    countRequest.predicate = request.predicate
+                    let totalCount = try context.count(for: countRequest)
+
+                    // Convert to ImageSearchResult objects
+                    let results: [ImageSearchResult] = metadata.compactMap { item in
+                        Self.createSearchResult(from: item, confidence: 1.0)
+                    }
+
+                    return (results, totalCount)
+
+                } catch {
+                    print("❌ Failed to fetch browse results: \(error)")
+                    return ([], 0)
+                }
+            }
+
+            await MainActor.run {
+                self.searchResults = results.0
+                self.totalImagesInCategory = results.1
+                self.isSearching = false
+                print("✅ Browse mode: Showing \(results.0.count) of \(results.1) images")
+            }
+        }
+    }
+
+    /// Create search result from Core Data metadata
+    private nonisolated static func createSearchResult(from metadata: NSManagedObject, confidence: Double) -> ImageSearchResult? {
+        guard let id = metadata.value(forKey: "id") as? UUID,
+              let filePath = metadata.value(forKey: "filePath") as? String else {
+            return nil
+        }
+
+        let filename = (filePath as NSString).lastPathComponent
+        let checksum = (metadata.value(forKey: "checksum") as? String) ?? ""
+        let analysisDate = (metadata.value(forKey: "analysisDate") as? Date) ?? Date()
+
+        // Extract scenes
+        var matchedScenes: [String] = []
+        if let scenes = metadata.value(forKey: "sceneClassifications") as? Set<NSManagedObject> {
+            matchedScenes = scenes.compactMap { scene in
+                (scene.value(forKey: "identifier") as? String)?.replacingOccurrences(of: "_", with: " ")
+            }
+        }
+
+        // Extract objects
+        var matchedObjects: [String] = []
+        if let objects = metadata.value(forKey: "detectedObjects") as? Set<NSManagedObject> {
+            matchedObjects = objects.compactMap { obj in
+                obj.value(forKey: "label") as? String
+            }
+        }
+
+        // Extract text from textRegions
+        var extractedText: String?
+        if let hasText = metadata.value(forKey: "hasText") as? Bool, hasText {
+            if let textRegions = metadata.value(forKey: "textRegions") as? [[String: Any]] {
+                let textStrings = textRegions.compactMap { $0["text"] as? String }
+                if !textStrings.isEmpty {
+                    extractedText = textStrings.joined(separator: " ")
+                }
+            }
+        }
+
+        // Extract colors from colorAnalysis relationship
+        var dominantColors: [String] = []
+        if let colorAnalysis = metadata.value(forKey: "colorAnalysis") as? NSManagedObject {
+            if let colorPalette = colorAnalysis.value(forKey: "colorPalette") as? [String] {
+                dominantColors = colorPalette
+            }
+        }
+
+        return ImageSearchResult(
+            id: id,
+            filename: filename,
+            filePath: filePath,
+            checksum: checksum,
+            analysisDate: analysisDate,
+            matchedScenes: matchedScenes,
+            matchedObjects: matchedObjects,
+            extractedText: extractedText,
+            dominantColors: dominantColors,
+            confidence: confidence
+        )
     }
 
 }
