@@ -26,6 +26,9 @@ struct SmartSearchView: View {
     @State private var filterByQuality = false
     @State private var minConfidence: Double = 0.5
 
+    // Focus management
+    @FocusState private var isSearchFieldFocused: Bool
+
     // macOS version check
     private var isMacOS26OrLater: Bool {
         if #available(macOS 26, *) {
@@ -76,6 +79,10 @@ struct SmartSearchView: View {
         }
         .frame(width: 800, height: 600)
         .background(Color(NSColor.windowBackgroundColor))
+        .onAppear {
+            // Set focus to search field when view appears
+            isSearchFieldFocused = true
+        }
     }
 
     private var searchHeader: some View {
@@ -115,6 +122,7 @@ struct SmartSearchView: View {
 
                     TextField("Search by scene, object, text, color...", text: $searchText)
                         .textFieldStyle(.plain)
+                        .focused($isSearchFieldFocused)
                         .onSubmit {
                             performSearch()
                         }
@@ -395,19 +403,32 @@ struct ImageSearchResult: Identifiable {
 
 struct SearchResultCard: View {
     let result: ImageSearchResult
+    @State private var thumbnail: NSImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Thumbnail placeholder
-            Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .aspectRatio(1, contentMode: .fit)
-                .overlay(
-                    Image(systemName: "photo")
-                        .font(.largeTitle)
-                        .foregroundColor(.gray)
-                )
-                .cornerRadius(8)
+            // Thumbnail
+            Group {
+                if let thumbnail = thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .overlay(
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(.gray)
+                        )
+                }
+            }
+            .frame(width: 150, height: 150)
+            .clipped()
+            .cornerRadius(8)
+            .onAppear {
+                loadThumbnail()
+            }
 
             // Filename
             Text(result.filename)
@@ -435,6 +456,37 @@ struct SearchResultCard: View {
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(10)
         .shadow(radius: 2)
+    }
+
+    private func loadThumbnail() {
+        Task {
+            // Load thumbnail on background thread
+            let path = result.filePath
+            guard FileManager.default.fileExists(atPath: path) else {
+                print("⚠️ File not found: \(path)")
+                return
+            }
+
+            guard let image = NSImage(contentsOfFile: path) else {
+                print("⚠️ Failed to load image: \(path)")
+                return
+            }
+
+            // Create thumbnail (150x150)
+            let thumbnailSize = NSSize(width: 150, height: 150)
+            let thumbnailImage = NSImage(size: thumbnailSize)
+
+            thumbnailImage.lockFocus()
+            image.draw(in: NSRect(origin: .zero, size: thumbnailSize),
+                      from: NSRect(origin: .zero, size: image.size),
+                      operation: .copy,
+                      fraction: 1.0)
+            thumbnailImage.unlockFocus()
+
+            await MainActor.run {
+                self.thumbnail = thumbnailImage
+            }
+        }
     }
 }
 
