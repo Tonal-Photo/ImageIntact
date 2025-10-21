@@ -29,12 +29,21 @@ struct SmartSearchView: View {
     // Focus management
     @FocusState private var isSearchFieldFocused: Bool
 
+    // Security-scoped source folder access
+    @State private var sourceURL: URL?
+
     // macOS version check
     private var isMacOS26OrLater: Bool {
         if #available(macOS 26, *) {
             return true
         }
         return false
+    }
+
+    // Check if search is ready
+    @available(macOS 26, *)
+    private var isSearchReady: Bool {
+        SemanticImageSearch.shared.isReady
     }
 
     enum SearchScope: String, CaseIterable {
@@ -82,6 +91,33 @@ struct SmartSearchView: View {
         .onAppear {
             // Set focus to search field when view appears
             isSearchFieldFocused = true
+
+            // Load source folder bookmark for thumbnail access
+            loadSourceBookmark()
+        }
+    }
+
+    private func loadSourceBookmark() {
+        guard let bookmarkData = UserDefaults.standard.data(forKey: "sourceBookmark") else {
+            print("⚠️ No source bookmark found in UserDefaults")
+            return
+        }
+
+        do {
+            var isStale = false
+            let url = try URL(resolvingBookmarkData: bookmarkData,
+                            options: .withSecurityScope,
+                            relativeTo: nil,
+                            bookmarkDataIsStale: &isStale)
+
+            if isStale {
+                print("⚠️ Source bookmark is stale")
+            }
+
+            sourceURL = url
+            print("✅ Loaded source bookmark: \(url.lastPathComponent)")
+        } catch {
+            print("❌ Failed to load source bookmark: \(error)")
         }
     }
 
@@ -324,7 +360,7 @@ struct SmartSearchView: View {
                 GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)
             ], spacing: 16) {
                 ForEach(searchResults) { result in
-                    SearchResultCard(result: result)
+                    SearchResultCard(result: result, sourceURL: sourceURL)
                         .onTapGesture {
                             selectedResult = result
                         }
@@ -344,6 +380,14 @@ struct SmartSearchView: View {
         guard isMacOS26OrLater else {
             print("❌ Smart Search requires macOS 26 or later")
             return
+        }
+
+        // Check if Foundation Models session is ready
+        if #available(macOS 26, *) {
+            guard isSearchReady else {
+                print("⏳ Foundation Models session not ready yet, please wait...")
+                return
+            }
         }
 
         isSearching = true
@@ -409,6 +453,7 @@ struct ImageSearchResult: Identifiable {
 
 struct SearchResultCard: View {
     let result: ImageSearchResult
+    let sourceURL: URL?
     @State private var thumbnail: NSImage?
 
     var body: some View {
@@ -470,19 +515,22 @@ struct SearchResultCard: View {
             let path = result.filePath
             let fileURL = URL(fileURLWithPath: path)
 
-            // Get parent directory for security-scoped access
-            let parentURL = fileURL.deletingLastPathComponent()
-
             guard FileManager.default.fileExists(atPath: path) else {
                 print("⚠️ File not found: \(path)")
                 return
             }
 
+            // Use source folder's security-scoped bookmark for access
+            guard let sourceURL = sourceURL else {
+                print("⚠️ No source URL available for security-scoped access")
+                return
+            }
+
             // Start accessing security-scoped resource (sandboxed app requirement)
-            let didStartAccess = parentURL.startAccessingSecurityScopedResource()
+            let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
             defer {
                 if didStartAccess {
-                    parentURL.stopAccessingSecurityScopedResource()
+                    sourceURL.stopAccessingSecurityScopedResource()
                 }
             }
 

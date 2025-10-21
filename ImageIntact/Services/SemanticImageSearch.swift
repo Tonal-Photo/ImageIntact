@@ -40,6 +40,7 @@ class SemanticImageSearch: ObservableObject {
     static let shared = SemanticImageSearch()
 
     private var languageSession: LanguageModelSession?
+    @Published var isReady = false
 
     /// Check if Foundation Models is available on this system
     static var isAvailable: Bool {
@@ -54,7 +55,7 @@ class SemanticImageSearch: ObservableObject {
     }
 
     private func setupLanguageModel() {
-        Task {
+        Task { @MainActor in
             // Create session with instructions for image search
             let instructions = """
             You are a semantic search engine for photographs and images.
@@ -78,6 +79,7 @@ class SemanticImageSearch: ObservableObject {
             """
 
             self.languageSession = LanguageModelSession(instructions: instructions)
+            self.isReady = true
             print("✅ Foundation Models initialized for semantic image search")
         }
     }
