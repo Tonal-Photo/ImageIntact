@@ -99,8 +99,19 @@ class SemanticImageSearch: ObservableObject {
 
         print("🔍 Searching \(allMetadata.count) images for: '\(query)'")
 
+        // Pre-filter with keyword matching to reduce candidates
+        // This avoids exceeding the 4096 token context window
+        let candidates = preFilterCandidates(query: query, metadata: allMetadata, maxCandidates: 50)
+
+        if candidates.isEmpty {
+            print("⚠️ No candidates matched keyword pre-filter")
+            return []
+        }
+
+        print("📋 Pre-filtered to \(candidates.count) candidate images")
+
         // Convert metadata to searchable documents
-        let documents = allMetadata.enumerated().map { index, metadata in
+        let documents = candidates.enumerated().map { index, metadata in
             "[\(index)] \(createSearchableDocument(from: metadata))"
         }.joined(separator: "\n\n")
 
@@ -126,14 +137,14 @@ class SemanticImageSearch: ObservableObject {
 
             print("✅ Foundation Models returned \(rankings.rankedImages.count) ranked results")
 
-            // Convert to ImageSearchResult objects
+            // Convert to ImageSearchResult objects (using candidates array)
             let results = rankings.rankedImages.compactMap { rankedImage -> ImageSearchResult? in
-                guard rankedImage.index >= 0 && rankedImage.index < allMetadata.count else {
+                guard rankedImage.index >= 0 && rankedImage.index < candidates.count else {
                     print("⚠️ Invalid index \(rankedImage.index) returned by model")
                     return nil
                 }
 
-                let metadata = allMetadata[rankedImage.index]
+                let metadata = candidates[rankedImage.index]
                 return createSearchResult(from: metadata, confidence: rankedImage.confidence)
             }
 
@@ -143,6 +154,34 @@ class SemanticImageSearch: ObservableObject {
             print("❌ Semantic search failed: \(error)")
             return []
         }
+    }
+
+    /// Pre-filter candidates using keyword matching to avoid context window overflow
+    private func preFilterCandidates(query: String, metadata: [NSManagedObject], maxCandidates: Int) -> [NSManagedObject] {
+        let queryTerms = query.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+
+        // Score each image by keyword matches
+        var scoredMetadata: [(metadata: NSManagedObject, score: Int)] = []
+
+        for item in metadata {
+            let document = createSearchableDocument(from: item).lowercased()
+            var score = 0
+
+            for term in queryTerms {
+                if document.contains(term) {
+                    score += 1
+                }
+            }
+
+            if score > 0 {
+                scoredMetadata.append((metadata: item, score: score))
+            }
+        }
+
+        // Sort by score (best matches first) and take top candidates
+        scoredMetadata.sort { $0.score > $1.score }
+
+        return scoredMetadata.prefix(maxCandidates).map { $0.metadata }
     }
 
     /// Fetch all image metadata from Core Data
