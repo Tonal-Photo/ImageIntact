@@ -40,6 +40,11 @@ struct SmartSearchView: View {
     @State private var totalImagesInCategory = 0
     @State private var isBrowseMode = true
 
+    // Drill-down navigation for browse mode
+    @State private var browseCategories: [BrowseCategory] = []
+    @State private var selectedCategory: BrowseCategory?
+    @State private var isDrilledDown = false
+
     // macOS version check
     private var isMacOS26OrLater: Bool {
         if #available(macOS 26, *) {
@@ -121,6 +126,8 @@ struct SmartSearchView: View {
 
             // Reload browse results for new category
             if searchText.isEmpty {
+                isDrilledDown = false
+                selectedCategory = nil
                 loadBrowseResults()
             }
         }
@@ -128,6 +135,8 @@ struct SmartSearchView: View {
             // Switch between browse and search modes
             isBrowseMode = newText.isEmpty
             if isBrowseMode {
+                isDrilledDown = false
+                selectedCategory = nil
                 loadBrowseResults()
             }
         }
@@ -419,40 +428,151 @@ struct SmartSearchView: View {
     private var resultsList: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Stats header for browse mode
-                if isBrowseMode && totalImagesInCategory > 0 {
-                    HStack {
-                        Label {
-                            Text(statsText)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        } icon: {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.accentColor)
-                        }
-
-                        Spacer()
+                // Browse mode: show either category list or drilled-down images
+                if isBrowseMode {
+                    if isDrilledDown {
+                        // Drilled down: show images for selected category
+                        imageGridForCategory
+                    } else {
+                        // Top level: show category list
+                        categoryListView
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                } else {
+                    // Search mode: show search results
+                    searchResultsGrid
                 }
-
-                LazyVGrid(columns: [
-                    GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)
-                ], spacing: 16) {
-                    ForEach(searchResults) { result in
-                        SearchResultCard(result: result, sourceURL: sourceURL)
-                            .onTapGesture {
-                                selectedResult = result
-                            }
-                    }
-                }
-                .padding()
             }
         }
         .sheet(item: $selectedResult) { result in
             SearchResultDetailView(result: result)
         }
+    }
+
+    private var categoryListView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !browseCategories.isEmpty {
+                // Header
+                HStack {
+                    Label {
+                        Text("Found \(browseCategories.count) \(categoryTypeText)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } icon: {
+                        Image(systemName: "list.bullet")
+                            .foregroundColor(.accentColor)
+                    }
+                    Spacer()
+                }
+                .padding()
+
+                // Category list
+                LazyVStack(spacing: 1) {
+                    ForEach(browseCategories) { category in
+                        CategoryRow(category: category)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectCategory(category)
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    private var imageGridForCategory: some View {
+        VStack(spacing: 16) {
+            // Back button and category header
+            if let category = selectedCategory {
+                HStack {
+                    Button(action: {
+                        isDrilledDown = false
+                        selectedCategory = nil
+                    }) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
+
+                    Spacer()
+
+                    Text("\(category.displayName) (\(searchResults.count) images)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+
+            // Image grid
+            LazyVGrid(columns: [
+                GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)
+            ], spacing: 16) {
+                ForEach(searchResults) { result in
+                    SearchResultCard(result: result, sourceURL: sourceURL)
+                        .onTapGesture {
+                            selectedResult = result
+                        }
+                }
+            }
+            .padding()
+        }
+    }
+
+    private var searchResultsGrid: some View {
+        VStack(spacing: 16) {
+            // Stats header for search mode
+            if totalImagesInCategory > 0 {
+                HStack {
+                    Label {
+                        Text(statsText)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } icon: {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.accentColor)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)
+            ], spacing: 16) {
+                ForEach(searchResults) { result in
+                    SearchResultCard(result: result, sourceURL: sourceURL)
+                        .onTapGesture {
+                            selectedResult = result
+                        }
+                }
+            }
+            .padding()
+        }
+    }
+
+    private var categoryTypeText: String {
+        switch searchScope {
+        case .all:
+            return "categories"
+        case .scenes:
+            return "scenes"
+        case .objects:
+            return "objects"
+        case .text:
+            return "images with text"
+        case .faces:
+            return "images with faces"
+        case .technical:
+            return "images"
+        }
+    }
+
+    private func selectCategory(_ category: BrowseCategory) {
+        selectedCategory = category
+        isDrilledDown = true
+        loadImagesForCategory(category)
     }
 
     private var statsText: String {
@@ -517,7 +637,9 @@ struct SmartSearchView: View {
         guard isMacOS26OrLater else { return }
 
         isSearching = true
-        searchResults = []
+        browseCategories = []
+        isDrilledDown = false
+        selectedCategory = nil
 
         // Capture the scope before async work
         let scope = searchScope
@@ -525,27 +647,213 @@ struct SmartSearchView: View {
         Task {
             let context = EventLogger.shared.backgroundContext
 
+            let categories = await context.perform {
+                // Fetch categories with counts based on scope
+                switch scope {
+                case .scenes:
+                    return self.fetchSceneCategories(context: context)
+                case .objects:
+                    return self.fetchObjectCategories(context: context)
+                case .text:
+                    return self.fetchTextImages(context: context)
+                case .faces:
+                    return self.fetchFaceImages(context: context)
+                case .technical:
+                    return self.fetchTechnicalImages(context: context)
+                case .all:
+                    return self.fetchAllCategories(context: context)
+                }
+            }
+
+            await MainActor.run {
+                self.browseCategories = categories
+                self.isSearching = false
+                print("✅ Browse mode: Loaded \(categories.count) categories")
+            }
+        }
+    }
+
+    private nonisolated func fetchSceneCategories(context: NSManagedObjectContext) -> [BrowseCategory] {
+        let request = NSFetchRequest<NSDictionary>(entityName: "SceneClassification")
+        request.resultType = .dictionaryResultType
+        request.propertiesToFetch = ["identifier"]
+        request.returnsDistinctResults = true
+
+        do {
+            let scenes = try context.fetch(request)
+            var categoryCounts: [String: Int] = [:]
+
+            // Count images for each scene
+            for sceneDict in scenes {
+                if let identifier = sceneDict["identifier"] as? String {
+                    let countRequest = NSFetchRequest<NSManagedObject>(entityName: "SceneClassification")
+                    countRequest.predicate = NSPredicate(format: "identifier == %@", identifier)
+                    let count = try context.count(for: countRequest)
+                    categoryCounts[identifier] = count
+                }
+            }
+
+            // Convert to BrowseCategory and sort by count
+            return categoryCounts.map { identifier, count in
+                BrowseCategory(
+                    name: identifier,
+                    displayName: identifier.replacingOccurrences(of: "_", with: " ").capitalized,
+                    count: count,
+                    scope: .scenes
+                )
+            }.sorted { $0.count > $1.count }
+
+        } catch {
+            print("❌ Failed to fetch scene categories: \(error)")
+            return []
+        }
+    }
+
+    private nonisolated func fetchObjectCategories(context: NSManagedObjectContext) -> [BrowseCategory] {
+        let request = NSFetchRequest<NSDictionary>(entityName: "DetectedObject")
+        request.resultType = .dictionaryResultType
+        request.propertiesToFetch = ["label"]
+        request.returnsDistinctResults = true
+
+        do {
+            let objects = try context.fetch(request)
+            var categoryCounts: [String: Int] = [:]
+
+            // Count images for each object
+            for objectDict in objects {
+                if let label = objectDict["label"] as? String {
+                    let countRequest = NSFetchRequest<NSManagedObject>(entityName: "DetectedObject")
+                    countRequest.predicate = NSPredicate(format: "label == %@", label)
+                    let count = try context.count(for: countRequest)
+                    categoryCounts[label] = count
+                }
+            }
+
+            // Convert to BrowseCategory and sort by count
+            return categoryCounts.map { label, count in
+                BrowseCategory(
+                    name: label,
+                    displayName: label,
+                    count: count,
+                    scope: .objects
+                )
+            }.sorted { $0.count > $1.count }
+
+        } catch {
+            print("❌ Failed to fetch object categories: \(error)")
+            return []
+        }
+    }
+
+    private nonisolated func fetchTextImages(context: NSManagedObjectContext) -> [BrowseCategory] {
+        // For text, just return images with text (no subcategories)
+        let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
+        request.predicate = NSPredicate(format: "hasText == YES")
+
+        do {
+            let count = try context.count(for: request)
+            return [BrowseCategory(name: "text", displayName: "Images with Text", count: count, scope: .text)]
+        } catch {
+            print("❌ Failed to fetch text images: \(error)")
+            return []
+        }
+    }
+
+    private nonisolated func fetchFaceImages(context: NSManagedObjectContext) -> [BrowseCategory] {
+        // For faces, just return images with faces (no subcategories)
+        let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
+        request.predicate = NSPredicate(format: "faceCount > 0")
+
+        do {
+            let count = try context.count(for: request)
+            return [BrowseCategory(name: "faces", displayName: "Images with Faces", count: count, scope: .faces)]
+        } catch {
+            print("❌ Failed to fetch face images: \(error)")
+            return []
+        }
+    }
+
+    private nonisolated func fetchTechnicalImages(context: NSManagedObjectContext) -> [BrowseCategory] {
+        // For technical, return categories for color/EXIF/quality
+        var categories: [BrowseCategory] = []
+
+        do {
+            // Color analysis
+            let colorRequest = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
+            colorRequest.predicate = NSPredicate(format: "colorAnalysis != nil")
+            let colorCount = try context.count(for: colorRequest)
+            if colorCount > 0 {
+                categories.append(BrowseCategory(name: "color", displayName: "Color Analysis", count: colorCount, scope: .technical))
+            }
+
+            // EXIF data
+            let exifRequest = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
+            exifRequest.predicate = NSPredicate(format: "exifData != nil")
+            let exifCount = try context.count(for: exifRequest)
+            if exifCount > 0 {
+                categories.append(BrowseCategory(name: "exif", displayName: "EXIF Data", count: exifCount, scope: .technical))
+            }
+
+            return categories
+        } catch {
+            print("❌ Failed to fetch technical images: \(error)")
+            return []
+        }
+    }
+
+    private nonisolated func fetchAllCategories(context: NSManagedObjectContext) -> [BrowseCategory] {
+        var categories: [BrowseCategory] = []
+
+        // Get top scenes
+        categories.append(contentsOf: fetchSceneCategories(context: context).prefix(10))
+        // Get all objects
+        categories.append(contentsOf: fetchObjectCategories(context: context))
+        // Get text/face counts
+        categories.append(contentsOf: fetchTextImages(context: context))
+        categories.append(contentsOf: fetchFaceImages(context: context))
+
+        return categories.sorted { $0.count > $1.count }
+    }
+
+    private func loadImagesForCategory(_ category: BrowseCategory) {
+        isSearching = true
+        searchResults = []
+
+        Task {
+            let context = EventLogger.shared.backgroundContext
+
             let results = await context.perform {
                 let request = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
 
-                // Category-specific predicates
-                switch scope {
-                case .all:
-                    // No predicate - fetch all images
-                    request.predicate = nil
+                // Build predicate based on category type
+                switch category.scope {
                 case .scenes:
-                    request.predicate = NSPredicate(format: "sceneClassifications.@count > 0")
+                    // Find images with this scene classification
+                    request.predicate = NSPredicate(
+                        format: "ANY sceneClassifications.identifier == %@",
+                        category.name
+                    )
                 case .objects:
-                    request.predicate = NSPredicate(format: "detectedObjects.@count > 0")
+                    // Find images with this detected object
+                    request.predicate = NSPredicate(
+                        format: "ANY detectedObjects.label == %@",
+                        category.name
+                    )
                 case .text:
                     request.predicate = NSPredicate(format: "hasText == YES")
                 case .faces:
                     request.predicate = NSPredicate(format: "faceCount > 0")
                 case .technical:
-                    request.predicate = NSPredicate(format: "colorAnalysis != nil OR exifData != nil")
+                    if category.name == "color" {
+                        request.predicate = NSPredicate(format: "colorAnalysis != nil")
+                    } else if category.name == "exif" {
+                        request.predicate = NSPredicate(format: "exifData != nil")
+                    }
+                case .all:
+                    request.predicate = nil
                 }
 
-                // Prefetch relationships to avoid faulting
+                // Prefetch relationships
                 request.relationshipKeyPathsForPrefetching = [
                     "sceneClassifications",
                     "detectedObjects",
@@ -556,36 +864,29 @@ struct SmartSearchView: View {
                 // Sort by analysis date (most recent first)
                 request.sortDescriptors = [NSSortDescriptor(key: "analysisDate", ascending: false)]
 
-                // Limit to 100 results for performance
+                // Limit to 100 for performance
                 request.fetchLimit = 100
 
                 do {
                     let metadata = try context.fetch(request)
-                    print("📊 Fetched \(metadata.count) images for category: \(scope.rawValue)")
+                    print("📊 Fetched \(metadata.count) images for category '\(category.displayName)'")
 
-                    // Get total count for stats (without limit)
-                    let countRequest = NSFetchRequest<NSManagedObject>(entityName: "ImageMetadata")
-                    countRequest.predicate = request.predicate
-                    let totalCount = try context.count(for: countRequest)
-
-                    // Convert to ImageSearchResult objects
+                    // Convert to ImageSearchResult
                     let results: [ImageSearchResult] = metadata.compactMap { item in
                         Self.createSearchResult(from: item, confidence: 1.0)
                     }
 
-                    return (results, totalCount)
-
+                    return results
                 } catch {
-                    print("❌ Failed to fetch browse results: \(error)")
-                    return ([], 0)
+                    print("❌ Failed to fetch images for category: \(error)")
+                    return []
                 }
             }
 
             await MainActor.run {
-                self.searchResults = results.0
-                self.totalImagesInCategory = results.1
+                self.searchResults = results
                 self.isSearching = false
-                print("✅ Browse mode: Showing \(results.0.count) of \(results.1) images")
+                print("✅ Loaded \(results.count) images for '\(category.displayName)'")
             }
         }
     }
@@ -652,6 +953,24 @@ struct SmartSearchView: View {
 
 }
 
+// MARK: - Browse Category Model
+
+struct BrowseCategory: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let displayName: String
+    let count: Int
+    let scope: SmartSearchView.SearchScope
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: BrowseCategory, rhs: BrowseCategory) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 // MARK: - Search Result Model
 
 struct ImageSearchResult: Identifiable {
@@ -691,6 +1010,62 @@ struct ImageSearchResult: Identifiable {
         self.confidence = confidence
     }
 
+}
+
+// MARK: - Category Row
+
+struct CategoryRow: View {
+    let category: BrowseCategory
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon based on category type
+            Image(systemName: iconForCategory)
+                .font(.title3)
+                .foregroundColor(.accentColor)
+                .frame(width: 32)
+
+            // Category name
+            Text(category.displayName)
+                .font(.body)
+
+            Spacer()
+
+            // Count badge
+            Text("\(category.count)")
+                .font(.subheadline.monospacedDigit())
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(8)
+
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .cornerRadius(8)
+        .padding(.horizontal)
+        .padding(.vertical, 2)
+    }
+
+    private var iconForCategory: String {
+        switch category.scope {
+        case .scenes:
+            return "photo.fill"
+        case .objects:
+            return "cube.fill"
+        case .text:
+            return "doc.text.fill"
+        case .faces:
+            return "person.fill"
+        default:
+            return "square.grid.2x2.fill"
+        }
+    }
 }
 
 // MARK: - Search Result Card
