@@ -31,6 +31,10 @@ struct SmartSearchView: View {
 
     // Security-scoped source folder access
     @State private var sourceURL: URL?
+    @State private var isAccessingSource = false
+
+    // Foundation Models readiness
+    @State private var searchWhenReady = false
 
     // macOS version check
     private var isMacOS26OrLater: Bool {
@@ -41,9 +45,11 @@ struct SmartSearchView: View {
     }
 
     // Check if search is ready
-    @available(macOS 26, *)
     private var isSearchReady: Bool {
-        SemanticImageSearch.shared.isReady
+        if #available(macOS 26, *) {
+            return SemanticImageSearch.shared.isReady
+        }
+        return false
     }
 
     enum SearchScope: String, CaseIterable {
@@ -94,6 +100,22 @@ struct SmartSearchView: View {
 
             // Load source folder bookmark for thumbnail access
             loadSourceBookmark()
+
+            // Pre-warm Foundation Models session (triggers initialization)
+            if #available(macOS 26, *) {
+                _ = SemanticImageSearch.shared
+            }
+        }
+        .onDisappear {
+            // Stop accessing security-scoped resource when view closes
+            stopAccessingSource()
+        }
+        .onChange(of: isSearchReady) { _, isReady in
+            // Auto-trigger search when Foundation Models becomes ready
+            if isReady && searchWhenReady {
+                searchWhenReady = false
+                performSearch()
+            }
         }
     }
 
@@ -114,10 +136,25 @@ struct SmartSearchView: View {
                 print("⚠️ Source bookmark is stale")
             }
 
-            sourceURL = url
-            print("✅ Loaded source bookmark: \(url.lastPathComponent)")
+            // Start accessing and KEEP accessing while view is open
+            let didStart = url.startAccessingSecurityScopedResource()
+            if didStart {
+                isAccessingSource = true
+                sourceURL = url
+                print("✅ Loaded source bookmark and started security access: \(url.lastPathComponent)")
+            } else {
+                print("❌ Failed to start accessing security-scoped resource")
+            }
         } catch {
             print("❌ Failed to load source bookmark: \(error)")
+        }
+    }
+
+    private func stopAccessingSource() {
+        if isAccessingSource, let url = sourceURL {
+            url.stopAccessingSecurityScopedResource()
+            isAccessingSource = false
+            print("✅ Stopped accessing security-scoped resource")
         }
     }
 
@@ -385,7 +422,8 @@ struct SmartSearchView: View {
         // Check if Foundation Models session is ready
         if #available(macOS 26, *) {
             guard isSearchReady else {
-                print("⏳ Foundation Models session not ready yet, please wait...")
+                print("⏳ Foundation Models initializing... search will start automatically when ready")
+                searchWhenReady = true
                 return
             }
         }
@@ -520,19 +558,8 @@ struct SearchResultCard: View {
                 return
             }
 
-            // Use source folder's security-scoped bookmark for access
-            guard let sourceURL = sourceURL else {
-                print("⚠️ No source URL available for security-scoped access")
-                return
-            }
-
-            // Start accessing security-scoped resource (sandboxed app requirement)
-            let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
-            defer {
-                if didStartAccess {
-                    sourceURL.stopAccessingSecurityScopedResource()
-                }
-            }
+            // Source folder security access is already active at view level
+            // No need to start/stop here - just load the image
 
             // Try to load image using URL (better for sandboxed apps)
             guard let imageSource = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
