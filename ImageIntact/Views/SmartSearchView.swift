@@ -70,57 +70,88 @@ struct SmartSearchView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Main Content
-                Group {
-                    if !isMacOS26OrLater {
-                        upgradeRequiredState
-                    } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
-                        // Search mode with no results
-                        emptyState
-                    } else if isSearching {
-                        loadingState
-                    } else if !searchResults.isEmpty || !browseCategories.isEmpty {
-                        // Show results (either search results or browse categories)
-                        resultsList
-                    } else {
-                        welcomeState
-                    }
-                }
+        VStack(spacing: 0) {
+            // Custom unified header
+            HStack(spacing: 16) {
+                // Title with icon
+                Label("Smart Image Search", systemImage: "sparkle.magnifyingglass")
+                    .font(.headline)
+                    .foregroundColor(.primary)
 
-                Divider()
+                Spacer()
 
-                // Category picker at bottom
-                HStack {
-                    Text("Category")
-                        .font(.subheadline)
+                // Search field
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
+                        .font(.body)
 
-                    Picker("", selection: $searchScope) {
-                        ForEach(SearchScope.allCases, id: \.self) { scope in
-                            Text(scope.rawValue).tag(scope)
+                    TextField("Search by scene, object, text, color...", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 300)
+                        .onSubmit {
+                            performSearch()
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-            }
-            .navigationTitle("Smart Image Search")
-            .toolbar {
-                // Close button on leading side
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
-                        dismiss()
+
+                    if !searchText.isEmpty {
+                        Button(action: { searchText = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
+
+                // Close button
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Close")
             }
-        }
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Search by scene, object, text, color...")
-        .onSubmit(of: .search) {
-            performSearch()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Color(NSColor.windowBackgroundColor))
+
+            Divider()
+
+            // Main Content
+            Group {
+                if !isMacOS26OrLater {
+                    upgradeRequiredState
+                } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
+                    // Search mode with no results
+                    emptyState
+                } else if isSearching {
+                    loadingState
+                } else if !searchResults.isEmpty || !browseCategories.isEmpty {
+                    // Show results (either search results or browse categories)
+                    resultsList
+                } else {
+                    welcomeState
+                }
+            }
+
+            Divider()
+
+            // Category picker at bottom
+            HStack {
+                Text("Category")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                Picker("", selection: $searchScope) {
+                    ForEach(SearchScope.allCases, id: \.self) { scope in
+                        Text(scope.rawValue).tag(scope)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
         }
         .frame(minWidth: 700, idealWidth: 900, maxWidth: .infinity, minHeight: 500, idealHeight: 700, maxHeight: .infinity)
         .onAppear {
