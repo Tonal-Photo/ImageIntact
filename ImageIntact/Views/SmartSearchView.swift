@@ -16,18 +16,6 @@ struct SmartSearchView: View {
     @State private var isSearching = false
     @State private var selectedResult: ImageSearchResult?
     @State private var searchScope: SearchScope = .all
-    @State private var showAdvancedFilters = false
-
-    // Advanced filters
-    @State private var filterByScenes = true
-    @State private var filterByObjects = true
-    @State private var filterByText = true
-    @State private var filterByColors = true
-    @State private var filterByQuality = false
-    @State private var minConfidence: Double = 0.5
-
-    // Focus management
-    @FocusState private var isSearchFieldFocused: Bool
 
     // Security-scoped source folder access
     @State private var sourceURL: URL?
@@ -82,33 +70,40 @@ struct SmartSearchView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Search Header
-            searchHeader
-
-            Divider()
-
+        NavigationStack {
             // Main Content
-            if !isMacOS26OrLater {
-                upgradeRequiredState
-            } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
-                // Search mode with no results
-                emptyState
-            } else if isSearching {
-                loadingState
-            } else if !searchResults.isEmpty || !browseCategories.isEmpty {
-                // Show results (either search results or browse categories)
-                resultsList
-            } else {
-                welcomeState
+            Group {
+                if !isMacOS26OrLater {
+                    upgradeRequiredState
+                } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
+                    // Search mode with no results
+                    emptyState
+                } else if isSearching {
+                    loadingState
+                } else if !searchResults.isEmpty || !browseCategories.isEmpty {
+                    // Show results (either search results or browse categories)
+                    resultsList
+                } else {
+                    welcomeState
+                }
+            }
+            .navigationTitle("Smart Image Search")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Picker("Category", selection: $searchScope) {
+                        ForEach(SearchScope.allCases, id: \.self) { scope in
+                            Label(scope.rawValue, systemImage: scope.icon)
+                                .tag(scope)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Filter by category")
+                }
             }
         }
-        .frame(width: 800, height: 600)
-        .background(Color(NSColor.windowBackgroundColor))
+        .searchable(text: $searchText, prompt: "Search by scene, object, text, color...")
+        .frame(minWidth: 800, minHeight: 600)
         .onAppear {
-            // Set focus to search field when view appears
-            isSearchFieldFocused = true
-
             // Load source folder bookmark for thumbnail access
             loadSourceBookmark()
 
@@ -121,11 +116,6 @@ struct SmartSearchView: View {
             loadBrowseResults()
         }
         .onChange(of: searchScope) { _, _ in
-            // Refocus search field when scope changes
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isSearchFieldFocused = true
-            }
-
             // Reload browse results for new category
             if searchText.isEmpty {
                 isDrilledDown = false
@@ -141,6 +131,10 @@ struct SmartSearchView: View {
                 selectedCategory = nil
                 loadBrowseResults()
             }
+        }
+        .onSubmit(of: .search) {
+            // Handle search submission
+            performSearch()
         }
         .onDisappear {
             // Stop accessing security-scoped resource when view closes
@@ -192,117 +186,6 @@ struct SmartSearchView: View {
             isAccessingSource = false
             print("✅ Stopped accessing security-scoped resource")
         }
-    }
-
-    private var searchHeader: some View {
-        VStack(spacing: 12) {
-            // Title and close button
-            HStack {
-                Label("Smart Image Search", systemImage: "sparkle.magnifyingglass")
-                    .font(.title2.bold())
-
-                Spacer()
-
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal)
-            .padding(.top)
-
-            // Search field with scope selector
-            HStack(spacing: 8) {
-                // Scope selector
-                Picker("", selection: $searchScope) {
-                    ForEach(SearchScope.allCases, id: \.self) { scope in
-                        Label(scope.rawValue, systemImage: scope.icon)
-                            .tag(scope)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 300)
-                .onChange(of: searchScope) { _, _ in
-                    // Refocus search field when scope changes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isSearchFieldFocused = true
-                    }
-                }
-
-                // Search field
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-
-                    TextField("Search by scene, object, text, color...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .focused($isSearchFieldFocused)
-                        .onSubmit {
-                            performSearch()
-                        }
-
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(8)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
-
-                // Advanced filters toggle
-                Button(action: { showAdvancedFilters.toggle() }) {
-                    Image(systemName: showAdvancedFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .foregroundColor(showAdvancedFilters ? .accentColor : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Advanced filters")
-            }
-            .padding(.horizontal)
-
-            // Advanced filters (collapsible)
-            if showAdvancedFilters {
-                advancedFilters
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: showAdvancedFilters)
-    }
-
-    private var advancedFilters: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Search in:")
-                .font(.caption.bold())
-                .foregroundColor(.secondary)
-
-            HStack(spacing: 16) {
-                Toggle("Scenes", isOn: $filterByScenes)
-                Toggle("Objects", isOn: $filterByObjects)
-                Toggle("Text (OCR)", isOn: $filterByText)
-                Toggle("Colors", isOn: $filterByColors)
-                Toggle("Quality", isOn: $filterByQuality)
-            }
-            .toggleStyle(.checkbox)
-            .font(.caption)
-
-            HStack {
-                Text("Min Confidence:")
-                    .font(.caption)
-                Slider(value: $minConfidence, in: 0...1)
-                    .frame(width: 150)
-                Text("\(Int(minConfidence * 100))%")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 40, alignment: .trailing)
-            }
-        }
-        .padding()
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
-        .padding(.horizontal)
     }
 
     private var welcomeState: some View {
@@ -1025,33 +908,36 @@ struct CategoryRow: View {
             Image(systemName: iconForCategory)
                 .font(.title3)
                 .foregroundColor(.accentColor)
-                .frame(width: 32)
+                .frame(width: 28, height: 28)
 
             // Category name
             Text(category.displayName)
                 .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
+            // Count and chevron grouped together
+            HStack(spacing: 8) {
+                // Count badge
+                Text("\(category.count)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.1))
+                    .cornerRadius(8)
 
-            // Count badge
-            Text("\(category.count)")
-                .font(.subheadline.monospacedDigit())
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(8)
-
-            // Chevron
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                // Chevron
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
-        .padding()
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        .cornerRadius(8)
-        .padding(.horizontal)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 3)
     }
 
     private var iconForCategory: String {
