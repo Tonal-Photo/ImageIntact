@@ -274,6 +274,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showSmartSearch) {
             SmartSearchView()
+                .presentationSizing(.fitted)
+                .presentationBackground(.regularMaterial)
         }
         .alert("Upgrade to Pro", isPresented: $showUpgradeAlert) {
             if !BuildConfiguration.isOpenSourceBuild {

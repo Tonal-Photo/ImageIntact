@@ -110,7 +110,30 @@ struct SmartSearchView: View {
             }
             .navigationTitle("Smart Image Search")
             .toolbar {
-                // Close button
+                // Search field on trailing side (right)
+                ToolbarItem(placement: .automatic) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+
+                        TextField("Search by scene, object, text, color...", text: $searchText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 300)
+                            .onSubmit {
+                                performSearch()
+                            }
+
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Close button on leading side
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
                         dismiss()
@@ -118,7 +141,6 @@ struct SmartSearchView: View {
                 }
             }
         }
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Search by scene, object, text, color...")
         .frame(minWidth: 700, idealWidth: 900, maxWidth: .infinity, minHeight: 500, idealHeight: 700, maxHeight: .infinity)
         .onAppear {
             // Load source folder bookmark for thumbnail access
