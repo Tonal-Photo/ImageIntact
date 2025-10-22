@@ -71,38 +71,55 @@ struct SmartSearchView: View {
 
     var body: some View {
         NavigationStack {
-            // Main Content
-            Group {
-                if !isMacOS26OrLater {
-                    upgradeRequiredState
-                } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
-                    // Search mode with no results
-                    emptyState
-                } else if isSearching {
-                    loadingState
-                } else if !searchResults.isEmpty || !browseCategories.isEmpty {
-                    // Show results (either search results or browse categories)
-                    resultsList
-                } else {
-                    welcomeState
+            VStack(spacing: 0) {
+                // Main Content
+                Group {
+                    if !isMacOS26OrLater {
+                        upgradeRequiredState
+                    } else if searchResults.isEmpty && !searchText.isEmpty && !isSearching {
+                        // Search mode with no results
+                        emptyState
+                    } else if isSearching {
+                        loadingState
+                    } else if !searchResults.isEmpty || !browseCategories.isEmpty {
+                        // Show results (either search results or browse categories)
+                        resultsList
+                    } else {
+                        welcomeState
+                    }
                 }
-            }
-            .navigationTitle("Smart Image Search")
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Picker("Category", selection: $searchScope) {
+
+                Divider()
+
+                // Category picker at bottom
+                HStack {
+                    Text("Category")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    Picker("", selection: $searchScope) {
                         ForEach(SearchScope.allCases, id: \.self) { scope in
-                            Label(scope.rawValue, systemImage: scope.icon)
-                                .tag(scope)
+                            Text(scope.rawValue).tag(scope)
                         }
                     }
                     .pickerStyle(.segmented)
-                    .help("Filter by category")
+                    .labelsHidden()
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+            }
+            .navigationTitle("Smart Image Search")
+            .toolbar {
+                // Close button
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search by scene, object, text, color...")
-        .frame(minWidth: 800, minHeight: 600)
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search by scene, object, text, color...")
+        .frame(minWidth: 700, idealWidth: 900, maxWidth: .infinity, minHeight: 500, idealHeight: 700, maxHeight: .infinity)
         .onAppear {
             // Load source folder bookmark for thumbnail access
             loadSourceBookmark()
