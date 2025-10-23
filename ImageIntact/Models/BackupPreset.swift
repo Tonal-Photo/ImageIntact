@@ -137,7 +137,10 @@ struct BackupPreset: Codable, Identifiable, Equatable {
     var skipHiddenFiles: Bool
     var preventSleep: Bool
     var showNotification: Bool
-    
+
+    // Organization
+    var useTimestampForOrganization: Bool
+
     // Destinations
     var destinationCount: Int
     var preferredDriveUUIDs: [String]
@@ -164,6 +167,7 @@ struct BackupPreset: Codable, Identifiable, Equatable {
         skipHiddenFiles: Bool = true,
         preventSleep: Bool = true,
         showNotification: Bool = true,
+        useTimestampForOrganization: Bool = false,
         destinationCount: Int = 1,
         preferredDriveUUIDs: [String] = [],
         sourceBookmark: Data? = nil,
@@ -184,6 +188,7 @@ struct BackupPreset: Codable, Identifiable, Equatable {
         self.skipHiddenFiles = skipHiddenFiles
         self.preventSleep = preventSleep
         self.showNotification = showNotification
+        self.useTimestampForOrganization = useTimestampForOrganization
         self.destinationCount = destinationCount
         self.preferredDriveUUIDs = preferredDriveUUIDs
         self.sourceBookmark = sourceBookmark
@@ -428,7 +433,8 @@ class BackupPresetManager: ObservableObject {
         // Update backup manager settings
         backupManager.fileTypeFilter = preset.fileTypeFilter
         backupManager.excludeCacheFiles = preset.excludeCacheFiles
-        
+        backupManager.useTimestampForOrganization = preset.useTimestampForOrganization
+
         // Update preferences
         PreferencesManager.shared.skipHiddenFiles = preset.skipHiddenFiles
         PreferencesManager.shared.preventSleepDuringBackup = preset.preventSleep
@@ -536,6 +542,7 @@ class BackupPresetManager: ObservableObject {
             skipHiddenFiles: preset.skipHiddenFiles,
             preventSleep: preset.preventSleep,
             showNotification: preset.showNotification,
+            useTimestampForOrganization: preset.useTimestampForOrganization,
             destinationCount: preset.destinationCount,
             preferredDriveUUIDs: preset.preferredDriveUUIDs,
             sourceBookmark: preset.sourceBookmark,
@@ -567,7 +574,7 @@ class BackupPresetManager: ObservableObject {
     func importPreset(from data: Data) throws -> BackupPreset {
         let decoder = JSONDecoder()
         var imported = try decoder.decode(BackupPreset.self, from: data)
-        
+
         // Ensure imported preset is not built-in and has unique ID
         imported = BackupPreset(
             id: UUID(),
@@ -582,6 +589,7 @@ class BackupPresetManager: ObservableObject {
             skipHiddenFiles: imported.skipHiddenFiles,
             preventSleep: imported.preventSleep,
             showNotification: imported.showNotification,
+            useTimestampForOrganization: imported.useTimestampForOrganization,
             destinationCount: imported.destinationCount,
             preferredDriveUUIDs: imported.preferredDriveUUIDs,
             sourceBookmark: imported.sourceBookmark,
@@ -632,6 +640,7 @@ class BackupPresetManager: ObservableObject {
             skipHiddenFiles: PreferencesManager.shared.skipHiddenFiles,
             preventSleep: PreferencesManager.shared.preventSleepDuringBackup,
             showNotification: PreferencesManager.shared.showNotificationOnComplete,
+            useTimestampForOrganization: backupManager.useTimestampForOrganization,
             destinationCount: backupManager.destinationItems.count,
             preferredDriveUUIDs: [],
             sourceBookmark: sourceBookmark,

@@ -28,6 +28,14 @@ extension BackupManager {
         logEntries = []
         debugLog = []
 
+        // Generate timestamp if user requested timestamp-based organization
+        if useTimestampForOrganization {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd_HH-mm"
+            organizationName = formatter.string(from: Date())
+            print("📅 Using timestamp for organization: \(organizationName)")
+        }
+
         // Initialize ProgressPublisher immediately so UI shows we're working
         let destNames = destinations.map { $0.lastPathComponent }
         ProgressPublisher.shared.startBackup(

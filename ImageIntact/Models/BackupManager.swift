@@ -131,10 +131,11 @@ class BackupManager {
     
     // Backup organization
     var organizationName: String = ""  // Custom folder name for organizing backups
-    
+    var useTimestampForOrganization: Bool = false  // Replace organization name with ISO 8601 timestamp
+
     // UI state for completion report
     var showCompletionReport = false
-    
+
     // Migration state
     var showMigrationDialog = false
     var pendingMigrationPlans: [BackupMigrationDetector.MigrationPlan] = []

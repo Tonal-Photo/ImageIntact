@@ -133,6 +133,24 @@ struct OrganizationSection: View {
                     }
                 }
 
+                // Timestamp checkbox
+                Toggle("Use timestamp for folder name", isOn: $backupManager.useTimestampForOrganization)
+                    .font(.system(size: 12))
+                    .disabled(backupManager.isProcessing)
+                    .onChange(of: backupManager.useTimestampForOrganization) { _, useTimestamp in
+                        if useTimestamp {
+                            // Generate ISO 8601 timestamp: YYYY-MM-DD_HH-MM
+                            let formatter = DateFormatter()
+                            formatter.dateFormat = "yyyy-MM-dd_HH-mm"
+                            backupManager.organizationName = formatter.string(from: Date())
+                        } else {
+                            // Revert to source folder name
+                            if let sourceURL = backupManager.sourceURL {
+                                backupManager.organizationName = sourceURL.lastPathComponent
+                            }
+                        }
+                    }
+
                 // Always show the destination structure preview
                 HStack(spacing: 4) {
                     Image(systemName: "folder.badge.person.crop")
