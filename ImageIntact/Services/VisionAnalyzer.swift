@@ -754,6 +754,22 @@ class VisionAnalyzer: ObservableObject {
             metadata.setValue(Date(), forKey: "analysisDate")
             metadata.setValue("1.0", forKey: "analysisVersion")
 
+            // Extract drive UUID and volume name for removable drive tracking
+            do {
+                let resourceValues = try url.resourceValues(forKeys: [.volumeUUIDStringKey, .volumeNameKey])
+                if let driveUUID = resourceValues.volumeUUIDString {
+                    metadata.setValue(driveUUID, forKey: "driveUUID")
+                }
+                if let volumeName = resourceValues.volumeName {
+                    metadata.setValue(volumeName, forKey: "volumeName")
+                }
+            } catch {
+                // Silently fail if we can't get drive info - not critical
+                Task { @MainActor in
+                    ApplicationLogger.shared.debug("Could not extract drive UUID for \(url.lastPathComponent): \(error)", category: .vision)
+                }
+            }
+
             // Store dimensions
             if let original = originalDimensions {
                 // Analysis dimensions (Vision internally handles any downsampling)

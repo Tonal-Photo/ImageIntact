@@ -282,6 +282,10 @@ class SemanticImageSearch: ObservableObject {
         let checksum = (metadata.value(forKey: "checksum") as? String) ?? ""
         let analysisDate = (metadata.value(forKey: "analysisDate") as? Date) ?? Date()
 
+        // Extract drive info for removable drive tracking
+        let driveUUID = metadata.value(forKey: "driveUUID") as? String
+        let volumeName = metadata.value(forKey: "volumeName") as? String
+
         // Extract scenes
         var matchedScenes: [String] = []
         if let scenes = metadata.value(forKey: "sceneClassifications") as? Set<NSManagedObject> {
@@ -327,7 +331,9 @@ class SemanticImageSearch: ObservableObject {
             matchedObjects: matchedObjects,
             extractedText: extractedText,
             dominantColors: dominantColors,
-            confidence: confidence
+            confidence: confidence,
+            driveUUID: driveUUID,
+            volumeName: volumeName
         )
     }
 

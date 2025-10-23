@@ -920,6 +920,8 @@ struct ImageSearchResult: Identifiable {
     let extractedText: String?
     let dominantColors: [String]
     let confidence: Double
+    let driveUUID: String?
+    let volumeName: String?
 
     // Direct initializer for when we're building results manually
     init(
@@ -932,7 +934,9 @@ struct ImageSearchResult: Identifiable {
         matchedObjects: [String],
         extractedText: String?,
         dominantColors: [String],
-        confidence: Double
+        confidence: Double,
+        driveUUID: String? = nil,
+        volumeName: String? = nil
     ) {
         self.id = id
         self.filename = filename
@@ -944,6 +948,8 @@ struct ImageSearchResult: Identifiable {
         self.extractedText = extractedText
         self.dominantColors = dominantColors
         self.confidence = confidence
+        self.driveUUID = driveUUID
+        self.volumeName = volumeName
     }
 
 }
@@ -1013,12 +1019,37 @@ struct SearchResultCard: View {
     let result: ImageSearchResult
     let sourceURL: URL?
     @State private var thumbnail: NSImage?
+    @State private var isDriveDisconnected = false
+    @ObservedObject private var driveMonitor = DriveMonitor.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Thumbnail
             Group {
-                if let thumbnail = thumbnail {
+                if isDriveDisconnected {
+                    // Disconnected drive placeholder
+                    Rectangle()
+                        .fill(Color.orange.opacity(0.1))
+                        .overlay(
+                            VStack(spacing: 8) {
+                                Image(systemName: "externaldrive.badge.xmark")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.orange)
+
+                                if let volumeName = result.volumeName {
+                                    Text("Drive '\(volumeName)'\nnot connected")
+                                        .font(.caption2)
+                                        .multilineTextAlignment(.center)
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("Drive not connected")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(8)
+                        )
+                } else if let thumbnail = thumbnail {
                     Image(nsImage: thumbnail)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -1036,7 +1067,10 @@ struct SearchResultCard: View {
             .clipped()
             .cornerRadius(8)
             .onAppear {
-                loadThumbnail()
+                checkDriveAvailability()
+                if !isDriveDisconnected {
+                    loadThumbnail()
+                }
             }
 
             // Filename
@@ -1065,6 +1099,26 @@ struct SearchResultCard: View {
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(10)
         .shadow(radius: 2)
+    }
+
+    private func checkDriveAvailability() {
+        // Check if this image's drive is currently connected
+        guard let driveUUID = result.driveUUID else {
+            // No drive UUID means it's on an internal drive or old metadata
+            isDriveDisconnected = false
+            return
+        }
+
+        // Check if any connected drive has this UUID
+        let isConnected = driveMonitor.connectedDrives.contains { drive in
+            drive.volumeUUID == driveUUID
+        }
+
+        isDriveDisconnected = !isConnected
+
+        if isDriveDisconnected {
+            print("📀 Image on disconnected drive: \(result.volumeName ?? "Unknown") - \(result.filename)")
+        }
     }
 
     private func loadThumbnail() {
