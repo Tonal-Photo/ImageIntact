@@ -34,28 +34,144 @@ struct HelpView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                     // What's New
-                    HelpSection(title: "What's New in v1.2.7") {
+                    HelpSection(title: "What's New in v2.0") {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("• **Smart Backup Organization** - Automatically organize files in folders")
-                            Text("• **Backup Presets** - Save and restore backup configurations")
-                            Text("• **Sleep Prevention** - Mac stays awake during backups")
-                            Text("• **Completion Notifications** - Get notified when backup finishes")
-                            Text("• **Smart Drive Detection** - Warnings for memory cards")
+                            Text("• **Smart Image Search** - Find photos using natural language (Apple Silicon)")
+                            Text("• **Vision Framework** - AI-powered image analysis during backup")
+                            Text("• **Core Image Analysis** - Color, quality, and technical metrics")
+                            Text("• **Removable Drive Intelligence** - Track images across disconnected drives")
+                            Text("• **Timestamp Folders** - ISO 8601 timestamp-based organization")
+                            Text("• **Swift 6 Compliance** - Enhanced stability with strict concurrency")
                         }
                         .font(.subheadline)
                     }
-                    
-                    HelpSection(title: "Recent Features (v1.2)") {
+
+                    HelpSection(title: "Previous Features (v1.2-1.3)") {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("• **Independent destinations** - Each runs at full speed")
-                            Text("• **Real-time ETA** - See time remaining per destination")
-                            Text("• **Automatic updates** - Daily checks for new versions")
-                            Text("• **Better progress** - Per-destination tracking")
-                            Text("• **Adaptive performance** - 1-8 workers per destination")
+                            Text("• **Backup Organization** - Organize files in structured folders")
+                            Text("• **Backup Presets** - Save and restore configurations")
+                            Text("• **Independent Destinations** - Each runs at full speed")
+                            Text("• **Network Performance** - Configurable SMB/NAS settings")
+                            Text("• **Enhanced Safety** - SHA-256 verification, quarantine system")
                         }
                         .font(.subheadline)
                     }
-                    
+
+                    // Smart Image Search
+                    HelpSection(title: "Smart Image Search (Apple Silicon Only)") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Find your backed-up photos using natural language queries or browse by AI-detected categories.")
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HelpPoint(title: "Semantic Search",
+                                         description: "Search by content: 'sunset beach', 'birthday party', 'wedding photos'. Powered by Apple Foundation Models (macOS 26+)")
+
+                                HelpPoint(title: "Browse Mode",
+                                         description: "Explore images by category: Scenes (outdoor, plant, sky), Objects (dog, car, person), Text, Faces, Colors, Quality")
+
+                                HelpPoint(title: "Drill-Down Navigation",
+                                         description: "Click a category to see image thumbnails, then view details")
+
+                                HelpPoint(title: "Disconnected Drive Detection",
+                                         description: "See which images are on removable drives that aren't currently connected")
+                            }
+
+                            Text("**How to use:**")
+                                .fontWeight(.medium)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("1. Click 'Smart Search' button in main window")
+                                Text("2. Browse categories or type a search query")
+                                Text("3. View thumbnails and metadata")
+                                Text("4. Switch between tabs: Scenes, Objects, Text, Faces, Colors, Technical")
+                            }
+                            .font(.caption)
+
+                            GroupBox {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Requirements")
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+
+                                    Text("• Apple Silicon Mac (M1 or later)")
+                                        .font(.caption2)
+                                    Text("• macOS 15.0+ for Vision analysis")
+                                        .font(.caption2)
+                                    Text("• macOS 26+ for semantic search")
+                                        .font(.caption2)
+                                }
+                                .padding(4)
+                            }
+                        }
+                    }
+
+                    // Vision Framework
+                    HelpSection(title: "AI-Powered Image Analysis (Apple Silicon Only)") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("ImageIntact automatically analyzes your images during backup using Apple's Vision and Core Image frameworks.")
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HelpPoint(title: "What Gets Analyzed",
+                                         description: "Objects (100+ types), scenes, faces, text (OCR), barcodes, colors, quality metrics, EXIF data")
+
+                                HelpPoint(title: "Privacy-First",
+                                         description: "Face detection counts faces only - no identification. Text recognition for searching, not content extraction")
+
+                                HelpPoint(title: "Non-Blocking",
+                                         description: "Analysis runs in background and never slows down your backup")
+
+                                HelpPoint(title: "CPU-Adaptive",
+                                         description: "Automatically throttles based on your processor (M1: 2, M2: 3, M3: 4, M4: 6 concurrent analyses)")
+
+                                HelpPoint(title: "Thermal Aware",
+                                         description: "Reduces processing under high system load or temperature")
+                            }
+
+                            Text("**How it works:**")
+                                .fontWeight(.medium)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("• Analysis happens automatically during backup")
+                                Text("• Results stored in local Core Data database")
+                                Text("• Search your analyzed images with Smart Search")
+                                Text("• All processing stays on your Mac - no cloud")
+                            }
+                            .font(.caption)
+                        }
+                    }
+
+                    // Timestamp Folder Organization
+                    HelpSection(title: "Timestamp-Based Folder Organization") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Organize backups with international-standard ISO 8601 timestamps.")
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HelpPoint(title: "Checkbox Control",
+                                         description: "Enable 'Use timestamp for folder name' in Backup Organization section")
+
+                                HelpPoint(title: "ISO 8601 Format",
+                                         description: "Creates folders like '2025-10-23_14-05' that sort chronologically")
+
+                                HelpPoint(title: "Per-Preset Setting",
+                                         description: "Save timestamp preference in your custom presets")
+
+                                HelpPoint(title: "Editable",
+                                         description: "Timestamp field remains editable so you can customize the name")
+                            }
+
+                            Text("**Example usage:**")
+                                .fontWeight(.medium)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("• Importing from camera cards")
+                                Text("• Creating dated backup sessions")
+                                Text("• Organizing by shoot date/time")
+                                Text("• Maintaining chronological archives")
+                            }
+                            .font(.caption)
+                        }
+                    }
+
                     // Getting Started
                     HelpSection(title: "Getting Started") {
                         VStack(alignment: .leading, spacing: 12) {
@@ -372,10 +488,11 @@ struct HelpView: View {
                                     Text("3. Select your preset or configure manually:")
                                     Text("   • Choose source folder (e.g., today's shoot)")
                                     Text("   • Select destination drive(s)")
-                                    Text("   • Set organization folder name (e.g., '2025-08-26 Wedding')")
+                                    Text("   • Set organization folder name or use timestamp")
                                     Text("4. Click 'Run Backup' (⌘R)")
                                     Text("5. Monitor progress - each destination runs independently")
                                     Text("6. Wait for completion notification")
+                                    Text("7. (Apple Silicon) Use Smart Search to find your photos")
                                 }
                                 .font(.caption)
                             }
@@ -410,6 +527,43 @@ struct HelpView: View {
                                     Text("   • Independent speed")
                                     Text("4. Fast SSDs won't wait for slow network drives")
                                     Text("5. If one fails, others continue")
+                                }
+                                .font(.caption)
+                            }
+
+                            // Smart Search Usage (Apple Silicon)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("**Finding Photos with Smart Search (Apple Silicon)**")
+                                    .fontWeight(.semibold)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("1. After backup completes, click 'Smart Search' button")
+                                    Text("2. Browse by category:")
+                                    Text("   • Scenes: outdoor, plant, sky, architecture")
+                                    Text("   • Objects: dog, car, person, etc.")
+                                    Text("   • Text: images with detected text")
+                                    Text("   • Faces: images with people")
+                                    Text("3. Or search semantically (macOS 26+):")
+                                    Text("   • Type 'sunset beach' or 'birthday party'")
+                                    Text("   • Press Enter to search")
+                                    Text("   • View ranked results with confidence scores")
+                                    Text("4. Click category to drill down to images")
+                                    Text("5. Disconnected drive images show placeholder")
+                                }
+                                .font(.caption)
+                            }
+
+                            // Timestamp Organization
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("**Using Timestamp-Based Organization**")
+                                    .fontWeight(.semibold)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("1. In Backup Organization section, enter folder name")
+                                    Text("2. Check 'Use timestamp for folder name'")
+                                    Text("3. Field auto-updates to ISO 8601 format")
+                                    Text("4. Timestamp is generated when backup starts")
+                                    Text("5. Example: '2025-10-23_14-05'")
+                                    Text("6. Field remains editable - customize as needed")
+                                    Text("7. Setting is saved in custom presets")
                                 }
                                 .font(.caption)
                             }

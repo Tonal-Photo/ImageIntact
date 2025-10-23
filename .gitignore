@@ -11,9 +11,10 @@ xcuserdata/
 *.xcuserstate
 *.md
 
-# Documentation - ignore all .md except README
+# Documentation - ignore all .md except README and CHANGELOG
 *.md
 !README.md
+!CHANGELOG.md
 # ENTITLEMENTS.md should NEVER be committed (security sensitive)
 Docs/
 

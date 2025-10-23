@@ -37,49 +37,98 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **Network drive safety** – Enhanced data integrity for NAS and network volumes
 - **SMB timeout protection** – No more indefinite hangs on network issues
 
+### 🤖 Intelligent (Apple Silicon)
+- **Smart Image Search** – Find photos using natural language queries (macOS 26+)
+- **AI-Powered Analysis** – Automatic object, scene, and face detection during backup
+- **Browse by Category** – Explore your backed-up images by detected content
+- **Removable Drive Tracking** – Know which images are on disconnected drives
+- **Privacy-First AI** – All analysis happens on your Mac, nothing leaves your device
+
 ### 🎨 Thoughtfully Designed
 - **Clean, native Mac interface** – No Java, no weird UI, just a proper Mac app
 - **Preferences that make sense** – Organized settings, not a maze of options
 - **Smart notifications** – Get notified when backups complete
+- **Timestamp organization** – ISO 8601 timestamps for chronological folder names
 - **Privacy-first** – Anonymize logs when sharing for support
 
 ## New in Version 2.0.0
 
-### Major New Features
-- **Vision Framework Integration** – AI-powered image analysis during backup (Apple Silicon only)
-- **Swift 6 Compliance** – Full strict concurrency checking for enhanced stability
-- **M5 Processor Support** – Ready for next-generation Apple Silicon
+### 🔍 Smart Image Search (Apple Silicon Only)
 
-### Previous Updates
+**Find your photos using natural language.** Powered by Apple Foundation Models (macOS 26+), Smart Search lets you search your backed-up images using phrases like "sunset beach", "birthday party", or "wedding photos". The AI understands concepts, not just keywords.
 
-### Critical Fixes
-- **Fixed Progress Tracking** – Accurate file counting for multi-destination backups
-- **Fixed Cancel Button** – Now works reliably during all operations
-- **Fixed File Counter Overflow** – No more counting past 100% with multiple destinations
+- **Semantic Search**: Natural language queries with AI-powered ranking
+- **Browse Mode**: Explore by Scenes, Objects, Text, Faces, Colors, or Technical metrics
+- **Drill-Down Navigation**: Click a category to see matching images
+- **Disconnected Drive Detection**: See which images are on unplugged drives
 
-### Network Performance
-- **Network Performance Settings** – Configurable timeouts, speed limiting, and buffer sizes for SMB/NAS
-- **Stream-Based Network Copy** – Cancellable, throttleable copying method for unreliable connections
-- **Enhanced SMB Stability** – No more indefinite hangs when network drives disconnect
-- **Smart Timeout Protection** – Configurable timeout (default 90 seconds) prevents stuck transfers
+### 🤖 Vision Framework & Core Image Integration (Apple Silicon Only)
 
-### Safety & Security
-- **Improved File Handling** – Smarter handling of aliases, symbolic links, and special files
-- **Extended Metadata** – Preserves Finder tags, comments, and custom file attributes
-- **Enhanced Data Integrity** – Better protection when backing up to network volumes
-- **Better Help System** – Improved documentation with easier access from the Help menu
-- **Security Enhancements** – Multiple under-the-hood improvements for safer backups
+**Your backups get smarter automatically.** ImageIntact analyzes images during backup using Apple's Vision and Core Image frameworks, extracting rich metadata that powers Smart Search.
+
+**Vision Framework Analysis:**
+- Object detection (100+ categories: person, dog, car, plant, food, etc.)
+- Scene classification (beach, forest, wedding, indoor, outdoor, etc.)
+- Face detection (privacy-aware: counts only, no identification)
+- Text recognition (OCR for signs, documents, receipts)
+- Barcode/QR code detection
+- Saliency maps, horizon detection, and more
+
+**Core Image Analysis:**
+- Dominant colors and color palettes
+- Quality metrics (sharpness, blur, noise)
+- Histogram generation
+- Enhanced EXIF extraction (camera, lens, settings)
+
+**Performance:**
+- CPU-adaptive: 2-6 concurrent analyses based on your M-series chip
+- Non-blocking: Never slows down your backup
+- Thermal-aware: Automatically throttles under system pressure
+- All processing happens on your Mac - no cloud required
+
+### 💾 Removable Drive Intelligence
+
+**Never lose track of your backup drives.** ImageIntact now tracks which images are on which drives using IOKit drive UUIDs.
+
+- Drive UUID and volume name stored with each image
+- Smart Search shows when images are on disconnected drives
+- Visual placeholders with drive name: "Image is on disconnected drive 'PhotoBackup'"
+- Works with external drives, network volumes, and memory cards
+
+### ⏰ Timestamp-Based Folder Organization
+
+**Organize backups chronologically.** New checkbox in Backup Organization creates folders with ISO 8601 timestamps.
+
+- Format: `YYYY-MM-DD_HH-MM` (e.g., `2025-10-23_14-05`)
+- Sorts chronologically, file-system safe, internationally understood
+- Field remains editable for customization
+- Per-preset setting (saved with your custom presets)
+- Perfect for camera card imports and dated sessions
+
+### 🏗️ Technical Improvements
+
+- **Swift 6 Strict Concurrency**: Full compliance across codebase for enhanced stability
+- **Core Data Schema v4**: Enhanced metadata storage with drive UUID tracking
+- **Foundation Models Integration**: On-device AI powered by Apple's 3B parameter LLM
+- **M5 Processor Support**: Ready for next-generation Apple Silicon
+- **Dual-Pipeline Processing**: Vision and Core Image analysis in parallel
+- **Apple HIG Compliant UI**: Smart Search window follows macOS 26 Tahoe design patterns
+
+See the full [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 ## Real-World Use
 
 ### Daily Workflow
-After a shoot, drop your cards into folders and let ImageIntact mirror them to your backup drives. It'll verify every file and show you exactly what was copied.
+After a shoot, drop your cards into folders and let ImageIntact mirror them to your backup drives. It'll verify every file and show you exactly what was copied. On Apple Silicon, images are automatically analyzed so you can search them later with Smart Search.
 
 ### Archive Management
-Use ImageIntact to maintain multiple copies of your archive. It understands that your 2015 folder shouldn't change, so it won't waste time re-copying thousands of files.
+Use ImageIntact to maintain multiple copies of your archive. It understands that your 2015 folder shouldn't change, so it won't waste time re-copying thousands of files. Smart Search lets you find specific images across all your backup drives, even if some are disconnected.
 
 ### Client Delivery
-Need to copy final images to a client drive? ImageIntact ensures every file is perfect with cryptographic verification – no more worried emails about corrupt files.
+Need to copy final images to a client drive? ImageIntact ensures every file is perfect with cryptographic verification – no more worried emails about corrupt files. Use timestamp-based organization to create clearly dated delivery folders.
+
+### Finding That Perfect Shot
+(Apple Silicon) Lost track of a specific image? Use Smart Search to find it: "sunset beach with dogs", "birthday cake indoors", or just browse by category. Works even when backup drives are disconnected - you'll know exactly which drive to plug in.
 
 ## Getting Started
 
@@ -99,10 +148,15 @@ ImageIntact uses the standard macOS file picker for folder access. When you sele
 That's it. No complex configuration, no command lines, no stress.
 
 ### System Requirements
-- macOS 15.0 (Sequoia) or later
-- Compatible with macOS 26 (Tahoe)
-- Works great on both Intel and Apple Silicon Macs
-- Note: macOS Tahoe (26) is the last version supporting Intel Macs
+- **macOS**: 15.0 (Sequoia) minimum, 26.0 (Tahoe) for Foundation Models semantic search
+- **Architecture**: Universal (Intel + Apple Silicon)
+- **AI Features**: Require Apple Silicon (M1 or later)
+  - Smart Image Search
+  - Vision Framework analysis
+  - Core Image analysis
+  - Semantic search with Foundation Models (macOS 26+)
+- **Note**: macOS 26 Tahoe is the last version supporting Intel Macs
+- **Note**: Intel Macs can use all core backup features; AI features are Apple Silicon-only
 
 ## Why Open Source?
 
@@ -125,11 +179,16 @@ ImageIntact is free and always will be. If it saves your photos (and your sanity
 ## Technical Details
 
 For the curious or technically inclined:
-- Written in Swift using SwiftUI for a native Mac experience
-- SHA-256 checksums for cryptographic verification
-- Queue-based architecture with adaptive worker threads
-- Core Data for robust event logging
-- Comprehensive test coverage
+- **Language**: Swift 5.0+ with SwiftUI for native Mac UI
+- **Concurrency**: Swift 6 strict concurrency compliance with actors and @MainActor
+- **AI Frameworks**: Apple Vision Framework and Core Image (Apple Silicon only)
+- **On-Device LLM**: Apple Foundation Models (3B parameter model, macOS 26+)
+- **Verification**: SHA-1 checksums for fast, reliable file verification
+- **Architecture**: Queue-based with adaptive worker threads (1-8 per destination)
+- **Storage**: Core Data v4 for event logging and metadata
+- **Drive Detection**: IOKit for persistent drive UUID tracking
+- **UI Patterns**: Apple Human Interface Guidelines (macOS 26 Tahoe)
+- **Test Coverage**: Comprehensive unit and integration tests
 
 ## Building from Source
 
@@ -145,10 +204,12 @@ Build and run in Xcode (requires Xcode 15+ for releases, Xcode 26+ for developme
 
 ## Roadmap
 
+**v2.0 (Current)**: Smart Image Search, Vision/Core Image analysis, removable drive tracking, timestamp organization ✅
+
 Coming in future versions:
-- v1.3: Resume interrupted backups, professional video format support
-- v1.4: Spotlight integration for searching backed-up images
-- v1.5: AI-powered similarity detection and face grouping
+- **v2.1**: Spotlight integration for system-wide image search, template variable system for folder naming
+- **v2.2**: AI-powered similarity detection, face grouping, automatic collections
+- **v2.3**: Enhanced network drive support, cloud destination connectors
 
 See the full [roadmap](https://github.com/Tonal-Photo/ImageIntact/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement) for details.
 
