@@ -1,0 +1,59 @@
+ImageIntact - Professional Photo Backup for Mac
+
+Designed by photographers, for photographers. ImageIntact ensures your precious photos and videos are safely backed up to multiple destinations simultaneously, with verification that every file is intact.
+
+NEW IN VERSION 2.0: FIND YOUR PHOTOS INSTANTLY
+
+Never lose track of a photo again. ImageIntact now remembers what's in your images - search your backups using everyday language like "sunset beach" or "birthday party." Powered by Apple's latest macOS Tahoe technology, all analysis happens privately on your Mac.
+
+KEY FEATURES:
+
+• SMART IMAGE SEARCH (Apple Silicon Macs)
+Find any photo using natural language. Search "wedding photos with cake" or "dogs playing outdoors" and instantly see results. Browse by scenes, objects, or colors. Works even when backup drives are disconnected - you'll know exactly which drive to plug in.
+
+• INTELLIGENT ANALYSIS (Apple Silicon Macs)
+While backing up, ImageIntact automatically catalogs what's in your images. People, places, objects, text - all indexed for instant searching later. Completely private - nothing leaves your Mac.
+
+• PARALLEL BACKUP
+Back up to multiple destinations at once - each runs at full speed independently. No more waiting for one slow drive to finish.
+
+• VERIFIED INTEGRITY
+Every file is verified with checksums. Know with certainty that your backups are perfect copies. Live verification status shows progress in real-time.
+
+• SMART PERFORMANCE
+Adaptive threading automatically optimizes for each destination's speed. Network drives, SSDs, and HDDs all run at their best. Accurate time estimates help you plan your workflow.
+
+• REAL-TIME PROGRESS
+See exactly what's happening with per-destination progress bars, accurate ETAs, and transfer speeds. Know your data size upfront and when each backup will complete.
+
+• TIMESTAMP ORGANIZATION
+Automatically name backup folders with dates and times. Perfect for organizing card imports chronologically.
+
+• PHOTOGRAPHER-FOCUSED
+Supports all major RAW formats, DNGs, JPEGs, HEICs, and professional video formats. Handles Lightroom catalogs and Capture One sessions intelligently.
+
+• SAFETY FIRST
+Source folders are protected with tags to prevent accidental use as destinations. Duplicate destination prevention ensures no conflicts. Files are quarantined, never deleted.
+
+• DETAILED LOGGING
+CSV logs document every operation for your records. Perfect for professional workflows that require audit trails.
+
+PERFECT FOR:
+• Wedding photographers needing reliable on-site backup
+• Studio photographers managing large catalogs
+• Travel photographers backing up in the field
+• Anyone who's ever lost track of "that one perfect shot"
+• Photographers with multiple backup drives who need to find specific images
+
+REQUIREMENTS:
+• macOS 15.0 (Sequoia) or later
+• Apple Silicon Mac (M1 or newer) for Smart Search and image analysis
+• macOS 26.0 (Tahoe) recommended for best search results
+• Intel Macs supported for core backup features
+
+Note: Smart Search and automatic image analysis require Apple Silicon. Intel Mac users can still use all backup, verification, and organization features.
+
+WHY IMAGEINTACT?
+Unlike generic backup tools, ImageIntact understands photography workflows. It's fast enough for on-site backup, thorough enough for archival, smart enough to handle mixed media types efficiently, and now intelligent enough to help you find any photo instantly.
+
+Your photos are irreplaceable. Back them up with confidence. Find them with ease.

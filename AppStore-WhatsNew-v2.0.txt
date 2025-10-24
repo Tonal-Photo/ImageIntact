@@ -1,0 +1,39 @@
+Version 2.0.0 - Smart Image Search & Intelligent Backup
+
+MAJOR NEW FEATURES (Apple Silicon Macs):
+
+🔍 SMART IMAGE SEARCH
+Finally! Find any photo using everyday language. Search "sunset beach," "birthday party," or "wedding photos" and instantly see results. Uses macOS Tahoe's latest AI technology to understand what you're looking for - no complicated keywords needed.
+
+🤖 AUTOMATIC IMAGE ANALYSIS
+Your backups just got smarter. While copying files, ImageIntact automatically catalogs what's in each photo - people, places, objects, colors, even text. All processing happens privately on your Mac using Apple's advanced frameworks.
+
+📋 BROWSE YOUR PHOTOS
+Explore your backed-up images by category: outdoor scenes, people, objects, or colors. Click any category to see matching photos. Perfect for finding "all my beach photos" or "photos with text."
+
+💾 NEVER LOSE TRACK OF DRIVES
+Know exactly which backup drive contains which photos. When a drive is unplugged, Smart Search shows you which images are on it and which drive to reconnect.
+
+⏰ TIMESTAMP ORGANIZATION
+New checkbox automatically names backup folders with dates and times (like "2025-10-23_14-05"). Perfect for keeping card imports organized chronologically.
+
+TECHNICAL IMPROVEMENTS:
+
+• Built with macOS Tahoe's latest frameworks for optimal performance
+• Enhanced stability with modern concurrency
+• Ready for next-generation Apple Silicon processors
+• Faster, more reliable on all supported Macs
+
+WHO GETS WHAT:
+
+Apple Silicon Macs (M1 and newer): Get Smart Search, automatic image analysis, and all core backup features. macOS Tahoe recommended for best results.
+
+Intel Macs: Get all core backup features - parallel backup, verification, timestamp organization, and detailed logging. Smart Search requires Apple Silicon.
+
+PRIVACY FIRST:
+
+All image analysis happens on your Mac. Nothing is sent to the cloud. Face detection counts people but doesn't identify them. Your photos, your privacy.
+
+---
+
+This is the update we've been building toward - intelligent backup that helps you stay organized and find photos effortlessly. Your photos deserve this.
