@@ -2,17 +2,17 @@ Version 2.0.0 - Smart Image Search & Intelligent Backup
 
 MAJOR NEW FEATURES (Apple Silicon Macs):
 
-🔍 SMART IMAGE SEARCH
-Finally! Find any photo using everyday language. Search "sunset beach," "birthday party," or "wedding photos" and instantly see results. Uses macOS Tahoe's latest AI technology to understand what you're looking for - no complicated keywords needed.
+🤖 AUTOMATIC IMAGE ANALYSIS (FREE!)
+Your backups just got smarter. While copying files, ImageIntact automatically catalogs what's in each photo - people, places, objects, colors, even text. All processing happens privately on your Mac using Apple's advanced frameworks. This analysis is completely FREE for all users.
 
-🤖 AUTOMATIC IMAGE ANALYSIS
-Your backups just got smarter. While copying files, ImageIntact automatically catalogs what's in each photo - people, places, objects, colors, even text. All processing happens privately on your Mac using Apple's advanced frameworks.
+🔍 SMART IMAGE SEARCH (Pro Feature)
+Unlock the power of your analyzed photos! Search "sunset beach," "birthday party," or "wedding photos" and instantly see results. Uses macOS Tahoe's latest AI technology to understand what you're looking for - no complicated keywords needed. Upgrade to Pro ($4.99 one-time) to unlock Smart Search.
 
-📋 BROWSE YOUR PHOTOS
-Explore your backed-up images by category: outdoor scenes, people, objects, or colors. Click any category to see matching photos. Perfect for finding "all my beach photos" or "photos with text."
+📋 BROWSE YOUR PHOTOS (Pro Feature)
+Explore your backed-up images by category: outdoor scenes, people, objects, or colors. Click any category to see matching photos. Perfect for finding "all my beach photos" or "photos with text." Requires Pro upgrade.
 
-💾 NEVER LOSE TRACK OF DRIVES
-Know exactly which backup drive contains which photos. When a drive is unplugged, Smart Search shows you which images are on it and which drive to reconnect.
+💾 NEVER LOSE TRACK OF DRIVES (FREE!)
+Know exactly which backup drive contains which photos. Drive tracking is free; Pro unlocks Smart Search to find images on disconnected drives.
 
 ⏰ TIMESTAMP ORGANIZATION
 New checkbox automatically names backup folders with dates and times (like "2025-10-23_14-05"). Perfect for keeping card imports organized chronologically.
@@ -26,9 +26,11 @@ TECHNICAL IMPROVEMENTS:
 
 WHO GETS WHAT:
 
-Apple Silicon Macs (M1 and newer): Get Smart Search, automatic image analysis, and all core backup features. macOS Tahoe recommended for best results.
+FREE FOR ALL Apple Silicon Macs (M1 and newer): Automatic image analysis, drive tracking, and all core backup features. macOS Tahoe recommended for best results.
 
-Intel Macs: Get all core backup features - parallel backup, verification, timestamp organization, and detailed logging. Smart Search requires Apple Silicon.
+PRO UPGRADE ($4.99 one-time): Unlocks Smart Search and Browse Mode to search and explore your analyzed photos.
+
+Intel Macs: Get all core backup features - parallel backup, verification, timestamp organization, and detailed logging. AI features require Apple Silicon.
 
 PRIVACY FIRST:
 

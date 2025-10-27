@@ -26,7 +26,7 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
     
     // MARK: - Properties
     
-    let productIds = ["com.imageintact.pro"]
+    let productIds = ["com.tonalphoto.tech.ImageIntact.pro"]
     private var updateListenerTask: Task<Void, Error>?
     private var productsLoaded = false
     
@@ -54,17 +54,28 @@ class StoreManager: NSObject, ObservableObject, StoreManagerProtocol {
     /// Load products from the App Store
     @discardableResult
     func loadProducts() async -> [Product] {
-        guard !productsLoaded else { return products }
-        
+        guard !productsLoaded else {
+            print("⏭️ Products already loaded: \(products.count)")
+            return products
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
+        print("🔍 Loading products for IDs: \(productIds)")
+
         do {
             products = try await Product.products(for: productIds)
             productsLoaded = true
+            print("✅ Successfully loaded \(products.count) products")
+            for product in products {
+                print("  📦 Product: \(product.id) - \(product.displayName) - \(product.displayPrice)")
+            }
             return products
         } catch {
-            print("Failed to load products: \(error)")
+            print("❌ Failed to load products: \(error)")
+            print("   Error type: \(type(of: error))")
+            print("   Product IDs attempted: \(productIds)")
             purchaseError = error
             return []
         }
@@ -224,7 +235,8 @@ struct PurchaseProView: View {
     @StateObject private var store = StoreManager.shared
     @State private var isPurchasing = false
     @State private var showError = false
-    
+    @State private var errorMessage: String = ""
+
     var body: some View {
         VStack(spacing: 20) {
             // Header
@@ -296,10 +308,21 @@ struct PurchaseProView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") {
+                    dismiss()
+                }
+            }
+        }
         .alert("Purchase Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text(store.purchaseError?.localizedDescription ?? "An error occurred")
+            Text(errorMessage)
+        }
+        .task {
+            // Ensure products are loaded when view appears
+            await store.loadProducts()
         }
         .onChange(of: store.hasPro) { _, hasPro in
             if hasPro {
@@ -313,15 +336,20 @@ struct PurchaseProView: View {
     
     private func purchase() {
         isPurchasing = true
-        
+
         Task {
             do {
-                _ = try await store.purchasePro()
+                let success = try await store.purchasePro()
+                if !success {
+                    errorMessage = "Purchase was cancelled or pending."
+                    showError = true
+                }
             } catch {
-                store.purchaseError = error
+                print("❌ Purchase error: \(error)")
+                errorMessage = error.localizedDescription
                 showError = true
             }
-            
+
             isPurchasing = false
         }
     }

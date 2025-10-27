@@ -28,9 +28,22 @@
 		71CB2DFD2E3E6030004E9F48 /* ImageIntactTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ImageIntactTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		710A52832EAEA51E00C1D9C7 /* Exceptions for "ImageIntact" folder in "ImageIntact" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				GitHubBuild.txt,
+			);
+			target = 71592B7F2E3CE71600571AB3 /* ImageIntact */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		71592B822E3CE71600571AB3 /* ImageIntact */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				710A52832EAEA51E00C1D9C7 /* Exceptions for "ImageIntact" folder in "ImageIntact" target */,
+			);
 			path = ImageIntact;
 			sourceTree = "<group>";
 		};

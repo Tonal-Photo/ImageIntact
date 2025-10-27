@@ -38,10 +38,10 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **SMB timeout protection** – No more indefinite hangs on network issues
 
 ### 🤖 Intelligent (Apple Silicon)
-- **Smart Image Search** – Find photos using natural language queries (macOS 26+)
-- **AI-Powered Analysis** – Automatic object, scene, and face detection during backup
-- **Browse by Category** – Explore your backed-up images by detected content
-- **Removable Drive Tracking** – Know which images are on disconnected drives
+- **AI-Powered Analysis** – Automatic object, scene, and face detection during backup (FREE)
+- **Removable Drive Tracking** – Know which images are on disconnected drives (FREE)
+- **Smart Image Search** – Find photos using natural language queries (macOS 26+) **[Pro]**
+- **Browse by Category** – Explore your backed-up images by detected content **[Pro]**
 - **Privacy-First AI** – All analysis happens on your Mac, nothing leaves your device
 
 ### 🎨 Thoughtfully Designed
@@ -53,20 +53,20 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 
 ## New in Version 2.0.0
 
-### 🔍 Smart Image Search (Apple Silicon Only)
+### 🔍 Smart Image Search (Apple Silicon Only) **[Pro Feature]**
 
 **Find your photos using natural language.** Powered by Apple Foundation Models (macOS 26+), Smart Search lets you search your backed-up images using phrases like "sunset beach", "birthday party", or "wedding photos". The AI understands concepts, not just keywords.
 
-- **Semantic Search**: Natural language queries with AI-powered ranking
-- **Browse Mode**: Explore by Scenes, Objects, Text, Faces, Colors, or Technical metrics
-- **Drill-Down Navigation**: Click a category to see matching images
-- **Disconnected Drive Detection**: See which images are on unplugged drives
+- **Semantic Search**: Natural language queries with AI-powered ranking **[Pro]**
+- **Browse Mode**: Explore by Scenes, Objects, Text, Faces, Colors, or Technical metrics **[Pro]**
+- **Drill-Down Navigation**: Click a category to see matching images **[Pro]**
+- **Disconnected Drive Detection**: See which images are on unplugged drives (FREE)
 
-### 🤖 Vision Framework & Core Image Integration (Apple Silicon Only)
+### 🤖 Vision Framework & Core Image Integration (Apple Silicon Only) **[FREE]**
 
-**Your backups get smarter automatically.** ImageIntact analyzes images during backup using Apple's Vision and Core Image frameworks, extracting rich metadata that powers Smart Search.
+**Your backups get smarter automatically.** ImageIntact analyzes images during backup using Apple's Vision and Core Image frameworks, extracting rich metadata that powers Smart Search. **Image analysis is completely free** – Pro features unlock the ability to search and browse the analyzed data.
 
-**Vision Framework Analysis:**
+**Vision Framework Analysis (FREE):**
 - Object detection (100+ categories: person, dog, car, plant, food, etc.)
 - Scene classification (beach, forest, wedding, indoor, outdoor, etc.)
 - Face detection (privacy-aware: counts only, no identification)
@@ -74,7 +74,7 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - Barcode/QR code detection
 - Saliency maps, horizon detection, and more
 
-**Core Image Analysis:**
+**Core Image Analysis (FREE):**
 - Dominant colors and color palettes
 - Quality metrics (sharpness, blur, noise)
 - Histogram generation
@@ -119,16 +119,16 @@ See the full [CHANGELOG.md](CHANGELOG.md) for complete details.
 ## Real-World Use
 
 ### Daily Workflow
-After a shoot, drop your cards into folders and let ImageIntact mirror them to your backup drives. It'll verify every file and show you exactly what was copied. On Apple Silicon, images are automatically analyzed so you can search them later with Smart Search.
+After a shoot, drop your cards into folders and let ImageIntact mirror them to your backup drives. It'll verify every file and show you exactly what was copied. On Apple Silicon, images are automatically analyzed for free, cataloging objects, scenes, and faces. Upgrade to Pro to unlock Smart Search and browse your entire photo collection using natural language.
 
 ### Archive Management
-Use ImageIntact to maintain multiple copies of your archive. It understands that your 2015 folder shouldn't change, so it won't waste time re-copying thousands of files. Smart Search lets you find specific images across all your backup drives, even if some are disconnected.
+Use ImageIntact to maintain multiple copies of your archive. It understands that your 2015 folder shouldn't change, so it won't waste time re-copying thousands of files. With Pro, Smart Search lets you find specific images across all your backup drives, even if some are disconnected.
 
 ### Client Delivery
 Need to copy final images to a client drive? ImageIntact ensures every file is perfect with cryptographic verification – no more worried emails about corrupt files. Use timestamp-based organization to create clearly dated delivery folders.
 
 ### Finding That Perfect Shot
-(Apple Silicon) Lost track of a specific image? Use Smart Search to find it: "sunset beach with dogs", "birthday cake indoors", or just browse by category. Works even when backup drives are disconnected - you'll know exactly which drive to plug in.
+(Apple Silicon + Pro) Lost track of a specific image? Use Smart Search to find it: "sunset beach with dogs", "birthday cake indoors", or just browse by category. Works even when backup drives are disconnected - you'll know exactly which drive to plug in. All your backed-up images are automatically analyzed for free; Pro unlocks the search interface.
 
 ## Getting Started
 

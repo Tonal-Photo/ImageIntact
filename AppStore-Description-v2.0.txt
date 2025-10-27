@@ -2,17 +2,17 @@ ImageIntact - Professional Photo Backup for Mac
 
 Designed by photographers, for photographers. ImageIntact ensures your precious photos and videos are safely backed up to multiple destinations simultaneously, with verification that every file is intact.
 
-NEW IN VERSION 2.0: FIND YOUR PHOTOS INSTANTLY
+NEW IN VERSION 2.0: INTELLIGENT BACKUPS FOR EVERYONE
 
-Never lose track of a photo again. ImageIntact now remembers what's in your images - search your backups using everyday language like "sunset beach" or "birthday party." Powered by Apple's latest macOS Tahoe technology, all analysis happens privately on your Mac.
+Your backups just got smarter! ImageIntact now automatically analyzes your photos - FREE for all Apple Silicon Mac users. Objects, scenes, faces, colors - all cataloged privately on your Mac. Upgrade to Pro ($4.99 one-time) to unlock Smart Search and find any photo using everyday language like "sunset beach" or "birthday party."
 
 KEY FEATURES:
 
-• SMART IMAGE SEARCH (Apple Silicon Macs)
-Find any photo using natural language. Search "wedding photos with cake" or "dogs playing outdoors" and instantly see results. Browse by scenes, objects, or colors. Works even when backup drives are disconnected - you'll know exactly which drive to plug in.
+• INTELLIGENT ANALYSIS (Apple Silicon Macs) **FREE**
+While backing up, ImageIntact automatically catalogs what's in your images. People, places, objects, text - all indexed privately on your Mac. Completely free for all users.
 
-• INTELLIGENT ANALYSIS (Apple Silicon Macs)
-While backing up, ImageIntact automatically catalogs what's in your images. People, places, objects, text - all indexed for instant searching later. Completely private - nothing leaves your Mac.
+• SMART IMAGE SEARCH (Apple Silicon Macs) **Pro - $4.99**
+Find any photo using natural language. Search "wedding photos with cake" or "dogs playing outdoors" and instantly see results. Browse by scenes, objects, or colors. Works even when backup drives are disconnected - you'll know exactly which drive to plug in.
 
 • PARALLEL BACKUP
 Back up to multiple destinations at once - each runs at full speed independently. No more waiting for one slow drive to finish.
@@ -39,11 +39,11 @@ Source folders are protected with tags to prevent accidental use as destinations
 CSV logs document every operation for your records. Perfect for professional workflows that require audit trails.
 
 PERFECT FOR:
-• Wedding photographers needing reliable on-site backup
-• Studio photographers managing large catalogs
-• Travel photographers backing up in the field
-• Anyone who's ever lost track of "that one perfect shot"
-• Photographers with multiple backup drives who need to find specific images
+• Wedding photographers needing reliable on-site backup with automatic analysis (FREE)
+• Studio photographers managing large catalogs (search with Pro)
+• Travel photographers backing up in the field (analysis is free, search requires Pro)
+• Anyone who's ever lost track of "that one perfect shot" (Pro unlocks Smart Search)
+• Photographers with multiple backup drives who need to find specific images (Pro)
 
 REQUIREMENTS:
 • macOS 15.0 (Sequoia) or later
@@ -51,7 +51,11 @@ REQUIREMENTS:
 • macOS 26.0 (Tahoe) recommended for best search results
 • Intel Macs supported for core backup features
 
-Note: Smart Search and automatic image analysis require Apple Silicon. Intel Mac users can still use all backup, verification, and organization features.
+FREE vs PRO:
+• FREE: Automatic image analysis, drive tracking, all core backup features (Apple Silicon required for AI)
+• PRO ($4.99 one-time): Smart Search interface, Browse Mode, semantic search with Foundation Models
+
+Note: Image analysis requires Apple Silicon. Intel Mac users get all backup, verification, and organization features.
 
 WHY IMAGEINTACT?
 Unlike generic backup tools, ImageIntact understands photography workflows. It's fast enough for on-site backup, thorough enough for archival, smart enough to handle mixed media types efficiently, and now intelligent enough to help you find any photo instantly.

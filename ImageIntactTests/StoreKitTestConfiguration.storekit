@@ -4,7 +4,7 @@
     {
       "displayPrice" : "4.99",
       "familyShareable" : true,
-      "id" : "com.imageintact.pro",
+      "id" : "com.tonalphoto.tech.ImageIntact.pro",
       "localizations" : [
         {
           "description" : "Unlock all premium features including automated backups, cloud destinations, and advanced organization.",
@@ -12,24 +12,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.imageintact.pro",
-      "referenceName" : "ImageIntact Pro",
-      "type" : "NonConsumable"
-    }
-  ],
-  "products" : [
-    {
-      "displayPrice" : "4.99",
-      "familyShareable" : true,
-      "id" : "com.imageintact.pro",
-      "localizations" : [
-        {
-          "description" : "Unlock all premium features",
-          "displayName" : "ImageIntact Pro",
-          "locale" : "en_US"
-        }
-      ],
-      "productID" : "com.imageintact.pro",
+      "productID" : "com.tonalphoto.tech.ImageIntact.pro",
       "referenceName" : "ImageIntact Pro",
       "type" : "NonConsumable"
     }

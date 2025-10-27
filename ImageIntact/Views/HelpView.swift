@@ -36,12 +36,16 @@ struct HelpView: View {
                     // What's New
                     HelpSection(title: "What's New in v2.0") {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("• **Smart Image Search** - Find photos using natural language (Apple Silicon)")
-                            Text("• **Vision Framework** - AI-powered image analysis during backup")
-                            Text("• **Core Image Analysis** - Color, quality, and technical metrics")
-                            Text("• **Removable Drive Intelligence** - Track images across disconnected drives")
-                            Text("• **Timestamp Folders** - ISO 8601 timestamp-based organization")
+                            Text("• **Smart Image Search** - Find photos using natural language (Apple Silicon, Pro)")
+                            Text("• **Vision Framework** - AI-powered image analysis during backup (FREE)")
+                            Text("• **Core Image Analysis** - Color, quality, and technical metrics (FREE)")
+                            Text("• **Removable Drive Intelligence** - Track images across disconnected drives (FREE)")
+                            Text("• **Timestamp Folders** - ISO 8601 timestamp-based organization (FREE)")
                             Text("• **Swift 6 Compliance** - Enhanced stability with strict concurrency")
+                            Text("")
+                            Text("**Free vs Pro**: Image analysis is free for all users. Pro ($4.99) unlocks Smart Search and Browse Mode.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                         .font(.subheadline)
                     }
@@ -58,9 +62,9 @@ struct HelpView: View {
                     }
 
                     // Smart Image Search
-                    HelpSection(title: "Smart Image Search (Apple Silicon Only)") {
+                    HelpSection(title: "Smart Image Search (Apple Silicon Only, Pro Feature)") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Find your backed-up photos using natural language queries or browse by AI-detected categories.")
+                            Text("Find your backed-up photos using natural language queries or browse by AI-detected categories. Requires ImageIntact Pro ($4.99 one-time purchase).")
 
                             VStack(alignment: .leading, spacing: 8) {
                                 HelpPoint(title: "Semantic Search",
@@ -106,9 +110,9 @@ struct HelpView: View {
                     }
 
                     // Vision Framework
-                    HelpSection(title: "AI-Powered Image Analysis (Apple Silicon Only)") {
+                    HelpSection(title: "AI-Powered Image Analysis (Apple Silicon Only, FREE)") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("ImageIntact automatically analyzes your images during backup using Apple's Vision and Core Image frameworks.")
+                            Text("ImageIntact automatically analyzes your images during backup using Apple's Vision and Core Image frameworks. This analysis is completely free - Pro features unlock the ability to search and browse the results.")
 
                             VStack(alignment: .leading, spacing: 8) {
                                 HelpPoint(title: "What Gets Analyzed",
@@ -131,9 +135,9 @@ struct HelpView: View {
                                 .fontWeight(.medium)
 
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("• Analysis happens automatically during backup")
-                                Text("• Results stored in local Core Data database")
-                                Text("• Search your analyzed images with Smart Search")
+                                Text("• Analysis happens automatically during backup (FREE)")
+                                Text("• Results stored in local Core Data database (FREE)")
+                                Text("• Search your analyzed images with Smart Search (Pro)")
                                 Text("• All processing stays on your Mac - no cloud")
                             }
                             .font(.caption)
@@ -492,7 +496,8 @@ struct HelpView: View {
                                     Text("4. Click 'Run Backup' (⌘R)")
                                     Text("5. Monitor progress - each destination runs independently")
                                     Text("6. Wait for completion notification")
-                                    Text("7. (Apple Silicon) Use Smart Search to find your photos")
+                                    Text("7. (Apple Silicon) Images analyzed automatically (FREE)")
+                                    Text("8. (Pro) Use Smart Search to find your photos")
                                 }
                                 .font(.caption)
                             }
@@ -531,12 +536,12 @@ struct HelpView: View {
                                 .font(.caption)
                             }
 
-                            // Smart Search Usage (Apple Silicon)
+                            // Smart Search Usage (Apple Silicon, Pro)
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("**Finding Photos with Smart Search (Apple Silicon)**")
+                                Text("**Finding Photos with Smart Search (Apple Silicon, Pro)**")
                                     .fontWeight(.semibold)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("1. After backup completes, click 'Smart Search' button")
+                                    Text("1. After backup completes, click 'Smart Search' button (Pro required)")
                                     Text("2. Browse by category:")
                                     Text("   • Scenes: outdoor, plant, sky, architecture")
                                     Text("   • Objects: dog, car, person, etc.")

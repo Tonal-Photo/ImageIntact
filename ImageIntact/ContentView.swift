@@ -5,14 +5,15 @@ struct ContentView: View {
     @State private var backupManager = BackupManager()
     @State private var updateManager = UpdateManager()
     @StateObject private var progressPublisher = ProgressPublisher.shared
+    @StateObject private var storeManager = StoreManager.shared
     @FocusState private var focusedField: FocusField?
-    
+
     // First-run and help system
     @State private var showWelcomePopup = false
-    
+
     // Store event monitor to properly clean it up
     @State private var eventMonitor: Any?
-    
+
     // Premium features
     @State private var showPurchaseView = false
     @State private var showUpgradeAlert = false
@@ -56,12 +57,30 @@ struct ContentView: View {
 
                 // Smart Search button (only if Vision is enabled)
                 if VisionAnalyzer.shared.isAvailable {
-                    Button(action: { showSmartSearch = true }) {
+                    Button(action: {
+                        // Check if Smart Search is unlocked
+                        PremiumFeatureManager.shared.performPremiumAction(.visionFramework) {
+                            showSmartSearch = true
+                        } fallback: {
+                            showUpgradeAlert = true
+                        }
+                    }) {
                         HStack(spacing: 4) {
                             Image(systemName: "sparkle.magnifyingglass")
                                 .font(.system(size: 12))
                             Text("Smart Search")
                                 .font(.system(size: 12, weight: .medium))
+                            // Show Pro badge if feature is locked
+                            if BuildConfiguration.isAppStoreBuild && !storeManager.hasPro {
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.orange)
+                            }
+                            if BuildConfiguration.isOpenSourceBuild {
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.orange)
+                            }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -277,18 +296,20 @@ struct ContentView: View {
                 .presentationSizing(.fitted)
                 .presentationBackground(.regularMaterial)
         }
-        .alert("Upgrade to Pro", isPresented: $showUpgradeAlert) {
+        .alert("Smart Search Requires Pro", isPresented: $showUpgradeAlert) {
             if !BuildConfiguration.isOpenSourceBuild {
-                Button("View Pro Features") {
+                Button("Upgrade to Pro ($4.99)") {
                     showPurchaseView = true
                 }
+                Button("Not Now", role: .cancel) { }
+            } else {
+                Button("OK", role: .cancel) { }
             }
-            Button("OK", role: .cancel) { }
         } message: {
             if BuildConfiguration.isOpenSourceBuild {
-                Text("This feature is only available in the App Store version of ImageIntact.")
+                Text("Smart Search is only available in the App Store version of ImageIntact.")
             } else {
-                Text("This feature requires ImageIntact Pro. Unlock all premium features with a one-time purchase.")
+                Text("Unlock Smart Search to find any photo using natural language.\n\n\"sunset beach\" • \"birthday party\" • \"wedding photos\"\n\nOne-time purchase: $4.99")
             }
         }
     }

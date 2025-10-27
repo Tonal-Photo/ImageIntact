@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Major New Features
 
-#### 🔍 Smart Image Search (Apple Silicon Only)
-- **Semantic Search**: Find images using natural language queries powered by Apple Foundation Models (macOS 26+)
+#### 🔍 Smart Image Search (Apple Silicon Only) **[Pro Feature]**
+- **Semantic Search**: Find images using natural language queries powered by Apple Foundation Models (macOS 26+) **[Pro]**
   - Search by content: "sunset beach", "birthday party", "wedding photos"
   - Understands concepts, not just keywords
   - AI-powered ranking with confidence scores
-- **Browse Mode**: Explore analyzed images by category
+- **Browse Mode**: Explore analyzed images by category **[Pro]**
   - Drill-down navigation: Category lists → Image grids
   - Scenes: "outdoor", "plant", "sky", "architecture"
   - Objects: Detected items like "dog", "car", "person"
@@ -25,9 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Unified custom header with integrated search
   - Resizable window (700×500 minimum)
   - Native macOS 26 Tahoe design patterns
+- **Feature Gating**: Pro badge on Smart Search button, upgrade prompt for free users
+- **Note**: Image analysis is FREE for all users; Pro unlocks the search interface
 
-#### 🤖 Vision Framework Integration (Apple Silicon Only)
-- **Automatic Image Analysis**: AI-powered analysis during backup
+#### 🤖 Vision Framework Integration (Apple Silicon Only) **[FREE]**
+- **Automatic Image Analysis**: AI-powered analysis during backup (completely free)
   - Object detection (100+ categories: person, dog, car, plant, food, etc.)
   - Scene classification (beach, forest, wedding, celebration, indoor, outdoor, etc.)
   - Face detection with privacy protection (count only, no identification)
@@ -46,17 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Non-Blocking Analysis**: Runs in background, never blocks backup operations
 - **Thermal & Memory Awareness**: Automatically throttles under system pressure
 
-#### 🎨 Core Image Analysis (Apple Silicon Only)
-- **Color Analysis**: Dominant colors and color palettes
-- **Quality Metrics**: Sharpness, blur detection, noise analysis
-- **Histogram Generation**: RGB channel histograms for technical analysis
-- **Enhanced EXIF Extraction**: Camera model, lens, settings, GPS data
+#### 🎨 Core Image Analysis (Apple Silicon Only) **[FREE]**
+- **Color Analysis**: Dominant colors and color palettes (free)
+- **Quality Metrics**: Sharpness, blur detection, noise analysis (free)
+- **Histogram Generation**: RGB channel histograms for technical analysis (free)
+- **Enhanced EXIF Extraction**: Camera model, lens, settings, GPS data (free)
 
-#### 💾 Removable Drive Intelligence
-- **Drive UUID Tracking**: Identify and track removable drives across reconnections
+#### 💾 Removable Drive Intelligence **[FREE + Pro]**
+- **Drive UUID Tracking**: Identify and track removable drives across reconnections (FREE)
   - Uses IOKit for persistent drive identification
   - Stores volumeUUID and volumeName with each analyzed image
-- **Disconnected Drive Detection**: Smart Search shows when images are on unavailable drives
+- **Disconnected Drive Detection**: Smart Search shows when images are on unavailable drives **[Pro]**
   - Visual placeholder with drive name
   - "Drive 'PhotoBackup' not connected" messaging
   - Graceful handling of internal vs. external vs. network drives
@@ -123,6 +125,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Apple Silicon Requirements
 Vision Framework, Core Image analysis, and Smart Search features require Apple Silicon (M1 or later).
 Intel Mac users can still use all core backup features, but AI-powered analysis is unavailable.
+
+### Monetization Model
+- **Free Features**: Vision Framework analysis, Core Image analysis, drive tracking, timestamp organization
+- **Pro Features ($4.99 one-time)**: Smart Search interface, Browse Mode, semantic search with Foundation Models
+- **Value Proposition**: Your backups get smart for free; upgrade to Pro to search and browse them
+- **IAP Integration**: Feature gating with upgrade prompts, StoreKit 2 implementation, Family Sharing enabled
 
 ### Compatibility
 - **macOS**: 15.0 (Sequoia) minimum, 26.0 (Tahoe) for Foundation Models
