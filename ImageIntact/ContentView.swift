@@ -1,5 +1,5 @@
-import SwiftUI
 import Darwin
+import SwiftUI
 
 struct ContentView: View {
     @State private var backupManager = BackupManager()
@@ -20,7 +20,7 @@ struct ContentView: View {
 
     // Smart search
     @State private var showSmartSearch = false
-    
+
     enum FocusField: Hashable {
         case source
         case destination(Int)
@@ -32,25 +32,25 @@ struct ContentView: View {
             VStack(spacing: 4) {
                 // Test mode indicator (only in debug builds)
                 #if DEBUG
-                if updateManager.isTestMode {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text("TEST MODE - Mock Version: \(updateManager.currentVersion)")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.orange)
+                    if updateManager.isTestMode {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("TEST MODE - Mock Version: \(updateManager.currentVersion)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.orange)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(6)
+                        .padding(.top, 8)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(6)
-                    .padding(.top, 8)
-                }
                 #endif
-                
+
                 Text("ImageIntact")
                     .font(.system(size: 20, weight: .semibold))
-                
+
                 Text("Verify and backup your photos to multiple locations")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
@@ -99,19 +99,19 @@ struct ContentView: View {
             }
             .padding(.top, 16)
             .padding(.bottom, 12)
-            
+
             Divider()
-            
+
             // Main content - ScrollView for everything except header and bottom buttons
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         // Add consistent top padding
                         Color.clear.frame(height: 20)
-                        
+
                         // Source Section
                         SourceFolderSection(backupManager: backupManager, focusedField: $focusedField)
-                        
+
                         // Organization Section - only show if source is selected
                         if backupManager.sourceURL != nil {
                             // Consistent spacing between sections
@@ -119,23 +119,23 @@ struct ContentView: View {
                             Divider()
                                 .padding(.horizontal, 20)
                             Color.clear.frame(height: 20)
-                            
+
                             OrganizationSection(backupManager: backupManager)
                         }
-                        
+
                         // Consistent spacing between sections
                         Color.clear.frame(height: 20)
                         Divider()
                             .padding(.horizontal, 20)
                         Color.clear.frame(height: 20)
-                        
+
                         // Destinations Section
                         DestinationSection(backupManager: backupManager, focusedField: $focusedField)
-                        
+
                         // Progress Section
                         MultiDestinationProgressSection(backupManager: backupManager)
                             .id("progressSection")
-                        
+
                         // Add some bottom padding so content doesn't hide behind buttons
                         Color.clear.frame(height: 20)
                     }
@@ -158,10 +158,10 @@ struct ContentView: View {
                     }
                 }
             }
-            
+
             // Bottom action area - always visible
             Divider()
-            
+
             HStack {
                 Button("Clear All") {
                     backupManager.clearAllSelections()
@@ -174,9 +174,9 @@ struct ContentView: View {
                 .opacity(backupManager.isProcessing ? 0.6 : 1.0)
                 .accessibilityLabel("Clear all selected folders")
                 .help("Remove all source and destination selections")
-                
+
                 Spacer()
-                
+
                 Button("Run Backup") {
                     backupManager.runBackup()
                 }
@@ -196,20 +196,20 @@ struct ContentView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .overlay(alignment: .topTrailing) {
             #if DEBUG
-            // Debug overlay for monitoring progress in development
-            ProgressDebugOverlay()
-                .padding(8)
+                // Debug overlay for monitoring progress in development
+                ProgressDebugOverlay()
+                    .padding(8)
             #endif
         }
         .onAppear {
             setupKeyboardShortcuts()
             setupMenuCommands()
-            
+
             print("🔐 Using SHA-1 checksums for faster verification")
-            
+
             // Check for first run
             checkFirstRun()
-            
+
             // Check for updates
             updateManager.checkForUpdates()
         }
@@ -301,9 +301,9 @@ struct ContentView: View {
                 Button("Upgrade to Pro ($4.99)") {
                     showPurchaseView = true
                 }
-                Button("Not Now", role: .cancel) { }
+                Button("Not Now", role: .cancel) {}
             } else {
-                Button("OK", role: .cancel) { }
+                Button("OK", role: .cancel) {}
             }
         } message: {
             if BuildConfiguration.isOpenSourceBuild {
@@ -313,164 +313,73 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Menu Commands
-    func setupMenuCommands() {
-        // Debug menu - Test Update Flow
+
+    private func observeMenuCommand(_ name: String, action: @escaping @MainActor () -> Void) {
         NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("TestUpdateFlow"),
+            forName: NSNotification.Name(name),
             object: nil,
             queue: .main
         ) { _ in
-            Task {
-                await testUpdateFlow()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("SelectSourceFolder"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                selectSourceFolder()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("SelectDestination1"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                if !backupManager.destinationURLs.isEmpty {
-                    selectDestinationFolder(at: 0)
-                }
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("AddDestination"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                backupManager.addDestination()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("RunBackup"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                if backupManager.canRunBackup() {
-                    backupManager.runBackup()
-                }
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ClearAll"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                backupManager.clearAllSelections()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ShowDebugLog"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                showDebugLog()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ExportDebugLog"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                exportDebugLog()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ShowHelp"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                HelpWindowManager.shared.showHelp()
-            }
-        }
-        
-        // Also listen for the ImageIntact Help command
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ShowImageIntactHelp"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                HelpWindowManager.shared.showHelp()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("CheckForUpdates"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task {
-                await updateManager.performUpdateCheck(isManual: true)
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("VerifyCoreData"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                verifyCoreDataStorage()
-            }
-        }
-        
-        // Premium feature notifications
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ShowPurchaseView"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                showPurchaseView = true
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ShowUpgradePrompt"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                showUpgradeAlert = true
-            }
+            Task { @MainActor in action() }
         }
     }
-    
+
+    private func observeMenuCommandAsync(_ name: String, action: @escaping @Sendable () async -> Void) {
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name(name),
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { await action() }
+        }
+    }
+
+    func setupMenuCommands() {
+        // Debug menu
+        observeMenuCommandAsync("TestUpdateFlow") { await testUpdateFlow() }
+        observeMenuCommandAsync("CheckForUpdates") { await updateManager.performUpdateCheck(isManual: true) }
+
+        // Source/destination selection
+        observeMenuCommand("SelectSourceFolder") { selectSourceFolder() }
+        observeMenuCommand("SelectDestination1") {
+            if !backupManager.destinationURLs.isEmpty {
+                selectDestinationFolder(at: 0)
+            }
+        }
+        observeMenuCommand("AddDestination") { backupManager.addDestination() }
+
+        // Backup operations
+        observeMenuCommand("RunBackup") {
+            if backupManager.canRunBackup() {
+                backupManager.runBackup()
+            }
+        }
+        observeMenuCommand("ClearAll") { backupManager.clearAllSelections() }
+
+        // Debug/diagnostics
+        observeMenuCommand("ShowDebugLog") { showDebugLog() }
+        observeMenuCommand("ExportDebugLog") { exportDebugLog() }
+        observeMenuCommand("VerifyCoreData") { verifyCoreDataStorage() }
+
+        // Help
+        observeMenuCommand("ShowHelp") { HelpWindowManager.shared.showHelp() }
+        observeMenuCommand("ShowImageIntactHelp") { HelpWindowManager.shared.showHelp() }
+
+        // Premium features
+        observeMenuCommand("ShowPurchaseView") { showPurchaseView = true }
+        observeMenuCommand("ShowUpgradePrompt") { showUpgradeAlert = true }
+    }
+
     // MARK: - Keyboard Shortcuts
+
     func setupKeyboardShortcuts() {
         // Remove any existing monitor first
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
-        
+
         // Add new monitor and store the reference
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Check if Command key is pressed
@@ -490,17 +399,18 @@ struct ContentView: View {
                     break
                 }
             }
-            
+
             // Escape key handling - disabled during backup operations
             // The Escape key (keyCode 53) is intentionally not handled to prevent
             // accidental cancellation of backup operations. Users must use the
             // explicit Cancel button in the UI.
-            
+
             return event
         }
     }
-    
+
     // MARK: - UI Helper Methods
+
     func selectSourceFolder() {
         let dialog = NSOpenPanel()
         dialog.canChooseFiles = false
@@ -513,10 +423,10 @@ struct ContentView: View {
             }
         }
     }
-    
+
     func selectDestinationFolder(at index: Int) {
         guard index < backupManager.destinationURLs.count else { return }
-        
+
         let dialog = NSOpenPanel()
         dialog.canChooseFiles = false
         dialog.canChooseDirectories = true
@@ -528,16 +438,17 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Debug Log Methods
+
     func showDebugLog() {
         // Get the current session ID from BackupManager
         let sessionID = backupManager.sessionID
-        
+
         // Try to get report from Core Data if we have a session
         let eventLogger = EventLogger.shared
         let logContent: String
-        
+
         if !sessionID.isEmpty {
             // Get report for current session
             logContent = eventLogger.generateReport(for: sessionID)
@@ -545,18 +456,19 @@ struct ContentView: View {
             // Get all recent sessions and show the latest one
             let sessions = eventLogger.getAllSessions()
             if let latestSession = sessions.first,
-               let sessionUUID = latestSession.id?.uuidString {
+               let sessionUUID = latestSession.id?.uuidString
+            {
                 logContent = eventLogger.generateReport(for: sessionUUID)
             } else {
                 // No sessions found, generate a basic report
                 logContent = generateCurrentSessionDebugLog()
             }
         }
-        
+
         // Write to temporary file and open
         let tempDir = FileManager.default.temporaryDirectory
         let tempLogPath = tempDir.appendingPathComponent("ImageIntact_Session_\(sessionID.isEmpty ? "Latest" : sessionID).log")
-        
+
         do {
             try logContent.write(to: tempLogPath, atomically: true, encoding: .utf8)
             NSWorkspace.shared.open(tempLogPath)
@@ -569,19 +481,19 @@ struct ContentView: View {
             alert.runModal()
         }
     }
-    
+
     func generateCurrentSessionDebugLog() -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = dateFormatter.string(from: Date())
-        
+
         var logContent = "ImageIntact Debug Log - \(timestamp)\n"
         logContent += "Session ID: \(backupManager.sessionID)\n"
         logContent += "Total Files: \(backupManager.totalFiles)\n"
         logContent += "Processed Files: \(backupManager.processedFiles)\n"
         logContent += "Failed Files: \(backupManager.failedFiles.count)\n"
         logContent += "Was Cancelled: \(backupManager.shouldCancel)\n\n"
-        
+
         // Add detailed error information
         if !backupManager.failedFiles.isEmpty {
             logContent += "ERROR DETAILS:\n"
@@ -591,24 +503,24 @@ struct ContentView: View {
                 logContent += "   Error: \(failure.error)\n\n"
             }
         }
-        
+
         if !backupManager.debugLog.isEmpty {
             logContent += "Checksum Timings:\n"
             logContent += backupManager.debugLog.joined(separator: "\n")
         } else {
             logContent += "No timing data available yet.\n"
         }
-        
+
         return logContent
     }
-    
+
     func exportDebugLog() {
         // Get session data from Core Data
         let sessionID = backupManager.sessionID
         let eventLogger = EventLogger.shared
         var logContent: String
         var exportData: Data?
-        
+
         if !sessionID.isEmpty {
             // Get report for current session
             logContent = eventLogger.generateReport(for: sessionID)
@@ -617,7 +529,8 @@ struct ContentView: View {
             // Get all recent sessions and show the latest one
             let sessions = eventLogger.getAllSessions()
             if let latestSession = sessions.first,
-               let sessionUUID = latestSession.id?.uuidString {
+               let sessionUUID = latestSession.id?.uuidString
+            {
                 logContent = eventLogger.generateReport(for: sessionUUID)
                 exportData = eventLogger.exportJSON(for: sessionUUID)
             } else {
@@ -625,7 +538,7 @@ struct ContentView: View {
                 logContent = generateCurrentSessionDebugLog()
             }
         }
-        
+
         // Check if user wants to anonymize paths
         var shouldAnonymize = false
         if PreferencesManager.shared.anonymizePathsInExport {
@@ -636,7 +549,7 @@ struct ContentView: View {
             alert.addButton(withTitle: "Anonymize Paths")
             alert.addButton(withTitle: "Keep Original Paths")
             alert.addButton(withTitle: "Cancel")
-            
+
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
                 shouldAnonymize = true
@@ -644,7 +557,7 @@ struct ContentView: View {
                 return // User cancelled
             }
         }
-        
+
         // Apply anonymization if requested
         if shouldAnonymize {
             logContent = PathAnonymizer.anonymizeInText(logContent)
@@ -656,7 +569,7 @@ struct ContentView: View {
                 }
             }
         }
-        
+
         let savePanel = NSSavePanel()
         savePanel.title = "Export Debug Log"
         let dateFormatter = DateFormatter()
@@ -665,7 +578,7 @@ struct ContentView: View {
         savePanel.nameFieldStringValue = "ImageIntact_Debug_\(dateFormatter.string(from: Date()))\(suffix).txt"
         savePanel.allowedContentTypes = [.plainText, .json]
         savePanel.canCreateDirectories = true
-        
+
         if savePanel.runModal() == .OK, let exportURL = savePanel.url {
             do {
                 // Export as JSON if user selected .json extension
@@ -675,7 +588,7 @@ struct ContentView: View {
                     // Export as text
                     try logContent.write(to: exportURL, atomically: true, encoding: .utf8)
                 }
-                
+
                 let alert = NSAlert()
                 alert.messageText = "Debug Log Exported"
                 alert.informativeText = "Debug log has been saved to:\n\n\(exportURL.path)"
@@ -692,11 +605,12 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Test Update Flow
+
     func testUpdateFlow() async {
         print("🧪 Test Update Flow triggered")
-        
+
         // Enable test mode temporarily if not already enabled
         let wasInTestMode = UpdateManager.testMode
         if !wasInTestMode {
@@ -704,10 +618,10 @@ struct ContentView: View {
             UpdateManager.mockVersion = "1.0.0"
             print("🧪 Temporarily enabled test mode with version 1.0.0")
         }
-        
+
         // Trigger update check
         await updateManager.performUpdateCheck(isManual: true)
-        
+
         // Restore previous test mode state after a delay
         if !wasInTestMode {
             Task {
@@ -718,8 +632,9 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - First Run
+
     func checkFirstRun() {
         let hasSeenWelcome = UserDefaults.standard.bool(forKey: "hasSeenWelcome")
         if !hasSeenWelcome {
@@ -729,22 +644,24 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Helper Methods
+
     func formatFileSize(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         return formatter.string(fromByteCount: bytes)
     }
-    
+
     // MARK: - Core Data Verification
+
     func verifyCoreDataStorage() {
         let report = EventLogger.shared.verifyDataStorage()
-        
+
         // Write to temp file and open
         let tempDir = FileManager.default.temporaryDirectory
         let tempPath = tempDir.appendingPathComponent("CoreData_Verification.txt")
-        
+
         do {
             try report.write(to: tempPath, atomically: true, encoding: .utf8)
             NSWorkspace.shared.open(tempPath)
@@ -755,6 +672,7 @@ struct ContentView: View {
 }
 
 // MARK: - Reusable FolderRow
+
 struct FolderRow: View {
     let title: String
     @Binding var selectedURL: URL?
@@ -788,7 +706,7 @@ struct FolderRow: View {
             .onHover { hovering in
                 isHovering = hovering
             }
-            
+
             // Always reserve space for the button to maintain consistent width
             if selectedURL != nil && showRemoveButton {
                 Button("Remove") {
@@ -805,7 +723,7 @@ struct FolderRow: View {
             }
         }
     }
-    
+
     func selectFolder() {
         let dialog = NSOpenPanel()
         dialog.canChooseFiles = false

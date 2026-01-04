@@ -1,6 +1,7 @@
 import Foundation
 
 // MARK: - File Manifest Entry
+
 public struct FileManifestEntry: Sendable {
     public let relativePath: String
     public let sourceURL: URL
@@ -11,14 +12,14 @@ public struct FileManifestEntry: Sendable {
 }
 
 // MARK: - Queue-Based Backup Integration
+
 extension BackupManager {
-    
     /// Performs backup using the new smart queue system with BackupOrchestrator
     /// Each destination runs independently at its own speed
     @MainActor
     func performQueueBasedBackup(source: URL, destinations: [URL]) async {
         print("🚀 Starting QUEUE-BASED backup with orchestrator")
-        
+
         // Reset state
         isProcessing = true
         shouldCancel = false
@@ -44,45 +45,45 @@ extension BackupManager {
             destinationNames: destNames
         )
         ProgressPublisher.shared.updatePhase(.analyzingSource)
-        
+
         // Check for migration if organization is enabled
         if !organizationName.isEmpty {
             await checkForMigration(source: source, destinations: destinations)
-            
+
             // If migration dialog is shown, wait for user decision
-            if showMigrationDialog && !pendingMigrationPlans.isEmpty {
+            if showMigrationDialog, !pendingMigrationPlans.isEmpty {
                 print("⏸️ Waiting for migration decision...")
                 // The actual backup will be triggered after migration dialog closes
                 isProcessing = false
                 return
             }
         }
-        
+
         // Check for duplicates before proceeding
         if enableDuplicateDetection {
             await checkForDuplicates(source: source, destinations: destinations)
-            
+
             // If duplicate dialog is shown, wait for user decision
-            if showDuplicateWarning && duplicateAnalyses != nil {
+            if showDuplicateWarning, duplicateAnalyses != nil {
                 print("⏸️ Waiting for duplicate handling decision...")
                 // The actual backup will be triggered after duplicate dialog closes
                 isProcessing = false
                 return
             }
         }
-        
+
         // Start statistics tracking
         statistics.startBackup(sourceFiles: sourceFileTypes, filter: fileTypeFilter)
-        
+
         // Store the session ID that will be used by Core Data
         // (BackupOrchestrator will use this same ID)
-        
+
         defer {
             isProcessing = false
             shouldCancel = false
             currentOrchestrator = nil
-            duplicateAnalyses = nil  // Clear duplicate analyses after backup
-            
+            duplicateAnalyses = nil // Clear duplicate analyses after backup
+
             // Schedule cleanup after a delay so UI can read the stats first
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds - give UI time to show stats
@@ -90,13 +91,13 @@ extension BackupManager {
                 print("✅ Memory cleanup completed after UI update")
             }
         }
-        
+
         // Create orchestrator with our components
         let orchestrator = BackupOrchestrator(
             progressTracker: progressTracker,
             resourceManager: resourceManager
         )
-        
+
         // Set up callbacks
         orchestrator.onStatusUpdate = { @Sendable status in
             Task { @MainActor in
@@ -110,7 +111,8 @@ extension BackupManager {
 
                 // Track in statistics
                 if let fileURL = URL(string: file),
-                   let fileType = ImageFileType.from(fileExtension: fileURL.pathExtension) {
+                   let fileType = ImageFileType.from(fileExtension: fileURL.pathExtension)
+                {
                     self.statistics.recordFileProcessed(
                         fileType: fileType,
                         size: 0,
@@ -120,19 +122,19 @@ extension BackupManager {
                 }
             }
         }
-        
+
         orchestrator.onPhaseChange = { [weak self] phase in
             self?.currentPhase = phase
         }
 
         // Progress is now handled by ProgressPublisher directly
-        
+
         // Store reference for cancellation
         currentOrchestrator = orchestrator
-        
+
         // Build destination item IDs array for drive info lookup
         let destinationItemIDs = destinationItems.prefix(destinations.count).map { $0.id }
-        
+
         // Perform the backup with file type filter and duplicate preferences
         let failures = await orchestrator.performBackup(
             source: source,
@@ -146,40 +148,40 @@ extension BackupManager {
             skipExactDuplicates: skipExactDuplicates,
             skipRenamedDuplicates: skipRenamedDuplicates
         )
-        
+
         // Add any failures to our list (avoiding duplicates)
         for failure in failures {
             if !failedFiles.contains(where: { $0.file == failure.file && $0.destination == failure.destination }) {
                 failedFiles.append(failure)
             }
         }
-        
+
         // Populate statistics based on results from progress tracker and orchestrator
         // Get actual data from what was tracked
         let totalFiles = progressTracker.totalFiles
         let processedFiles = progressTracker.processedFiles
         let failedCount = failures.count
-        
+
         // Update overall stats from progress tracker
         // Use the actual manifest count for files processed, not the sum across destinations
-        statistics.totalFilesProcessed = min(processedFiles, totalFiles)  // Cap at total files to avoid multiplication
+        statistics.totalFilesProcessed = min(processedFiles, totalFiles) // Cap at total files to avoid multiplication
         statistics.totalFilesFailed = failedCount
         statistics.totalFilesInSource = totalFiles
-        
+
         // Debug logging to diagnose the issue
         print("📊 Statistics Debug:")
         print("   - progressTracker.sourceTotalBytes: \(progressTracker.sourceTotalBytes)")
         print("   - progressTracker.totalBytesCopied: \(progressTracker.totalBytesCopied)")
         print("   - progressTracker.totalBytesToCopy: \(progressTracker.totalBytesToCopy)")
         print("   - progressTracker.copySpeed: \(progressTracker.copySpeed)")
-        
+
         // Fix: Use the actual total bytes from source, not the copied bytes which may be 0
         statistics.totalBytesProcessed = progressTracker.sourceTotalBytes > 0 ? progressTracker.sourceTotalBytes : progressTracker.totalBytesCopied
-        
+
         print("   - statistics.totalBytesProcessed: \(statistics.totalBytesProcessed)")
         print("   - statistics.duration: \(statistics.duration ?? 0)")
         print("   - statistics.averageThroughput: \(statistics.averageThroughput)")
-        
+
         // Estimate file type breakdown from source scan
         for (fileType, count) in sourceFileTypes {
             if fileTypeFilter.shouldInclude(fileType: fileType) {
@@ -189,7 +191,7 @@ extension BackupManager {
                 statistics.fileTypeStats[fileType] = typeStats
             }
         }
-        
+
         // Update destination stats from progress tracker
         for (destName, progress) in progressTracker.destinationProgress {
             let destFailures = failures.filter { $0.destination.contains(destName) }.count
@@ -205,13 +207,13 @@ extension BackupManager {
                 averageSpeed: progressTracker.copySpeed
             )
         }
-        
+
         // Complete statistics and show report
         statistics.completeBackup()
-        
+
         // Stop preventing sleep
         await SleepPrevention.shared.stopPreventingSleep()
-        
+
         // Show completion report if not cancelled
         if !shouldCancel {
             // Send notification if enabled
@@ -222,7 +224,7 @@ extension BackupManager {
                     duration: statistics.duration ?? 0
                 )
             }
-            
+
             // Small delay to ensure UI is ready
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             showCompletionReport = true
@@ -230,29 +232,29 @@ extension BackupManager {
             // Clear the overall status text when cancelled
             overallStatusText = ""
             statusMessage = "Backup cancelled"
-            
+
             // Still stop sleep prevention even if cancelled
             logInfo("Backup cancelled by user")
         }
     }
-    
+
     /// Update our UI based on coordinator's status
     /// Already marked @MainActor to ensure thread safety
     @MainActor
     private func updateUIFromCoordinator(_ coordinator: BackupCoordinator) {
         // Debug: log update call
         print("🔄 updateUIFromCoordinator called")
-        
+
         // Aggregate status from all destinations
         var fastestDestination: String?
         var fastestSpeed: Double = 0
         var allComplete = true
         var activeCount = 0
-        
+
         // Update per-destination progress for UI
         var copyingCount = 0
         var verifyingDestinations: [String] = []
-        
+
         for (name, status) in coordinator.destinationStatuses {
             // Update the destination progress for UI display
             // This is safe because we're already on @MainActor
@@ -260,7 +262,7 @@ extension BackupManager {
                 // Destination is fully complete
                 progressTracker.setDestinationProgress(status.total, for: name)
                 progressTracker.setDestinationState("complete", for: name)
-                
+
                 Task {
                     await progressState.setDestinationProgress(status.total, for: name)
                     await progressState.setDestinationState("complete", for: name)
@@ -268,16 +270,16 @@ extension BackupManager {
             } else if status.isVerifying {
                 // Only show verification if the queue explicitly says it's verifying
                 // Don't guess based on counts as that can be wrong during skipping
-                
+
                 // Debug log when entering verification
                 print("🔵 UI UPDATE: \(name) entering verification phase (copied=\(status.completed), verified=\(status.verifiedCount), total=\(status.total), isVerifying=true)")
-                
+
                 // For verification, keep showing full progress (files are already copied)
                 // This prevents the progress bar from resetting to 0 when verification starts
                 progressTracker.setDestinationProgress(status.total, for: name)
                 progressTracker.setDestinationState("verifying", for: name)
                 verifyingDestinations.append(name)
-                
+
                 // Also update actor state for consistency
                 Task {
                     await progressState.setDestinationProgress(status.total, for: name)
@@ -286,7 +288,7 @@ extension BackupManager {
             } else {
                 // Check if we're actually done (all files copied and verified)
                 // Debug: Let's see what values we have
-                if status.completed >= status.total && status.verifiedCount >= status.total {
+                if status.completed >= status.total, status.verifiedCount >= status.total {
                     // Destination is actually complete, just waiting for isComplete flag
                     progressTracker.setDestinationProgress(status.total, for: name)
                     progressTracker.setDestinationState("complete", for: name)
@@ -297,7 +299,7 @@ extension BackupManager {
                     progressTracker.setDestinationState("copying", for: name)
                     print("🔄 UI Update: \(name) - \(status.completed)/\(status.total) files, verified=\(status.verifiedCount)")
                 }
-                
+
                 Task {
                     if status.completed >= status.total && status.verifiedCount >= status.total {
                         await progressState.setDestinationProgress(status.total, for: name)
@@ -308,13 +310,13 @@ extension BackupManager {
                     }
                 }
             }
-            
+
             // Parse speed (e.g., "45.2 MB/s" -> 45.2)
             if !status.isVerifying, let speedValue = parseSpeed(status.speed), speedValue > fastestSpeed {
                 fastestSpeed = speedValue
                 fastestDestination = name
             }
-            
+
             // Count states more accurately
             if !status.isComplete {
                 allComplete = false
@@ -326,11 +328,11 @@ extension BackupManager {
                 }
             }
         }
-        
+
         // Update our status message
         let verifyingCount = verifyingDestinations.count
         let completeCount = coordinator.destinationStatuses.values.filter { $0.isComplete }.count
-        
+
         if allComplete {
             statusMessage = "All destinations complete and verified!"
             currentPhase = .complete
@@ -352,7 +354,7 @@ extension BackupManager {
         } else {
             statusMessage = "Processing..."
         }
-        
+
         // Update progress tracker with coordinator data
         progressTracker.updateFromCoordinator(
             overallProgress: coordinator.overallProgress,
@@ -360,10 +362,10 @@ extension BackupManager {
             copiedBytes: coordinator.totalBytesCopied,
             speed: coordinator.currentSpeed
         )
-        
+
         // Update ETA based on new byte counters
         updateETA()
-        
+
         // Update processedFiles with the number of unique files processed
         // Use the maximum verified count from any destination (they should all be the same)
         // Don't sum them up or we'll count each file multiple times
@@ -372,7 +374,7 @@ extension BackupManager {
             maxVerified = max(maxVerified, status.verifiedCount)
         }
         progressTracker.processedFiles = maxVerified
-        
+
         // For overall status text, show counts instead of phase
         if completeCount > 0 || copyingCount > 0 || verifyingCount > 0 {
             overallStatusText = buildOverallStatusText(
@@ -383,35 +385,21 @@ extension BackupManager {
             )
         }
     }
-    
+
     private func parseSpeed(_ speedString: String) -> Double? {
         // Parse "45.2 MB/s" -> 45.2
         let components = speedString.split(separator: " ")
         guard components.count >= 2 else { return nil }
         return Double(components[0])
     }
-    
+
     private func formatSpeed(_ mbps: Double) -> String {
         return String(format: "%.1f MB/s", mbps)
     }
-    
-    private func formatTimeForQueue(_ seconds: TimeInterval) -> String {
-        if seconds < 60 {
-            return String(format: "%.1f seconds", seconds)
-        } else if seconds < 3600 {
-            let minutes = Int(seconds / 60)
-            let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
-            return "\(minutes)m \(secs)s"
-        } else {
-            let hours = Int(seconds / 3600)
-            let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
-            return "\(hours)h \(minutes)m"
-        }
-    }
-    
+
     private func buildOverallStatusText(copying: Int, verifying: Int, complete: Int, total: Int) -> String {
         var parts: [String] = []
-        
+
         if complete > 0 {
             parts.append("\(complete) complete")
         }
@@ -421,29 +409,29 @@ extension BackupManager {
         if verifying > 0 {
             parts.append("\(verifying) verifying")
         }
-        
+
         if parts.isEmpty {
             return "Processing \(total) destinations"
         }
-        
+
         return parts.joined(separator: ", ")
     }
-    
+
     // MARK: - Migration Support
-    
+
     /// Check if migration is needed for organizing existing files
     @MainActor
     private func checkForMigration(source: URL, destinations: [URL]) async {
         print("🔍 Checking for migration opportunities...")
-        
+
         // Check for cancellation
         guard !shouldCancel else {
             print("❌ Migration check cancelled")
             return
         }
-        
+
         pendingMigrationPlans.removeAll()
-        
+
         // Start security-scoped access for source
         let sourceAccessGranted = source.startAccessingSecurityScopedResource()
         defer {
@@ -451,7 +439,7 @@ extension BackupManager {
                 source.stopAccessingSecurityScopedResource()
             }
         }
-        
+
         // Build a quick manifest for checking - now with cancellation support
         let manifestBuilder = ManifestBuilder()
         let cancelCheck = shouldCancel
@@ -463,9 +451,9 @@ extension BackupManager {
             print("❌ Could not build manifest for migration check")
             return
         }
-        
+
         let detector = BackupMigrationDetector()
-        
+
         // Check each destination for migration needs
         for (_, destination) in destinations.enumerated() {
             if let plan = await detector.checkForMigrationNeeded(
@@ -478,39 +466,39 @@ extension BackupManager {
                 pendingMigrationPlans.append(plan)
             }
         }
-        
+
         // Show migration dialog if needed
         if !pendingMigrationPlans.isEmpty {
             showMigrationDialog = true
         }
     }
-    
+
     /// Continue backup after migration decision
     @MainActor
     func continueBackupAfterMigration() async {
         print("📦 Continuing backup after migration...")
         showMigrationDialog = false
-        
+
         // Re-run the backup now that migration is handled
         if let source = sourceURL {
             let destinations = destinationItems.compactMap { $0.url }
             await performQueueBasedBackup(source: source, destinations: destinations)
         }
     }
-    
+
     /// Check for duplicate files at destinations
     @MainActor
     private func checkForDuplicates(source: URL, destinations: [URL]) async {
         print("🔍 Checking for duplicate files...")
-        
+
         // Check for cancellation
         guard !shouldCancel else {
             print("❌ Duplicate check cancelled")
             return
         }
-        
+
         statusMessage = "Analyzing for duplicates..."
-        
+
         // Build manifest if needed - with cancellation support
         let manifestBuilder = ManifestBuilder()
         let cancelCheck = shouldCancel
@@ -522,17 +510,17 @@ extension BackupManager {
             print("❌ Could not build manifest for duplicate check")
             return
         }
-        
+
         // Perform duplicate analysis for all destinations
         let analyses = await duplicateDetector.preflightDuplicateCheck(
             manifest: manifest,
             destinations: destinations,
             organizationName: organizationName
         )
-        
+
         // Check if any duplicates were found
         let totalDuplicates = analyses.values.reduce(0) { $0 + $1.totalDuplicates }
-        
+
         if totalDuplicates > 0 {
             print("⚠️ Found \(totalDuplicates) duplicate files across destinations")
             duplicateAnalyses = analyses
@@ -543,7 +531,7 @@ extension BackupManager {
             showDuplicateWarning = false
         }
     }
-    
+
     /// Continue backup after duplicate handling decision
     @MainActor
     func continueBackupAfterDuplicateDecision(skipExact: Bool, skipRenamed: Bool) async {
@@ -551,14 +539,14 @@ extension BackupManager {
         showDuplicateWarning = false
         skipExactDuplicates = skipExact
         skipRenamedDuplicates = skipRenamed
-        
+
         // Re-run the backup now that duplicate handling is decided
         if let source = sourceURL {
             let destinations = destinationItems.compactMap { $0.url }
             await performQueueBasedBackup(source: source, destinations: destinations)
         }
     }
-    
+
     /// Cancel backup from duplicate warning
     @MainActor
     func cancelBackupFromDuplicateWarning() {
