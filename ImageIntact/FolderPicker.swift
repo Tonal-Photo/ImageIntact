@@ -1,29 +1,29 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct FolderPicker: View {
-    var title: String
-    @Binding var selectedURL: URL?
+  var title: String
+  @Binding var selectedURL: URL?
 
-    var body: some View {
-        HStack {
-            Button(title) {
-                selectFolder()
-            }
-            if let url = selectedURL {
-                Text(url.lastPathComponent).font(.subheadline)
-            }
-        }
+  var body: some View {
+    HStack {
+      Button(title) {
+        selectFolder()
+      }
+      if let url = selectedURL {
+        Text(url.lastPathComponent).font(.subheadline)
+      }
     }
+  }
 
-    func selectFolder() {
-        let dialog = NSOpenPanel()
-        dialog.canChooseFiles = false
-        dialog.canChooseDirectories = true
-        dialog.allowsMultipleSelection = false
+  func selectFolder() {
+    let dialog = NSOpenPanel()
+    dialog.canChooseFiles = false
+    dialog.canChooseDirectories = true
+    dialog.allowsMultipleSelection = false
 
-        if dialog.runModal() == .OK {
-            selectedURL = dialog.url
-        }
+    if dialog.runModal() == .OK {
+      selectedURL = dialog.url
     }
+  }
 }

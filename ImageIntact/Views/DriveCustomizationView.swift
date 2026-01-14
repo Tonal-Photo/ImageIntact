@@ -8,275 +8,281 @@
 import SwiftUI
 
 struct DriveCustomizationView: View {
-    let drive: DriveIdentity
-    @Environment(\.dismiss) var dismiss
-    @ObservedObject var identityManager = DriveIdentityManager.shared
-    
-    @State private var customName: String = ""
-    @State private var selectedEmoji: String = ""
-    @State private var physicalLocation: String = ""
-    @State private var notes: String = ""
-    @State private var isPreferred: Bool = false
-    @State private var autoStart: Bool = false
-    @State private var showingEmojiPicker = false
-    
-    private let availableEmojis = ["💾", "💿", "📀", "💽", "🗄️", "🗂️", "📁", "💻", "🖥️", "⚡", "🔌", "📱", "🏠", "🏢", "☁️", "🔒", "🛡️", "✅", "🎯", "🚀"]
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 8) {
-                Text("Customize Drive")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                
-                HStack {
-                    Text(selectedEmoji)
-                        .font(.system(size: 32))
-                    
-                    VStack(alignment: .leading) {
-                        Text(drive.deviceModel ?? "Unknown Drive")
-                            .font(.system(size: 13, weight: .medium))
-                        
-                        if let uuid = drive.volumeUUID {
-                            Text("UUID: \(uuid)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .padding(.top, 8)
+  let drive: DriveIdentity
+  @Environment(\.dismiss) var dismiss
+  @ObservedObject var identityManager = DriveIdentityManager.shared
+
+  @State private var customName: String = ""
+  @State private var selectedEmoji: String = ""
+  @State private var physicalLocation: String = ""
+  @State private var notes: String = ""
+  @State private var isPreferred: Bool = false
+  @State private var autoStart: Bool = false
+  @State private var showingEmojiPicker = false
+
+  private let availableEmojis = [
+    "💾", "💿", "📀", "💽", "🗄️", "🗂️", "📁", "💻", "🖥️", "⚡", "🔌", "📱", "🏠", "🏢", "☁️", "🔒", "🛡️", "✅", "🎯",
+    "🚀",
+  ]
+
+  var body: some View {
+    VStack(spacing: 0) {
+      // Header
+      VStack(spacing: 8) {
+        Text("Customize Drive")
+          .font(.title2)
+          .fontWeight(.semibold)
+
+        HStack {
+          Text(selectedEmoji)
+            .font(.system(size: 32))
+
+          VStack(alignment: .leading) {
+            Text(drive.deviceModel ?? "Unknown Drive")
+              .font(.system(size: 13, weight: .medium))
+
+            if let uuid = drive.volumeUUID {
+              Text("UUID: \(uuid)")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
             }
-            .padding()
-            
-            Divider()
-            
-            // Custom form layout without Form wrapper
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Identification Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Identification")
-                            .font(.headline)
-                        
-                        HStack {
-                            Text("Custom Name:")
-                                .frame(width: 100, alignment: .trailing)
-                            TextField("My Backup Drive", text: $customName)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        
-                        HStack(alignment: .center) {
-                            Text("Icon:")
-                                .frame(width: 100, alignment: .trailing)
-                            
-                            Button(action: { showingEmojiPicker.toggle() }) {
-                                Text(selectedEmoji)
-                                    .font(.system(size: 24))
-                                    .frame(width: 40, height: 40)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-                            
-                            if showingEmojiPicker {
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(availableEmojis, id: \.self) { emoji in
-                                            Button(action: {
-                                                selectedEmoji = emoji
-                                                showingEmojiPicker = false
-                                            }) {
-                                                Text(emoji)
-                                                    .font(.system(size: 20))
-                                                    .frame(width: 32, height: 32)
-                                                    .background(selectedEmoji == emoji ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
-                                                    .cornerRadius(6)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                    }
-                                    .padding(.horizontal, 4)
-                                }
-                                .frame(height: 40)
-                            }
-                            
-                            Spacer()
-                        }
-                        
-                        HStack {
-                            Text("Location:")
-                                .frame(width: 100, alignment: .trailing)
-                            TextField("Office, Home, Portable, etc.", text: $physicalLocation)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.05))
-                    .cornerRadius(8)
-                    
-                    // Preferences Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Preferences")
-                            .font(.headline)
-                        
-                        Toggle(isOn: $isPreferred) {
-                            Text("Preferred Backup Drive")
-                                .help("This drive will be suggested first when selecting backup destinations")
-                        }
-                        .toggleStyle(.checkbox)
-                        
-                        Toggle(isOn: $autoStart) {
-                            Text("Auto-start Backup When Connected")
-                                .help("Automatically begin backup when this drive is connected")
-                        }
-                        .toggleStyle(.checkbox)
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.05))
-                    .cornerRadius(8)
-                    
-                    // Notes Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Notes")
-                            .font(.headline)
-                        
-                        Text("Additional Notes:")
-                            .font(.system(size: 12, weight: .medium))
-                        
-                        TextEditor(text: $notes)
-                            .font(.system(size: 12))
-                            .frame(height: 60)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.white)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.05))
-                    .cornerRadius(8)
-                    
-                    // Statistics Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Statistics")
-                            .font(.headline)
-                        
-                        HStack {
-                            Text("First Seen:")
-                                .frame(width: 100, alignment: .trailing)
-                                .foregroundColor(.secondary)
-                            Text(formatDate(drive.firstSeen))
-                            Spacer()
-                        }
-                        
-                        HStack {
-                            Text("Last Seen:")
-                                .frame(width: 100, alignment: .trailing)
-                                .foregroundColor(.secondary)
-                            Text(formatDate(drive.lastSeen))
-                            Spacer()
-                        }
-                        
-                        HStack {
-                            Text("Total Backups:")
-                                .frame(width: 100, alignment: .trailing)
-                                .foregroundColor(.secondary)
-                            Text("\(drive.totalBackups)")
-                            Spacer()
-                        }
-                        
-                        HStack {
-                            Text("Data Written:")
-                                .frame(width: 100, alignment: .trailing)
-                                .foregroundColor(.secondary)
-                            Text(formatBytes(drive.totalBytesWritten))
-                            Spacer()
-                        }
-                        
-                        if let healthStatus = drive.healthStatus {
-                            HStack {
-                                Text("Health Status:")
-                                    .frame(width: 100, alignment: .trailing)
-                                    .foregroundColor(.secondary)
-                                Text(healthStatus)
-                                Spacer()
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.05))
-                    .cornerRadius(8)
-                }
-                .padding()
-            }
-            
-            Divider()
-            
-            // Buttons
+          }
+        }
+        .padding(.top, 8)
+      }
+      .padding()
+
+      Divider()
+
+      // Custom form layout without Form wrapper
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          // Identification Section
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Identification")
+              .font(.headline)
+
             HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.escape)
-                
-                Spacer()
-                
-                Button("Save") {
-                    saveDriveSettings()
-                    dismiss()
-                }
-                .keyboardShortcut(.return)
-                .buttonStyle(.borderedProminent)
+              Text("Custom Name:")
+                .frame(width: 100, alignment: .trailing)
+              TextField("My Backup Drive", text: $customName)
+                .textFieldStyle(.roundedBorder)
             }
-            .padding()
+
+            HStack(alignment: .center) {
+              Text("Icon:")
+                .frame(width: 100, alignment: .trailing)
+
+              Button(action: { showingEmojiPicker.toggle() }) {
+                Text(selectedEmoji)
+                  .font(.system(size: 24))
+                  .frame(width: 40, height: 40)
+                  .background(Color.gray.opacity(0.1))
+                  .cornerRadius(8)
+              }
+              .buttonStyle(.plain)
+
+              if showingEmojiPicker {
+                ScrollView(.horizontal, showsIndicators: false) {
+                  HStack(spacing: 8) {
+                    ForEach(availableEmojis, id: \.self) { emoji in
+                      Button(action: {
+                        selectedEmoji = emoji
+                        showingEmojiPicker = false
+                      }) {
+                        Text(emoji)
+                          .font(.system(size: 20))
+                          .frame(width: 32, height: 32)
+                          .background(
+                            selectedEmoji == emoji
+                              ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1)
+                          )
+                          .cornerRadius(6)
+                      }
+                      .buttonStyle(.plain)
+                    }
+                  }
+                  .padding(.horizontal, 4)
+                }
+                .frame(height: 40)
+              }
+
+              Spacer()
+            }
+
+            HStack {
+              Text("Location:")
+                .frame(width: 100, alignment: .trailing)
+              TextField("Office, Home, Portable, etc.", text: $physicalLocation)
+                .textFieldStyle(.roundedBorder)
+            }
+          }
+          .padding()
+          .background(Color.gray.opacity(0.05))
+          .cornerRadius(8)
+
+          // Preferences Section
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Preferences")
+              .font(.headline)
+
+            Toggle(isOn: $isPreferred) {
+              Text("Preferred Backup Drive")
+                .help("This drive will be suggested first when selecting backup destinations")
+            }
+            .toggleStyle(.checkbox)
+
+            Toggle(isOn: $autoStart) {
+              Text("Auto-start Backup When Connected")
+                .help("Automatically begin backup when this drive is connected")
+            }
+            .toggleStyle(.checkbox)
+          }
+          .padding()
+          .background(Color.gray.opacity(0.05))
+          .cornerRadius(8)
+
+          // Notes Section
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Notes")
+              .font(.headline)
+
+            Text("Additional Notes:")
+              .font(.system(size: 12, weight: .medium))
+
+            TextEditor(text: $notes)
+              .font(.system(size: 12))
+              .frame(height: 60)
+              .scrollContentBackground(.hidden)
+              .background(Color.white)
+              .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                  .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+              )
+          }
+          .padding()
+          .background(Color.gray.opacity(0.05))
+          .cornerRadius(8)
+
+          // Statistics Section
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Statistics")
+              .font(.headline)
+
+            HStack {
+              Text("First Seen:")
+                .frame(width: 100, alignment: .trailing)
+                .foregroundColor(.secondary)
+              Text(formatDate(drive.firstSeen))
+              Spacer()
+            }
+
+            HStack {
+              Text("Last Seen:")
+                .frame(width: 100, alignment: .trailing)
+                .foregroundColor(.secondary)
+              Text(formatDate(drive.lastSeen))
+              Spacer()
+            }
+
+            HStack {
+              Text("Total Backups:")
+                .frame(width: 100, alignment: .trailing)
+                .foregroundColor(.secondary)
+              Text("\(drive.totalBackups)")
+              Spacer()
+            }
+
+            HStack {
+              Text("Data Written:")
+                .frame(width: 100, alignment: .trailing)
+                .foregroundColor(.secondary)
+              Text(formatBytes(drive.totalBytesWritten))
+              Spacer()
+            }
+
+            if let healthStatus = drive.healthStatus {
+              HStack {
+                Text("Health Status:")
+                  .frame(width: 100, alignment: .trailing)
+                  .foregroundColor(.secondary)
+                Text(healthStatus)
+                Spacer()
+              }
+            }
+          }
+          .padding()
+          .background(Color.gray.opacity(0.05))
+          .cornerRadius(8)
         }
-        .frame(width: 500, height: 600)
-        .onAppear {
-            loadCurrentSettings()
+        .padding()
+      }
+
+      Divider()
+
+      // Buttons
+      HStack {
+        Button("Cancel") {
+          dismiss()
         }
+        .keyboardShortcut(.escape)
+
+        Spacer()
+
+        Button("Save") {
+          saveDriveSettings()
+          dismiss()
+        }
+        .keyboardShortcut(.return)
+        .buttonStyle(.borderedProminent)
+      }
+      .padding()
     }
-    
-    // MARK: - Methods
-    
-    private func loadCurrentSettings() {
-        customName = drive.userLabel ?? ""
-        selectedEmoji = drive.emoji ?? "💾"
-        physicalLocation = drive.physicalLocation ?? ""
-        notes = drive.notes ?? ""
-        isPreferred = drive.isPreferredBackup
-        autoStart = drive.autoStartBackup
+    .frame(width: 500, height: 600)
+    .onAppear {
+      loadCurrentSettings()
     }
-    
-    private func saveDriveSettings() {
-        identityManager.updateDriveCustomization(
-            drive,
-            name: customName.isEmpty ? nil : customName,
-            emoji: selectedEmoji.isEmpty ? nil : selectedEmoji,
-            location: physicalLocation.isEmpty ? nil : physicalLocation,
-            notes: notes.isEmpty ? nil : notes
-        )
-        
-        identityManager.setDrivePreferences(
-            drive,
-            isPreferred: isPreferred,
-            autoStart: autoStart
-        )
-    }
-    
-    private func formatDate(_ date: Date?) -> String {
-        guard let date = date else { return "Unknown" }
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-    
-    private func formatBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
-    }
+  }
+
+  // MARK: - Methods
+
+  private func loadCurrentSettings() {
+    customName = drive.userLabel ?? ""
+    selectedEmoji = drive.emoji ?? "💾"
+    physicalLocation = drive.physicalLocation ?? ""
+    notes = drive.notes ?? ""
+    isPreferred = drive.isPreferredBackup
+    autoStart = drive.autoStartBackup
+  }
+
+  private func saveDriveSettings() {
+    identityManager.updateDriveCustomization(
+      drive,
+      name: customName.isEmpty ? nil : customName,
+      emoji: selectedEmoji.isEmpty ? nil : selectedEmoji,
+      location: physicalLocation.isEmpty ? nil : physicalLocation,
+      notes: notes.isEmpty ? nil : notes
+    )
+
+    identityManager.setDrivePreferences(
+      drive,
+      isPreferred: isPreferred,
+      autoStart: autoStart
+    )
+  }
+
+  private func formatDate(_ date: Date?) -> String {
+    guard let date = date else { return "Unknown" }
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    return formatter.string(from: date)
+  }
+
+  private func formatBytes(_ bytes: Int64) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: bytes)
+  }
 }

@@ -1,20 +1,20 @@
-import Foundation
 import Darwin
+import Foundation
 
 /// Manages the backup queue for a single destination
 actor DestinationQueue {
     let destination: URL
-    let organizationName: String  // Folder name for organizing backups
+    let organizationName: String // Folder name for organizing backups
     let queue: PriorityQueue
     let throughputMonitor: ThroughputMonitor
     private let batchProcessor = BatchFileProcessor()
     private let fileOperations: FileOperationsProtocol
-    
+
     private var activeWorkers: Set<UUID> = []
     private var workerTasks: [Task<Void, Never>] = []
     private var isRunning = false
     private var shouldCancel = false
-    
+
     // Progress tracking
     private(set) var totalFiles: Int = 0
     private(set) var completedFiles: Int = 0
@@ -24,47 +24,50 @@ actor DestinationQueue {
     private(set) var totalBytes: Int64 = 0
     private(set) var verifiedFiles: Int = 0
     private(set) var isVerifying = false
-    
+
     // Store the tasks assigned to this destination for verification
     private var assignedTasks: [FileTask] = []
-    
+
     // Callbacks for UI updates (needs to be set from async context)
     private var onProgress: ((Int, Int) async -> Void)?
     private var onStatusUpdate: ((String) async -> Void)?
     private var onVerificationStateChange: ((Bool, Int) async -> Void)?
-    
+
     // Throttling for progress updates
     private var lastProgressUpdate = Date()
     private let progressUpdateInterval: TimeInterval = 0.1 // Update at most 10 times per second
-    
+
     func setProgressCallback(_ callback: @escaping (Int, Int) async -> Void) {
-        self.onProgress = callback
+        onProgress = callback
     }
-    
+
     func setStatusCallback(_ callback: @escaping (String) async -> Void) {
-        self.onStatusUpdate = callback
+        onStatusUpdate = callback
     }
-    
+
     func setVerificationCallback(_ callback: @escaping (Bool, Int) async -> Void) {
-        self.onVerificationStateChange = callback
+        onVerificationStateChange = callback
     }
-    
+
     // Worker configuration with resource limits
     private var currentWorkerCount: Int = 2
     private let minWorkers = 1
-    private let maxWorkers = 4  // Reduced from 8 to prevent resource exhaustion
-    private let maxMemoryUsageMB = 750  // Increased from 500MB - more appropriate for modern systems
-    
-    init(destination: URL, organizationName: String = "", fileOperations: FileOperationsProtocol = DefaultFileOperations.shared) {
+    private let maxWorkers = 4 // Reduced from 8 to prevent resource exhaustion
+    private let maxMemoryUsageMB = 750 // Increased from 500MB - more appropriate for modern systems
+
+    init(
+        destination: URL, organizationName: String = "",
+        fileOperations: FileOperationsProtocol = DefaultFileOperations.shared
+    ) {
         self.destination = destination
         self.organizationName = organizationName
-        self.queue = PriorityQueue()
-        self.throughputMonitor = ThroughputMonitor()
+        queue = PriorityQueue()
+        throughputMonitor = ThroughputMonitor()
         self.fileOperations = fileOperations
     }
-    
+
     // MARK: - Queue Management
-    
+
     func addTasks(_ tasks: [FileTask]) async {
         await queue.enqueueMultiple(tasks)
         totalFiles += tasks.count
@@ -77,98 +80,98 @@ actor DestinationQueue {
             print("   First few: \(firstFew)")
         }
     }
-    
+
     func start() async {
         guard !isRunning else { return }
-        
+
         isRunning = true
         shouldCancel = false
         await throughputMonitor.start()
-        
+
         print("🚀 Starting queue for \(destination.lastPathComponent) with \(await queue.count) files")
-        
+
         // Start initial workers
-        for _ in 0..<currentWorkerCount {
+        for _ in 0 ..< currentWorkerCount {
             let task = Task {
                 await runWorker()
             }
             workerTasks.append(task)
         }
-        
+
         // Start adaptive worker manager
         let managerTask = Task {
             await manageWorkerCount()
         }
         workerTasks.append(managerTask)
-        
+
         // Start verification monitor - it will use assignedTasks member variable
         let verifyTask = Task {
             await startVerificationWhenCopyingComplete()
         }
         workerTasks.append(verifyTask)
     }
-    
+
     func stop() {
         shouldCancel = true
         isRunning = false
-        
+
         print("🛑 DestinationQueue.stop() called for \(destination.lastPathComponent)")
-        
+
         // Cancel all worker tasks immediately
         for task in workerTasks {
             task.cancel()
         }
         workerTasks.removeAll()
-        
+
         // Clear the queue to prevent further processing
         Task {
             await queue.clear()
         }
-        
+
         // Clear callbacks to prevent retain cycles
         onProgress = nil
         onStatusUpdate = nil
         onVerificationStateChange = nil
-        
+
         print("🛑 DestinationQueue stopped for \(destination.lastPathComponent)")
     }
-    
+
     // MARK: - Worker Management
-    
+
     private func runWorker() async {
         let workerId = UUID()
         activeWorkers.insert(workerId)
-        defer { 
+        defer {
             activeWorkers.remove(workerId)
             // Clean up any resources used by this worker
             print("🧹 Worker \(workerId.uuidString.prefix(8)) cleaned up")
         }
-        
+
         print("👷 Worker \(workerId.uuidString.prefix(8)) started for \(destination.lastPathComponent)")
-        
-        while !shouldCancel && isRunning {
+
+        while !shouldCancel, isRunning {
             // Check for cancellation before dequeue
             if shouldCancel {
                 print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled before dequeue")
                 break
             }
-            
+
             // Get next task from queue
             guard let task = await queue.dequeue() else {
                 // No more tasks, worker can exit
                 break
             }
-            
+
             // Check for cancellation after dequeue
             if shouldCancel {
                 print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled after dequeue")
                 // Don't re-queue when cancelled, just exit
                 break
             }
-            
+
             // Process the task
             let result = await processFileTask(task)
-            
+
             // Handle result
             switch result {
             case .success:
@@ -182,7 +185,7 @@ actor DestinationQueue {
                     await progressCallback(completedFiles, totalFiles)
                 }
 
-            case .skipped(let reason):
+            case let .skipped(reason):
                 completedFiles += 1
                 // Add to successfully copied files if it was skipped because it already exists
                 if reason.contains("Already exists") {
@@ -193,11 +196,11 @@ actor DestinationQueue {
                 if let progressCallback = onProgress {
                     await progressCallback(completedFiles, totalFiles)
                 }
-                
-            case .failed(let error):
+
+            case let .failed(error):
                 print("❌ Failed \(task.relativePath): \(error)")
                 failedFiles.append((file: task.relativePath, error: error.localizedDescription))
-                
+
                 // Retry logic
                 if task.attemptCount < 3 {
                     var retryTask = task
@@ -206,27 +209,27 @@ actor DestinationQueue {
                     await queue.enqueue(retryTask)
                 } else {
                     completedFiles += 1 // Count as completed even if failed
-                    
+
                     // Report progress update
                     if let progressCallback = onProgress {
                         await progressCallback(completedFiles, totalFiles)
                     }
                 }
-                
+
             case .cancelled:
                 // Don't re-queue cancelled tasks, just exit the worker
                 print("🛑 Task cancelled for \(task.relativePath)")
-                break
             }
-            
+
             // Update progress with throttling to prevent overwhelming the UI
             let currentCompleted = completedFiles
             let currentTotal = totalFiles
             let now = Date()
-            
+
             // Only update if enough time has passed or if we're done
-            if now.timeIntervalSince(lastProgressUpdate) >= progressUpdateInterval || 
-               currentCompleted >= currentTotal {
+            if now.timeIntervalSince(lastProgressUpdate) >= progressUpdateInterval
+                || currentCompleted >= currentTotal
+            {
                 lastProgressUpdate = now
                 if let progressCallback = onProgress {
                     // Call callback asynchronously to respect actor boundaries
@@ -234,244 +237,253 @@ actor DestinationQueue {
                 }
             }
         }
-        
+
         print("👷 Worker \(workerId.uuidString.prefix(8)) finished for \(destination.lastPathComponent)")
     }
-    
+
     private func manageWorkerCount() async {
-        while !shouldCancel && isRunning {
+        while !shouldCancel, isRunning {
             // Wait a bit before adjusting
             try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
-            
+
             // Check memory usage before adjusting workers
             let memoryUsage = getMemoryUsage()
             if memoryUsage > maxMemoryUsageMB {
-                print("⚠️ High memory usage (\(memoryUsage)MB), limiting workers for \(destination.lastPathComponent)")
+                print(
+                    "⚠️ High memory usage (\(memoryUsage)MB), limiting workers for \(destination.lastPathComponent)"
+                )
                 // Don't add more workers if memory is high
                 continue
             }
-            
+
             let recommendedWorkers = await throughputMonitor.recommendedWorkerCount
-            
+
             if recommendedWorkers > currentWorkerCount {
                 // Add workers
                 let toAdd = min(recommendedWorkers - currentWorkerCount, maxWorkers - currentWorkerCount)
-                for _ in 0..<toAdd {
+                for _ in 0 ..< toAdd {
                     let task = Task {
                         await runWorker()
                     }
                     workerTasks.append(task)
                 }
                 currentWorkerCount += toAdd
-                print("📈 Added \(toAdd) workers for \(destination.lastPathComponent) (now \(currentWorkerCount))")
-                
-            } else if recommendedWorkers < currentWorkerCount && currentWorkerCount > minWorkers {
+                print(
+                    "📈 Added \(toAdd) workers for \(destination.lastPathComponent) (now \(currentWorkerCount))"
+                )
+
+            } else if recommendedWorkers < currentWorkerCount, currentWorkerCount > minWorkers {
                 // Reduce workers (they'll naturally exit when they finish current task)
                 currentWorkerCount = max(minWorkers, recommendedWorkers)
                 print("📉 Reducing to \(currentWorkerCount) workers for \(destination.lastPathComponent)")
             }
         }
     }
-    
+
     // MARK: - File Processing
-    
+
     private func processFileTask(_ task: FileTask) async -> CopyResult {
-        // Check for cancellation at the start
-        if shouldCancel {
-            return .cancelled
-        }
-        
-        // If we have an organization name, add it to the path
-        let destPath: URL
-        if !organizationName.isEmpty {
-            destPath = destination
-                .appendingPathComponent(organizationName)
-                .appendingPathComponent(task.relativePath)
-        } else {
-            destPath = destination.appendingPathComponent(task.relativePath)
-        }
+        guard !shouldCancel else { return .cancelled }
+
+        let destPath = buildDestinationPath(for: task)
         let destDir = destPath.deletingLastPathComponent()
         let startTime = Date()
-        
+
         do {
-            // Check cancellation before directory creation
-            if shouldCancel {
-                return .cancelled
-            }
+            guard !shouldCancel else { return .cancelled }
+
             // Create directory if needed
             if !fileOperations.fileExists(at: destDir) {
                 try fileOperations.createDirectory(at: destDir, withIntermediateDirectories: true)
             }
-            
-            // Check if file already exists with matching checksum
-            if fileOperations.fileExists(at: destPath) {
-                // Quick size check first
-                if let destSize = fileOperations.fileSize(at: destPath),
-                   destSize == task.size {
-                    // Size matches, verify checksum with retry for transient read errors
-                    let checksumMatches = try await RetryHandler.shared.executeWithRetry(
-                        operation: "Verify checksum for \(task.relativePath)"
-                    ) {
-                        let existingChecksum = try await fileOperations.calculateChecksum(
-                            for: destPath,
-                            shouldCancel: { shouldCancel }
-                        )
-                        return existingChecksum == task.checksum
-                    }
-                    if checksumMatches {
-                        // Log skip event
-                        await MainActor.run {
-                            EventLogger.shared.logEvent(
-                                type: .skip,
-                                severity: .debug,
-                                file: task.sourceURL,
-                                destination: destPath,
-                                fileSize: task.size,
-                                checksum: task.checksum,
-                                metadata: ["reason": "Already exists with matching checksum"]
-                            )
-                            
-                            // Also log to ApplicationLogger
-                            ApplicationLogger.shared.debug(
-                                "Skipped (already exists): \(task.sourceURL.path)",
-                                category: .backup
-                            )
-                        }
-                        return .skipped(reason: "Already exists with matching checksum")
-                    }
-                }
-                // File exists but doesn't match, remove it
-                try fileOperations.removeItem(at: destPath)
+
+            // Check if file can be skipped (already exists with matching checksum)
+            if try await checkExistingFileCanBeSkipped(task, at: destPath) {
+                return .skipped(reason: "Already exists with matching checksum")
             }
-            
-            // Check cancellation before starting the actual copy
-            if shouldCancel {
-                return .cancelled
-            }
-            
-            // Copy the file with proper error handling and security-scoped access
-            do {
-                // Extra debug for videos
-                if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
-                    print("🎬 About to copy video from \(task.sourceURL.path)")
-                    print("   Source exists: \(fileOperations.fileExists(at: task.sourceURL))")
-                }
-                
-                // Start security-scoped access for both source and destination
-                let sourceAccess = fileOperations.startAccessingSecurityScopedResource(for: task.sourceURL)
-                let destAccess = fileOperations.startAccessingSecurityScopedResource(for: destination)
-                defer {
-                    if sourceAccess { fileOperations.stopAccessingSecurityScopedResource(for: task.sourceURL) }
-                    if destAccess { fileOperations.stopAccessingSecurityScopedResource(for: destination) }
-                }
-                
-                // Use retry handler for copy operation
-                try await RetryHandler.shared.copyFileWithRetry(
-                    from: task.sourceURL,
-                    to: destPath,
-                    fileOperations: fileOperations
-                )
-                
-                // Log successful copy
-                let duration = Date().timeIntervalSince(startTime)
-                await MainActor.run {
-                    EventLogger.shared.logEvent(
-                        type: .copy,
-                        severity: .info,
-                        file: task.sourceURL,
-                        destination: destPath,
-                        fileSize: task.size,
-                        checksum: task.checksum,
-                        duration: duration
-                    )
-                    
-                    // Also log to ApplicationLogger with full file paths
-                    ApplicationLogger.shared.debug(
-                        "Copied file: \(task.sourceURL.path) -> \(destPath.path)",
-                        category: .backup
-                    )
-                }
-                
-                // Note: Don't increment completedFiles here - it's already done in processFileTask
-                // based on the result (success/skipped/failed)
-                
-                // Extra confirmation for videos
-                if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
-                    print("✅ Video copied successfully: \(task.relativePath)")
-                    print("   Dest exists: \(fileOperations.fileExists(at: destPath))")
-                } else {
-                    print("✅ Copied \(task.relativePath) to \(destination.lastPathComponent)")
-                }
-                return .success
-            } catch {
-                // Log video-specific errors
-                if task.relativePath.lowercased().hasSuffix(".mp4") || task.relativePath.lowercased().hasSuffix(".mov") {
-                    print("❌ Video copy failed: \(task.relativePath)")
-                    print("   Error: \(error)")
-                }
-                
-                // Log copy error
-                await MainActor.run {
-                    EventLogger.shared.logEvent(
-                        type: .error,
-                        severity: .error,
-                        file: task.sourceURL,
-                        destination: destPath,
-                        fileSize: task.size,
-                        error: error,
-                        metadata: ["operation": "copy"]
-                    )
-                    
-                    // Also log to ApplicationLogger
-                    ApplicationLogger.shared.error(
-                        "Failed to copy \(task.sourceURL.path): \(error.localizedDescription)",
-                        category: .backup
-                    )
-                }
-                
-                // Clean up partial file if copy failed
-                if fileOperations.fileExists(at: destPath) {
-                    try? fileOperations.removeItem(at: destPath)
-                }
-                throw error
-            }
-            
+
+            guard !shouldCancel else { return .cancelled }
+
+            // Copy the file
+            return try await performFileCopy(task, to: destPath, startTime: startTime)
         } catch {
-            if shouldCancel {
-                return .cancelled
-            }
+            if shouldCancel { return .cancelled }
             return .failed(error: error)
         }
     }
-    
+
+    /// Perform the actual file copy with security-scoped access
+    private func performFileCopy(_ task: FileTask, to destPath: URL, startTime: Date) async throws
+        -> CopyResult
+    {
+        let sourceAccess = fileOperations.startAccessingSecurityScopedResource(for: task.sourceURL)
+        let destAccess = fileOperations.startAccessingSecurityScopedResource(for: destination)
+        defer {
+            if sourceAccess {
+                fileOperations.stopAccessingSecurityScopedResource(for: task.sourceURL)
+            }
+            if destAccess {
+                fileOperations.stopAccessingSecurityScopedResource(for: destination)
+            }
+        }
+
+        do {
+            try await RetryHandler.shared.copyFileWithRetry(
+                from: task.sourceURL,
+                to: destPath,
+                fileOperations: fileOperations
+            )
+
+            let duration = Date().timeIntervalSince(startTime)
+            await logCopySuccess(task, to: destPath, duration: duration)
+            print("✅ Copied \(task.relativePath) to \(destination.lastPathComponent)")
+            return .success
+        } catch {
+            await logCopyError(task, to: destPath, error: error)
+
+            // Clean up partial file if copy failed
+            if fileOperations.fileExists(at: destPath) {
+                try? fileOperations.removeItem(at: destPath)
+            }
+            throw error
+        }
+    }
+
+    // MARK: - File Processing Helpers
+
+    /// Build the destination path, optionally including organization folder
+    private func buildDestinationPath(for task: FileTask) -> URL {
+        if !organizationName.isEmpty {
+            return destination
+                .appendingPathComponent(organizationName)
+                .appendingPathComponent(task.relativePath)
+        }
+        return destination.appendingPathComponent(task.relativePath)
+    }
+
+    /// Check if file already exists with matching checksum and can be skipped
+    private func checkExistingFileCanBeSkipped(_ task: FileTask, at destPath: URL) async throws
+        -> Bool
+    {
+        guard fileOperations.fileExists(at: destPath) else { return false }
+
+        // Quick size check first
+        guard let destSize = fileOperations.fileSize(at: destPath),
+              destSize == task.size
+        else {
+            // Size doesn't match, file needs to be replaced
+            try fileOperations.removeItem(at: destPath)
+            return false
+        }
+
+        // Size matches, verify checksum
+        let checksumMatches = try await RetryHandler.shared.executeWithRetry(
+            operation: "Verify checksum for \(task.relativePath)"
+        ) {
+            let existingChecksum = try await fileOperations.calculateChecksum(
+                for: destPath,
+                shouldCancel: { shouldCancel }
+            )
+            return existingChecksum == task.checksum
+        }
+
+        if checksumMatches {
+            await logSkippedFile(task, at: destPath)
+            return true
+        }
+
+        // Checksum doesn't match, file needs to be replaced
+        try fileOperations.removeItem(at: destPath)
+        return false
+    }
+
+    /// Log a skipped file event
+    private func logSkippedFile(_ task: FileTask, at destPath: URL) async {
+        await MainActor.run {
+            EventLogger.shared.logEvent(
+                type: .skip,
+                severity: .debug,
+                file: task.sourceURL,
+                destination: destPath,
+                fileSize: task.size,
+                checksum: task.checksum,
+                metadata: ["reason": "Already exists with matching checksum"]
+            )
+            ApplicationLogger.shared.debug(
+                "Skipped (already exists): \(task.sourceURL.path)",
+                category: .backup
+            )
+        }
+    }
+
+    /// Log a successful copy event
+    private func logCopySuccess(_ task: FileTask, to destPath: URL, duration: TimeInterval) async {
+        await MainActor.run {
+            EventLogger.shared.logEvent(
+                type: .copy,
+                severity: .info,
+                file: task.sourceURL,
+                destination: destPath,
+                fileSize: task.size,
+                checksum: task.checksum,
+                duration: duration
+            )
+            ApplicationLogger.shared.debug(
+                "Copied file: \(task.sourceURL.path) -> \(destPath.path)",
+                category: .backup
+            )
+        }
+    }
+
+    /// Log a copy error event
+    private func logCopyError(_ task: FileTask, to destPath: URL, error: Error) async {
+        await MainActor.run {
+            EventLogger.shared.logEvent(
+                type: .error,
+                severity: .error,
+                file: task.sourceURL,
+                destination: destPath,
+                fileSize: task.size,
+                error: error,
+                metadata: ["operation": "copy"]
+            )
+            ApplicationLogger.shared.error(
+                "Failed to copy \(task.sourceURL.path): \(error.localizedDescription)",
+                category: .backup
+            )
+        }
+    }
+
     // MARK: - Status and Monitoring
-    
+
     func getStatus() async -> (completed: Int, total: Int, speed: String, eta: String?) {
         let speed = await throughputMonitor.getFormattedSpeed()
-        
+
         let remainingBytes = totalBytes - bytesTransferred
         let eta: String?
-        if let timeRemaining = await throughputMonitor.estimateTimeRemaining(bytesRemaining: remainingBytes) {
+        if let timeRemaining = await throughputMonitor.estimateTimeRemaining(
+            bytesRemaining: remainingBytes)
+        {
             eta = formatTime(timeRemaining)
         } else {
             eta = nil
         }
-        
+
         return (completedFiles, totalFiles, speed, eta)
     }
-    
+
     func getVerifiedCount() -> Int {
         return verifiedFiles
     }
-    
+
     func getIsVerifying() -> Bool {
         return isVerifying
     }
-    
+
     func getBytesInfo() -> (transferred: Int64, total: Int64) {
         return (bytesTransferred, totalBytes)
     }
-    
+
     func isComplete() -> Bool {
         // Consider complete if:
         // 1. All files are verified successfully, OR
@@ -479,118 +491,121 @@ actor DestinationQueue {
         // This accounts for files that failed verification
         let allFilesProcessed = (verifiedFiles + failedFiles.count) >= totalFiles
         let complete = allFilesProcessed && !isVerifying
-        
+
         if complete || verifiedFiles > 0 {
-            print("📊 Queue.isComplete(\(destination.lastPathComponent)): verified=\(verifiedFiles)/\(totalFiles), failed=\(failedFiles.count), isVerifying=\(isVerifying) -> \(complete)")
+            print(
+                "📊 Queue.isComplete(\(destination.lastPathComponent)): verified=\(verifiedFiles)/\(totalFiles), failed=\(failedFiles.count), isVerifying=\(isVerifying) -> \(complete)"
+            )
         }
         return complete
     }
-    
+
     private func formatTime(_ seconds: TimeInterval) -> String {
-        if seconds < 60 {
-            return "< 1 min"
-        } else if seconds < 3600 {
-            let minutes = Int(seconds / 60)
-            return "\(minutes) min"
-        } else {
-            let hours = Int(seconds / 3600)
-            let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
-            return "\(hours)h \(minutes)m"
-        }
+        TimeFormatter.formatETA(seconds)
     }
-    
+
     // MARK: - Resource Monitoring
-    
+
     private func getMemoryUsage() -> Int {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        
+
         let result = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                task_info(mach_task_self_,
-                         task_flavor_t(MACH_TASK_BASIC_INFO),
-                         $0,
-                         &count)
+                task_info(
+                    mach_task_self_,
+                    task_flavor_t(MACH_TASK_BASIC_INFO),
+                    $0,
+                    &count
+                )
             }
         }
-        
+
         if result == KERN_SUCCESS {
             return Int(info.resident_size / 1024 / 1024) // Convert to MB
         }
         return 0
     }
-    
+
     // MARK: - Verification
-    
+
     private func startVerificationWhenCopyingComplete() async {
         // Wait for all copying to complete
-        while completedFiles < totalFiles && !shouldCancel {
+        while completedFiles < totalFiles, !shouldCancel {
             try? await Task.sleep(nanoseconds: 1_000_000_000) // Check every second
         }
-        
+
         guard !shouldCancel else { return }
-        
+
         print("✅ Copying complete for \(destination.lastPathComponent), starting verification...")
-        print("📊 Debug: assignedTasks.count = \(assignedTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)")
-        
+        print(
+            "📊 Debug: assignedTasks.count = \(assignedTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)"
+        )
+
         // Debug: Check what files are in assignedTasks
         let sampleFiles = assignedTasks.prefix(5).map { $0.relativePath }
         print("📊 Sample of assignedTasks for \(destination.lastPathComponent): \(sampleFiles)")
-        
+
         // Debug: Check what files were successfully copied
         let copiedSample = Array(successfullyCopiedFiles.prefix(5))
-        print("📊 Sample of successfullyCopiedFiles for \(destination.lastPathComponent): \(copiedSample)")
-        
+        print(
+            "📊 Sample of successfullyCopiedFiles for \(destination.lastPathComponent): \(copiedSample)")
+
         // Small delay before setting isVerifying to ensure UI sees copying complete first
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-        
+
         // NOW set isVerifying to true, right before we actually start verifying
         isVerifying = true
-        
+
         // Notify coordinator that verification has started
         if let callback = onVerificationStateChange {
             await callback(true, 0)
         }
-        
+
         // Verify only files that were successfully copied to THIS destination
         for task in assignedTasks {
             guard !shouldCancel else { break }
-            
+
             // Skip files that weren't copied to this destination
             guard successfullyCopiedFiles.contains(task.relativePath) else {
                 // This file was not assigned to this destination, skip it
                 continue
             }
-            
+
             // If we have an organization name, include it in the path
             let destPath: URL
             if !organizationName.isEmpty {
-                destPath = destination
-                    .appendingPathComponent(organizationName)
-                    .appendingPathComponent(task.relativePath)
+                destPath =
+                    destination
+                        .appendingPathComponent(organizationName)
+                        .appendingPathComponent(task.relativePath)
             } else {
                 destPath = destination.appendingPathComponent(task.relativePath)
             }
-            
+
             do {
                 // Check if file exists
                 guard fileOperations.fileExists(at: destPath) else {
-                    print("❌ Verification failed: \(task.relativePath) missing at \(destination.lastPathComponent)")
+                    print(
+                        "❌ Verification failed: \(task.relativePath) missing at \(destination.lastPathComponent)"
+                    )
                     failedFiles.append((file: task.relativePath, error: "File missing after copy"))
                     continue
                 }
-                
+
                 // Verify checksum
                 let verifyStartTime = Date()
                 let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
                     shouldCancel: { shouldCancel }
                 )
-                
+
                 if actualChecksum == task.checksum {
                     verifiedFiles += 1
-                    print("✅ Verified: \(task.relativePath) at \(destination.lastPathComponent) (total verified: \(verifiedFiles))")
-                    
+                    print(
+                        "✅ Verified: \(task.relativePath) at \(destination.lastPathComponent) (total verified: \(verifiedFiles))"
+                    )
+
                     // Log successful verification
                     let duration = Date().timeIntervalSince(verifyStartTime)
                     await MainActor.run {
@@ -603,14 +618,14 @@ actor DestinationQueue {
                             checksum: task.checksum,
                             duration: duration
                         )
-                        
+
                         // Also log to ApplicationLogger
                         ApplicationLogger.shared.debug(
                             "Verified: \(destPath.path)",
                             category: .backup
                         )
                     }
-                    
+
                     // Notify coordinator of verification progress
                     if let callback = onVerificationStateChange {
                         let currentVerified = verifiedFiles
@@ -619,7 +634,7 @@ actor DestinationQueue {
                 } else {
                     print("❌ Checksum mismatch: \(task.relativePath) at \(destination.lastPathComponent)")
                     failedFiles.append((file: task.relativePath, error: "Checksum mismatch"))
-                    
+
                     // Log verification failure
                     await MainActor.run {
                         EventLogger.shared.logEvent(
@@ -631,10 +646,10 @@ actor DestinationQueue {
                             metadata: [
                                 "operation": "verify",
                                 "expectedChecksum": task.checksum,
-                                "actualChecksum": actualChecksum
+                                "actualChecksum": actualChecksum,
                             ]
                         )
-                        
+
                         // Also log to ApplicationLogger
                         ApplicationLogger.shared.error(
                             "Verification failed for \(destPath.path): checksum mismatch",
@@ -646,19 +661,21 @@ actor DestinationQueue {
                 print("❌ Verification error for \(task.relativePath): \(error)")
                 failedFiles.append((file: task.relativePath, error: error.localizedDescription))
             }
-            
+
             // Don't update progress during verification - it confuses the UI
             // The progress callback is for copying progress only
             // Verification happens after copying is complete (at 100%)
         }
-        
+
         isVerifying = false
-        
+
         // Notify coordinator that verification has completed
         if let callback = onVerificationStateChange {
             let finalVerified = verifiedFiles
             await callback(false, finalVerified)
         }
-        print("🎉 Verification complete for \(destination.lastPathComponent): \(verifiedFiles)/\(successfullyCopiedFiles.count) verified")
+        print(
+            "🎉 Verification complete for \(destination.lastPathComponent): \(verifiedFiles)/\(successfullyCopiedFiles.count) verified"
+        )
     }
 }

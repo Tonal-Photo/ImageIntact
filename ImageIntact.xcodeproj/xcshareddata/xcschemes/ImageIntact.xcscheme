@@ -40,11 +40,11 @@
       </MacroExpansion>
       <TestPlans>
          <TestPlanReference
-            reference = "container:TestPlans/Fast.xctestplan">
+            reference = "container:TestPlans/Fast.xctestplan"
+            default = "YES">
          </TestPlanReference>
          <TestPlanReference
-            reference = "container:TestPlans/Comprehensive.xctestplan"
-            default = "YES">
+            reference = "container:TestPlans/Comprehensive.xctestplan">
          </TestPlanReference>
          <TestPlanReference
             reference = "container:TestPlans/FullE2E.xctestplan">

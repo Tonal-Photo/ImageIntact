@@ -5,183 +5,169 @@
 //  Core Data-based event logging system for backup operations
 //
 
-import Foundation
 import CoreData
+import Foundation
 
 /// Types of events that can be logged
 enum EventType: String {
-    case start = "start"
-    case scan = "scan"
-    case copy = "copy"
-    case verify = "verify"
-    case skip = "skip"
-    case error = "error"
-    case cancel = "cancel"
-    case complete = "complete"
-    case quarantine = "quarantine"
+    case start
+    case scan
+    case copy
+    case verify
+    case skip
+    case error
+    case cancel
+    case complete
+    case quarantine
 }
 
 /// Severity levels for events
 enum EventSeverity: String {
-    case debug = "debug"
-    case info = "info"
-    case warning = "warning"
-    case error = "error"
+    case debug
+    case info
+    case warning
+    case error
 }
 
 /// Thread-safe event logger using Core Data
 @MainActor
 class EventLogger {
     // Use lazy initialization to ensure proper ordering
-    static let shared: EventLogger = {
-        return EventLogger()
-    }()
-    
+    static let shared: EventLogger = .init()
+
     // Static model cache to prevent multiple loads
     fileprivate static var managedObjectModel: NSManagedObjectModel?
     private static var isInitialized = false
-    
+
     // Expose container for other components that need to use the same Core Data stack
     let container: NSPersistentContainer
-    internal var currentSessionID: UUID?
-    internal let backgroundContext: NSManagedObjectContext
+    var currentSessionID: UUID?
+    let backgroundContext: NSManagedObjectContext
     private let batchLogger = BatchEventLogger(batchSize: 100, maxBatchWaitTime: 2.0)
-    
+
     private init() {
-        // Ensure we only initialize once
+        // Ensure singleton
         guard !EventLogger.isInitialized else {
             fatalError("EventLogger singleton already initialized")
         }
         EventLogger.isInitialized = true
-        
-        // Load model only once and cache it
-        if EventLogger.managedObjectModel == nil {
-            guard let modelURL = Bundle.main.url(forResource: "ImageIntactEvents", withExtension: "momd") else {
-                fatalError("Failed to find Core Data model")
-            }
-            guard let model = NSManagedObjectModel(contentsOf: modelURL) else {
-                fatalError("Failed to load Core Data model")
-            }
-            EventLogger.managedObjectModel = model
-        }
-        
-        guard let model = EventLogger.managedObjectModel else {
-            fatalError("Core Data model not available")
-        }
-        
-        // Create container with explicit model to prevent duplicate loading
+
+        // Load and cache Core Data model
+        let model = EventLogger.loadModel()
+
+        // Create container
         container = NSPersistentContainer(name: "ImageIntactEvents", managedObjectModel: model)
 
-        // Check if store exists and needs migration
-        if let storeURL = container.persistentStoreDescriptions.first?.url,
-           FileManager.default.fileExists(atPath: storeURL.path) {
+        // Create background context early (needed before loadStores)
+        backgroundContext = container.newBackgroundContext()
 
-            // Check if we can load metadata to detect incompatible store
-            do {
-                let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(
-                    ofType: NSSQLiteStoreType,
-                    at: storeURL
-                )
-
-                // Check if the store is compatible with our model
-                let isCompatible = model.isConfiguration(
-                    withName: nil,
-                    compatibleWithStoreMetadata: metadata
-                )
-
-                if !isCompatible {
-                    print("⚠️ Core Data store incompatible with new model, removing old store...")
-
-                    // Use Core Data's proper API to destroy the store
-                    // This handles locking and coordination automatically
-                    do {
-                        let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
-                        try coordinator.destroyPersistentStore(
-                            at: storeURL,
-                            ofType: NSSQLiteStoreType,
-                            options: nil
-                        )
-                        print("✅ Old store destroyed successfully using Core Data API")
-                    } catch {
-                        print("❌ Error destroying old store: \(error)")
-                        // Try to continue anyway - Core Data might be able to handle it
-                    }
-                }
-            } catch {
-                print("⚠️ Could not read store metadata, removing potentially corrupt store: \(error)")
-
-                // If we can't read metadata, the store is corrupt - destroy it
-                do {
-                    let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
-                    try coordinator.destroyPersistentStore(
-                        at: storeURL,
-                        ofType: NSSQLiteStoreType,
-                        options: nil
-                    )
-                    print("✅ Corrupt store destroyed successfully using Core Data API")
-                } catch {
-                    print("❌ Failed to destroy corrupt store: \(error)")
-                    // As a last resort, try manual deletion
-                    // This is safer than before because we know Core Data couldn't lock it
-                    let fileManager = FileManager.default
-                    try? fileManager.removeItem(at: storeURL)
-                    try? fileManager.removeItem(at: storeURL.appendingPathExtension("-shm"))
-                    try? fileManager.removeItem(at: storeURL.appendingPathExtension("-wal"))
-                    try? fileManager.removeItem(at: storeURL.appendingPathExtension("-journal"))
-                    print("⚠️ Attempted manual file deletion as fallback")
-                }
-            }
-        }
+        // Handle migration if needed
+        handleStoreMigration(model: model)
 
         // Configure for performance
-        if let description = container.persistentStoreDescriptions.first {
-            // Disable automatic migration since we handle it manually above
-            description.shouldMigrateStoreAutomatically = false
-            description.shouldInferMappingModelAutomatically = false
+        configureStoreForPerformance()
 
-            // Enable persistent history tracking for batch operations
-            description.setOption(true as NSNumber, 
-                                 forKey: NSPersistentHistoryTrackingKey)
-            
-            // Enable remote change notifications
-            description.setOption(true as NSNumber,
-                                 forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
-            
-            // Set SQLite pragmas for performance
-            description.setOption(["journal_mode": "WAL",
-                                   "synchronous": "NORMAL",
-                                   "cache_size": "10000"] as NSDictionary,
-                                 forKey: NSSQLitePragmasOption)
-            
-            // Enable batch operations
-            description.type = NSSQLiteStoreType
-            description.shouldAddStoreAsynchronously = false
-        }
-        
         // Load stores with error recovery
+        loadStoresWithRecovery(model: model)
+
+        // Configure contexts
+        configureContexts()
+    }
+
+    // MARK: - Initialization Helpers
+
+    /// Load the Core Data model, caching it for reuse
+    private static func loadModel() -> NSManagedObjectModel {
+        if let cached = managedObjectModel {
+            return cached
+        }
+
+        guard let modelURL = Bundle.main.url(forResource: "ImageIntactEvents", withExtension: "momd") else {
+            fatalError("Failed to find Core Data model")
+        }
+        guard let model = NSManagedObjectModel(contentsOf: modelURL) else {
+            fatalError("Failed to load Core Data model")
+        }
+        managedObjectModel = model
+        return model
+    }
+
+    /// Handle store migration if needed
+    private func handleStoreMigration(model: NSManagedObjectModel) {
+        guard let storeURL = container.persistentStoreDescriptions.first?.url,
+              FileManager.default.fileExists(atPath: storeURL.path)
+        else {
+            return
+        }
+
+        do {
+            let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(
+                ofType: NSSQLiteStoreType, at: storeURL
+            )
+
+            let isCompatible = model.isConfiguration(
+                withName: nil, compatibleWithStoreMetadata: metadata
+            )
+
+            if !isCompatible {
+                print("⚠️ Core Data store incompatible with new model, removing old store...")
+                destroyStore(at: storeURL, model: model)
+            }
+        } catch {
+            print("⚠️ Could not read store metadata, removing potentially corrupt store: \(error)")
+            destroyStore(at: storeURL, model: model)
+        }
+    }
+
+    /// Destroy a persistent store safely
+    private func destroyStore(at url: URL, model: NSManagedObjectModel) {
+        do {
+            let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+            try coordinator.destroyPersistentStore(at: url, ofType: NSSQLiteStoreType, options: nil)
+            print("✅ Old store destroyed successfully using Core Data API")
+        } catch {
+            print("❌ Error destroying store: \(error)")
+            // Fallback to manual deletion
+            let fileManager = FileManager.default
+            try? fileManager.removeItem(at: url)
+            try? fileManager.removeItem(at: url.appendingPathExtension("-shm"))
+            try? fileManager.removeItem(at: url.appendingPathExtension("-wal"))
+            try? fileManager.removeItem(at: url.appendingPathExtension("-journal"))
+            print("⚠️ Attempted manual file deletion as fallback")
+        }
+    }
+
+    /// Configure store description for performance
+    private func configureStoreForPerformance() {
+        guard let description = container.persistentStoreDescriptions.first else { return }
+
+        description.shouldMigrateStoreAutomatically = false
+        description.shouldInferMappingModelAutomatically = false
+        description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+        description.setOption(
+            ["journal_mode": "WAL", "synchronous": "NORMAL", "cache_size": "10000"] as NSDictionary,
+            forKey: NSSQLitePragmasOption
+        )
+        description.type = NSSQLiteStoreType
+        description.shouldAddStoreAsynchronously = false
+    }
+
+    /// Load stores with error recovery and in-memory fallback
+    private func loadStoresWithRecovery(model: NSManagedObjectModel) {
         var needsInMemoryFallback = false
 
         container.loadPersistentStores { storeDescription, error in
             if let error = error {
                 print("❌ EventLogger Core Data error: \(error)")
-
-                // Try to destroy and recreate the store using Core Data API
                 if let storeURL = storeDescription.url {
                     print("🔄 Attempting to destroy and recreate store...")
-
                     do {
-                        // Use Core Data's proper API to destroy the store
                         let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
-                        try coordinator.destroyPersistentStore(
-                            at: storeURL,
-                            ofType: NSSQLiteStoreType,
-                            options: nil
-                        )
+                        try coordinator.destroyPersistentStore(at: storeURL, ofType: NSSQLiteStoreType, options: nil)
                         print("✅ Destroyed problematic store, will recreate on next launch")
-                        // Store will be recreated automatically on next init
                     } catch {
                         print("❌ Could not destroy store: \(error)")
-                        print("⚠️ Will use in-memory store - data will not persist")
                         needsInMemoryFallback = true
                     }
                 } else {
@@ -189,40 +175,43 @@ class EventLogger {
                 }
             } else {
                 print("✅ EventLogger Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")")
-                print("📁 Core Data location: \(storeDescription.url?.path ?? "unknown")")
             }
         }
 
-        // If persistent store failed, set up in-memory store
         if needsInMemoryFallback {
-            print("🔄 Setting up in-memory store as fallback...")
-            let inMemoryDescription = NSPersistentStoreDescription()
-            inMemoryDescription.type = NSInMemoryStoreType
-            container.persistentStoreDescriptions = [inMemoryDescription]
+            setupInMemoryStore()
+        }
+    }
 
-            container.loadPersistentStores { _, inMemoryError in
-                if let inMemoryError = inMemoryError {
-                    print("❌ Even in-memory store failed: \(inMemoryError)")
-                    // App can still function, just without event logging
-                } else {
-                    print("✅ In-memory store loaded successfully")
-                }
+    /// Set up in-memory store as fallback
+    private func setupInMemoryStore() {
+        print("🔄 Setting up in-memory store as fallback...")
+        let inMemoryDescription = NSPersistentStoreDescription()
+        inMemoryDescription.type = NSInMemoryStoreType
+        container.persistentStoreDescriptions = [inMemoryDescription]
+
+        container.loadPersistentStores { _, error in
+            if let error = error {
+                print("❌ Even in-memory store failed: \(error)")
+            } else {
+                print("✅ In-memory store loaded successfully")
             }
         }
-        
-        // Configure contexts
+    }
+
+    /// Configure view and background contexts
+    private func configureContexts() {
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
-
-        // Create background context for writes
-        backgroundContext = container.newBackgroundContext()
         backgroundContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
     }
-    
+
     // MARK: - Session Management
-    
+
     /// Start a new backup session
-    func startSession(sourceURL: URL, fileCount: Int, totalBytes: Int64, sessionID: String? = nil) -> String {
+    func startSession(sourceURL: URL, fileCount: Int, totalBytes: Int64, sessionID: String? = nil)
+        -> String
+    {
         // Use provided session ID or create new one
         let uuid: UUID
         if let providedID = sessionID, let parsedUUID = UUID(uuidString: providedID) {
@@ -230,14 +219,14 @@ class EventLogger {
         } else {
             uuid = UUID()
         }
-        
+
         // Store the session ID for later use
         currentSessionID = uuid
-        
+
         // Create session in background context
         backgroundContext.perform { [weak self] in
             guard let self = self else { return }
-            
+
             let session = BackupSession(context: self.backgroundContext)
             session.id = uuid
             session.startedAt = Date()
@@ -245,8 +234,9 @@ class EventLogger {
             session.fileCount = Int32(fileCount)
             session.totalBytes = totalBytes
             session.status = "running"
-            session.toolVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-            
+            session.toolVersion =
+                Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+
             do {
                 try self.backgroundContext.save()
                 print("📝 Started logging session: \(uuid.uuidString)")
@@ -254,35 +244,38 @@ class EventLogger {
                 print("❌ Failed to save session start: \(error)")
             }
         }
-        
+
         // Log start event
-        logEvent(type: .start, severity: .info, metadata: [
-            "fileCount": fileCount,
-            "totalBytes": totalBytes,
-            "source": sourceURL.path
-        ])
-        
+        logEvent(
+            type: .start, severity: .info,
+            metadata: [
+                "fileCount": fileCount,
+                "totalBytes": totalBytes,
+                "source": sourceURL.path,
+            ]
+        )
+
         return uuid.uuidString
     }
-    
+
     /// Complete the current session
     func completeSession(status: String = "completed") {
         guard let sessionID = currentSessionID else { return }
-        
+
         // Flush any pending events before completing
         Task {
             await batchLogger.flushEvents()
         }
-        
+
         // Use perform instead of performAndWait to avoid potential deadlocks
         backgroundContext.perform { [weak self] in
             guard let self = self else { return }
-            
+
             // Fetch the session in this context
             let request = NSFetchRequest<BackupSession>(entityName: "BackupSession")
             request.predicate = NSPredicate(format: "id == %@", sessionID as CVarArg)
             request.fetchLimit = 1
-            
+
             do {
                 if let session = try self.backgroundContext.fetch(request).first {
                     session.completedAt = Date()
@@ -294,56 +287,58 @@ class EventLogger {
                 print("❌ Failed to save session completion: \(error)")
             }
         }
-        
+
         currentSessionID = nil
     }
-    
+
     /// Reset Core Data contexts to free memory (call only when no operations are active)
     func resetContexts() {
-        guard currentSessionID == nil else { 
+        guard currentSessionID == nil else {
             print("⚠️ Cannot reset contexts while session is active")
-            return 
+            return
         }
         // Don't reset contexts - it causes validation errors
         // Just let Core Data manage its own memory
         print("📝 Core Data memory management delegated to system")
     }
-    
+
     /// Delete old sessions and events using batch delete (efficient memory usage)
     func deleteOldSessions(olderThan days: Int = 30) {
         backgroundContext.perform { [weak self] in
             guard let self = self else { return }
-            
+
             let cutoffDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-            
+
             // First delete old events
             let eventFetch: NSFetchRequest<NSFetchRequestResult> = BackupEvent.fetchRequest()
             eventFetch.predicate = NSPredicate(format: "timestamp < %@", cutoffDate as NSDate)
-            
+
             let eventDelete = NSBatchDeleteRequest(fetchRequest: eventFetch)
             eventDelete.resultType = .resultTypeCount
-            
+
             do {
                 let eventResult = try self.backgroundContext.execute(eventDelete)
                 if let deleteResult = eventResult as? NSBatchDeleteResult,
-                   let count = deleteResult.result as? Int {
+                   let count = deleteResult.result as? Int
+                {
                     print("🗑️ Deleted \(count) old events")
                 }
             } catch {
                 print("❌ Failed to delete old events: \(error)")
             }
-            
+
             // Then delete old sessions
             let sessionFetch: NSFetchRequest<NSFetchRequestResult> = BackupSession.fetchRequest()
             sessionFetch.predicate = NSPredicate(format: "startedAt < %@", cutoffDate as NSDate)
-            
+
             let sessionDelete = NSBatchDeleteRequest(fetchRequest: sessionFetch)
             sessionDelete.resultType = .resultTypeCount
-            
+
             do {
                 let sessionResult = try self.backgroundContext.execute(sessionDelete)
                 if let deleteResult = sessionResult as? NSBatchDeleteResult,
-                   let count = deleteResult.result as? Int {
+                   let count = deleteResult.result as? Int
+                {
                     print("🗑️ Deleted \(count) old sessions")
                 }
             } catch {
@@ -351,9 +346,9 @@ class EventLogger {
             }
         }
     }
-    
+
     // MARK: - Event Logging
-    
+
     /// Log a backup event (now batched for performance)
     func logEvent(
         type: EventType,
@@ -366,14 +361,14 @@ class EventLogger {
         metadata: [String: Any]? = nil,
         duration: TimeInterval? = nil
     ) {
-        guard currentSessionID != nil else { 
+        guard currentSessionID != nil else {
             print("⚠️ No active session for event logging")
-            return 
+            return
         }
-        
+
         // Use batch logging for file operations, immediate logging for important events
         let shouldBatch = type == .copy || type == .verify || type == .skip
-        
+
         if shouldBatch {
             // Add to batch for later processing
             Task {
@@ -404,7 +399,7 @@ class EventLogger {
             )
         }
     }
-    
+
     /// Log an event immediately (for important events)
     private func logEventImmediately(
         type: EventType,
@@ -418,20 +413,20 @@ class EventLogger {
         duration: TimeInterval? = nil
     ) {
         guard let sessionID = currentSessionID else { return }
-        
+
         backgroundContext.perform { [weak self] in
             guard let self = self else { return }
-            
+
             // Fetch the session in this context
             let sessionRequest = NSFetchRequest<BackupSession>(entityName: "BackupSession")
             sessionRequest.predicate = NSPredicate(format: "id == %@", sessionID as CVarArg)
             sessionRequest.fetchLimit = 1
-            
+
             guard let session = try? self.backgroundContext.fetch(sessionRequest).first else {
                 print("⚠️ Session not found for event logging")
                 return
             }
-            
+
             let event = BackupEvent(context: self.backgroundContext)
             event.id = UUID()
             event.timestamp = Date()
@@ -443,15 +438,15 @@ class EventLogger {
             event.checksum = checksum
             event.errorMessage = error?.localizedDescription
             event.session = session
-            
+
             if let duration = duration {
                 event.durationMs = Int32(duration * 1000)
             }
-            
+
             if let metadata = metadata {
                 event.metadata = try? JSONSerialization.data(withJSONObject: metadata)
             }
-            
+
             do {
                 try self.backgroundContext.save()
             } catch {
@@ -459,19 +454,22 @@ class EventLogger {
             }
         }
     }
-    
+
     /// Log a cancellation event with context about what was in-flight
     func logCancellation(filesInFlight: [(file: URL, destination: URL, operation: String)]) {
         // Flush pending events first
         Task {
             await batchLogger.flushEvents()
-            
+
             // Log the cancellation event
             await MainActor.run {
-                self.logEvent(type: .cancel, severity: .warning, metadata: [
-                    "filesInFlightCount": filesInFlight.count
-                ])
-                
+                self.logEvent(
+                    type: .cancel, severity: .warning,
+                    metadata: [
+                        "filesInFlightCount": filesInFlight.count,
+                    ]
+                )
+
                 // Log each in-flight file
                 for item in filesInFlight {
                     self.logEvent(
@@ -482,84 +480,85 @@ class EventLogger {
                         metadata: ["operation": item.operation, "wasInFlight": true]
                     )
                 }
-                
+
                 self.completeSession(status: "cancelled")
             }
         }
     }
-    
+
     // MARK: - Report Generation
-    
+
     /// Generate a human-readable report for a session
     func generateReport(for sessionID: String) -> String {
         guard let uuid = UUID(uuidString: sessionID) else {
             return "Invalid session ID"
         }
-        
+
         let request = NSFetchRequest<BackupSession>(entityName: "BackupSession")
         request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
         request.relationshipKeyPathsForPrefetching = ["events"]
-        
+
         do {
             let sessions = try container.viewContext.fetch(request)
             guard let session = sessions.first else {
                 return "Session not found: \(sessionID)"
             }
-            
+
             return formatReport(for: session)
         } catch {
             return "Error loading session: \(error.localizedDescription)"
         }
     }
-    
+
     /// Generate JSON export for support
     func exportJSON(for sessionID: String) -> Data? {
         guard let uuid = UUID(uuidString: sessionID) else { return nil }
-        
+
         let request = NSFetchRequest<BackupSession>(entityName: "BackupSession")
         request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
         request.relationshipKeyPathsForPrefetching = ["events"]
-        
+
         do {
             let sessions = try container.viewContext.fetch(request)
             guard let session = sessions.first else { return nil }
-            
+
             let export: [String: Any] = [
                 "sessionID": session.id?.uuidString ?? "",
                 "startedAt": ISO8601DateFormatter().string(from: session.startedAt ?? Date()),
-                "completedAt": session.completedAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
+                "completedAt": session.completedAt.map { ISO8601DateFormatter().string(from: $0) }
+                    ?? NSNull(),
                 "status": session.status ?? "unknown",
                 "sourceURL": session.sourceURL ?? "",
                 "fileCount": session.fileCount,
                 "totalBytes": session.totalBytes,
                 "toolVersion": session.toolVersion ?? "",
-                "events": formatEventsAsJSON(session.events)
+                "events": formatEventsAsJSON(session.events),
             ]
-            
+
             return try JSONSerialization.data(withJSONObject: export, options: .prettyPrinted)
         } catch {
             print("❌ Failed to export JSON: \(error)")
             return nil
         }
     }
-    
+
     // MARK: - Private Helpers
-    
+
     private func formatReport(for session: BackupSession) -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .medium
         dateFormatter.timeStyle = .medium
-        
+
         // Sort events once for reuse
         let events = (session.events?.allObjects as? [BackupEvent] ?? [])
             .sorted { ($0.timestamp ?? Date()) < ($1.timestamp ?? Date()) }
-        
+
         // Calculate summary statistics first
         let errorCount = events.filter { $0.severity == "error" }.count
         let copyCount = events.filter { $0.eventType == "copy" }.count
         let verifyCount = events.filter { $0.eventType == "verify" }.count
         let skipCount = events.filter { $0.eventType == "skip" }.count
-        
+
         var report = """
         =====================================
         ImageIntact Backup Report
@@ -568,23 +567,23 @@ class EventLogger {
         Version: \(session.toolVersion ?? "unknown")
         Started: \(dateFormatter.string(from: session.startedAt ?? Date()))
         """
-        
+
         if let completed = session.completedAt {
             report += "\nCompleted: \(dateFormatter.string(from: completed))"
-            
+
             if let duration = session.startedAt {
                 let elapsed = completed.timeIntervalSince(duration)
                 report += "\nDuration: \(formatDuration(elapsed))"
             }
         }
-        
+
         report += """
-        
+
         Status: \(session.status ?? "unknown")
         Source: \(session.sourceURL ?? "unknown")
         Files: \(session.fileCount)
         Total Size: \(formatBytes(session.totalBytes))
-        
+
         =====================================
         Summary:
         =====================================
@@ -592,19 +591,19 @@ class EventLogger {
         Files Verified: \(verifyCount)
         Files Skipped: \(skipCount)
         Errors: \(errorCount)
-        
+
         """
-        
+
         // Add error details if there are any
         if errorCount > 0 {
             report += "=====================================\n"
             report += "Errors (\(errorCount)):\n"
             report += "=====================================\n"
-            
+
             let errors = events.filter { $0.severity == "error" }
-            for error in errors.prefix(10) {  // Show first 10 errors
+            for error in errors.prefix(10) { // Show first 10 errors
                 if let file = error.filePath {
-                    report += "• \(file)"  // Show full path
+                    report += "• \(file)" // Show full path
                     if let msg = error.errorMessage {
                         report += ": \(msg)"
                     }
@@ -616,80 +615,70 @@ class EventLogger {
             }
             report += "\n"
         }
-        
+
         report += """
         =====================================
         Detailed Event Log:
         =====================================
         """
-        
+
         let timeFormatter = DateFormatter()
         timeFormatter.timeStyle = .medium
-        
+
         for event in events {
             let time = timeFormatter.string(from: event.timestamp ?? Date())
             let type = event.eventType ?? "unknown"
             let severity = event.severity ?? "info"
-            
+
             report += "\n[\(time)] [\(severity.uppercased())] \(type): "
-            
+
             if let file = event.filePath {
-                report += file  // Show full path
+                report += file // Show full path
             }
-            
+
             if let dest = event.destinationPath {
-                report += " -> \(dest)"  // Show full path
+                report += " -> \(dest)" // Show full path
             }
-            
+
             if let error = event.errorMessage {
                 report += "\n    ERROR: \(error)"
             }
-            
+
             if event.durationMs > 0 {
                 report += " (\(event.durationMs)ms)"
             }
         }
-        
+
         return report
     }
-    
+
     private func formatEventsAsJSON(_ events: NSSet?) -> [[String: Any]] {
         let events = (events?.allObjects as? [BackupEvent] ?? [])
             .sorted { ($0.timestamp ?? Date()) < ($1.timestamp ?? Date()) }
-        
+
         return events.map { event in
             var dict: [String: Any] = [
                 "id": event.id?.uuidString ?? "",
                 "timestamp": ISO8601DateFormatter().string(from: event.timestamp ?? Date()),
                 "type": event.eventType ?? "",
-                "severity": event.severity ?? ""
+                "severity": event.severity ?? "",
             ]
-            
+
             if let file = event.filePath { dict["file"] = file }
             if let dest = event.destinationPath { dict["destination"] = dest }
             if event.fileSize > 0 { dict["fileSize"] = event.fileSize }
             if let checksum = event.checksum { dict["checksum"] = checksum }
             if let error = event.errorMessage { dict["error"] = error }
             if event.durationMs > 0 { dict["durationMs"] = event.durationMs }
-            
+
             return dict
         }
     }
-    
+
     private func formatDuration(_ seconds: TimeInterval) -> String {
-        if seconds < 60 {
-            return String(format: "%.1f seconds", seconds)
-        } else if seconds < 3600 {
-            let minutes = Int(seconds / 60)
-            let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
-            return "\(minutes)m \(secs)s"
-        } else {
-            let hours = Int(seconds / 3600)
-            let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
-            return "\(hours)h \(minutes)m"
-        }
+        TimeFormatter.formatDurationVerbose(seconds)
     }
-    
+
     private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
@@ -704,7 +693,7 @@ extension EventLogger {
     func getAllSessions() -> [BackupSession] {
         let request = NSFetchRequest<BackupSession>(entityName: "BackupSession")
         request.sortDescriptors = [NSSortDescriptor(key: "startedAt", ascending: false)]
-        
+
         do {
             return try container.viewContext.fetch(request)
         } catch {
@@ -712,14 +701,14 @@ extension EventLogger {
             return []
         }
     }
-    
+
     /// Get recent errors
     func getRecentErrors(limit: Int = 10) -> [BackupEvent] {
         let request = NSFetchRequest<BackupEvent>(entityName: "BackupEvent")
         request.predicate = NSPredicate(format: "severity == %@", "error")
         request.sortDescriptors = [NSSortDescriptor(key: "timestamp", ascending: false)]
         request.fetchLimit = limit
-        
+
         do {
             return try container.viewContext.fetch(request)
         } catch {
@@ -727,16 +716,16 @@ extension EventLogger {
             return []
         }
     }
-    
+
     /// Get sessions grouped by version
     func getSessionsByVersion() -> [String: [BackupSession]] {
         let request = NSFetchRequest<BackupSession>(entityName: "BackupSession")
         request.sortDescriptors = [NSSortDescriptor(key: "startedAt", ascending: false)]
-        
+
         do {
             let sessions = try container.viewContext.fetch(request)
             var grouped: [String: [BackupSession]] = [:]
-            
+
             for session in sessions {
                 let version = session.toolVersion ?? "unknown"
                 if grouped[version] == nil {
@@ -744,60 +733,62 @@ extension EventLogger {
                 }
                 grouped[version]?.append(session)
             }
-            
+
             return grouped
         } catch {
             print("❌ Failed to fetch sessions by version: \(error)")
             return [:]
         }
     }
-    
+
     /// Get version statistics
     func getVersionStatistics() -> String {
         let grouped = getSessionsByVersion()
         var report = "=== Version Statistics ===\n\n"
-        
+
         for (version, sessions) in grouped.sorted(by: { $0.key > $1.key }) {
             report += "Version \(version):\n"
             report += "  Sessions: \(sessions.count)\n"
-            
+
             // Count events for this version's sessions
             var totalEvents = 0
             var totalErrors = 0
             for session in sessions {
                 if let events = session.events {
                     totalEvents += events.count
-                    totalErrors += events.allObjects.compactMap { $0 as? BackupEvent }
+                    totalErrors +=
+                        events.allObjects.compactMap { $0 as? BackupEvent }
                         .filter { $0.severity == "error" }.count
                 }
             }
-            
+
             report += "  Total Events: \(totalEvents)\n"
             report += "  Total Errors: \(totalErrors)\n"
-            
+
             // Get date range
             let dates = sessions.compactMap { $0.startedAt }
             if let earliest = dates.min(), let latest = dates.max() {
                 let formatter = DateFormatter()
                 formatter.dateStyle = .short
                 formatter.timeStyle = .none
-                report += "  Date Range: \(formatter.string(from: earliest)) - \(formatter.string(from: latest))\n"
+                report +=
+                    "  Date Range: \(formatter.string(from: earliest)) - \(formatter.string(from: latest))\n"
             }
-            
+
             report += "\n"
         }
-        
+
         return report
     }
-    
+
     /// Debug method to verify Core Data is working
     func verifyDataStorage() -> String {
         var report = "=== Core Data Verification ===\n\n"
-        
+
         // Get store location
         if let storeURL = container.persistentStoreDescriptions.first?.url {
             report += "📁 Store Location: \(storeURL.path)\n"
-            
+
             // Check if file exists
             if FileManager.default.fileExists(atPath: storeURL.path) {
                 do {
@@ -813,21 +804,21 @@ extension EventLogger {
         } else {
             report += "❌ No store URL found!\n"
         }
-        
+
         report += "\n"
-        
+
         // Count entities
         let sessionRequest = NSFetchRequest<BackupSession>(entityName: "BackupSession")
         let eventRequest = NSFetchRequest<BackupEvent>(entityName: "BackupEvent")
-        
+
         do {
             let sessionCount = try container.viewContext.count(for: sessionRequest)
             let eventCount = try container.viewContext.count(for: eventRequest)
-            
+
             report += "📊 Database Contents:\n"
             report += "  - Sessions: \(sessionCount)\n"
             report += "  - Events: \(eventCount)\n"
-            
+
             // Add version breakdown
             let versionGroups = getSessionsByVersion()
             if !versionGroups.isEmpty {
@@ -836,14 +827,14 @@ extension EventLogger {
                     report += "  - v\(version): \(sessions.count) session\(sessions.count == 1 ? "" : "s")\n"
                 }
             }
-            
+
             report += "\n"
-            
+
             // Get recent events
             let recentRequest = NSFetchRequest<BackupEvent>(entityName: "BackupEvent")
             recentRequest.sortDescriptors = [NSSortDescriptor(key: "timestamp", ascending: false)]
             recentRequest.fetchLimit = 5
-            
+
             let recentEvents = try container.viewContext.fetch(recentRequest)
             if !recentEvents.isEmpty {
                 report += "\n📝 Recent Events:\n"
@@ -854,11 +845,11 @@ extension EventLogger {
                     report += "  - [\(timestamp)] \(type): \(file)\n"
                 }
             }
-            
+
         } catch {
             report += "❌ Failed to query database: \(error)\n"
         }
-        
+
         return report
     }
 }
