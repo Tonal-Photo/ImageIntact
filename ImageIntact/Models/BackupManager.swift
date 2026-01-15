@@ -252,6 +252,11 @@ class BackupManager {
         // Initialize subdirectory setting from preference
         includeSubdirectories = PreferencesManager.shared.includeSubdirectories
 
+        // Initialize organization name from last used (if user previously customized)
+        if let lastUsedName = PreferencesManager.shared.lastUsedOrganizationFolderName {
+            organizationName = lastUsedName
+        }
+
         // Check for UI test mode
         if BackupManager.isRunningTests, ProcessInfo.processInfo.arguments.contains("--uitest") {
             loadUITestPaths()
@@ -471,30 +476,37 @@ class BackupManager {
     /// - ~/Downloads → "Downloads"
     /// - /Volumes/Card01/DCIM → "Card01"
     /// - ~/Pictures/2025/Q3/Clients/Johnson → "Johnson"
+    /// - ~/Photos/My Photo Shoot → "My_Photo_Shoot"
     private func extractSmartFolderName(from url: URL) -> String {
         let pathComponents = url.pathComponents
 
+        var folderName: String
+
         // If it's a volume, use the volume name
         if pathComponents.count > 2 && pathComponents[1] == "Volumes" {
-            return pathComponents[2] // Volume name
-        }
+            folderName = pathComponents[2] // Volume name
+        } else {
+            // Skip generic folder names
+            let genericNames = ["files", "images", "photos", "pictures", "dcim", "documents"]
 
-        // Skip generic folder names
-        let genericNames = ["files", "images", "photos", "pictures", "dcim", "documents"]
-
-        // Work backwards through path components to find a meaningful name
-        for component in pathComponents.reversed() {
-            let lowercased = component.lowercased()
-            // Skip empty, hidden, or generic names
-            if !component.isEmpty && !component.hasPrefix(".") && !genericNames.contains(lowercased)
-                && component != "/"
-            {
-                return component
+            // Work backwards through path components to find a meaningful name
+            folderName = url.lastPathComponent // Fallback
+            for component in pathComponents.reversed() {
+                let lowercased = component.lowercased()
+                // Skip empty, hidden, or generic names
+                if !component.isEmpty && !component.hasPrefix(".") && !genericNames.contains(lowercased)
+                    && component != "/"
+                {
+                    folderName = component
+                    break
+                }
             }
         }
 
-        // Fallback to last component
-        return url.lastPathComponent
+        // Replace spaces with underscores and collapse multiple underscores
+        return folderName
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
     }
 
     func setDestination(_ url: URL, at index: Int) {
@@ -886,6 +898,12 @@ class BackupManager {
         shouldCancel = false
         debugLog = []
         hasWrittenDebugLog = false
+
+        // Save organization folder name to recent list and as last used
+        if !organizationName.isEmpty {
+            PreferencesManager.shared.addRecentOrganizationFolderName(organizationName)
+            PreferencesManager.shared.lastUsedOrganizationFolderName = organizationName
+        }
 
         // Start preventing sleep
         SleepPrevention.shared.startPreventingSleep(

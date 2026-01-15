@@ -76,6 +76,54 @@ class PreferencesManager: ObservableObject {
     @AppStorage("showTechnicalDetails") var showTechnicalDetails: Bool = false
     @AppStorage("showPreflightSummary") var showPreflightSummary: Bool = false
 
+    // MARK: - Backup Organization
+
+    /// The last user-entered organization folder name (nil if user never customized)
+    @AppStorage("lastUsedOrganizationFolderName") var lastUsedOrganizationFolderName: String?
+
+    /// Recent organization folder names (stored as JSON array)
+    @AppStorage("recentOrganizationFolderNamesJSON") private var recentOrganizationFolderNamesJSON: String = "[]"
+
+    /// Recent organization folder names (last 10, reverse chronological order)
+    var recentOrganizationFolderNames: [String] {
+        get {
+            guard let data = recentOrganizationFolderNamesJSON.data(using: .utf8),
+                  let names = try? JSONDecoder().decode([String].self, from: data)
+            else {
+                return []
+            }
+            return names
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let json = String(data: data, encoding: .utf8)
+            {
+                recentOrganizationFolderNamesJSON = json
+            }
+        }
+    }
+
+    /// Add a folder name to the recent list (moves to top if exists, limits to 10)
+    func addRecentOrganizationFolderName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var names = recentOrganizationFolderNames
+
+        // Remove if already exists (will be re-added at top)
+        names.removeAll { $0 == trimmed }
+
+        // Add to beginning (most recent first)
+        names.insert(trimmed, at: 0)
+
+        // Keep only the last 10
+        if names.count > 10 {
+            names = Array(names.prefix(10))
+        }
+
+        recentOrganizationFolderNames = names
+    }
+
     // MARK: - Helper Methods
 
     func resetToDefaults() {
@@ -120,6 +168,10 @@ class PreferencesManager: ObservableObject {
         largeBackupFileThreshold = 1000
         largeBackupSizeThresholdGB = 10.0
         skipLargeBackupWarning = false
+
+        // Backup Organization
+        lastUsedOrganizationFolderName = nil
+        recentOrganizationFolderNames = []
     }
 
     func getDefaultFileTypeFilter() -> FileTypeFilter {
