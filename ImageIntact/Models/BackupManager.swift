@@ -47,6 +47,21 @@ class BackupManager {
     // MARK: - Published Properties
 
     var sourceURL: URL?
+    var includeSubdirectories: Bool = true {
+        didSet {
+            // Persist the preference
+            PreferencesManager.shared.includeSubdirectories = includeSubdirectories
+            // Trigger rescan if source is set
+            if let source = sourceURL, oldValue != includeSubdirectories {
+                if !BackupManager.isRunningTests {
+                    Task { [weak self] in
+                        await self?.scanSourceFolder(source)
+                    }
+                }
+            }
+        }
+    }
+
     var destinationURLs: [URL?] = []
     var destinationItems: [DestinationItem] = []
     var isProcessing = false
@@ -233,6 +248,9 @@ class BackupManager {
 
         // Set up Observable bridge
         setupProgressTrackerBridge()
+
+        // Initialize subdirectory setting from preference
+        includeSubdirectories = PreferencesManager.shared.includeSubdirectories
 
         // Check for UI test mode
         if BackupManager.isRunningTests, ProcessInfo.processInfo.arguments.contains("--uitest") {

@@ -50,7 +50,8 @@ extension BackupManager {
         let preflightManifest = await manifestBuilder.build(
             source: source,
             shouldCancel: { [weak self] in self?.shouldCancel ?? true },
-            filter: fileTypeFilter
+            filter: fileTypeFilter,
+            includeSubdirectories: includeSubdirectories
         )
 
         guard let preflightManifest = preflightManifest else {

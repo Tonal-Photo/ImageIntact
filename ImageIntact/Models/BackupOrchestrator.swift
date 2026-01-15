@@ -87,6 +87,7 @@ class BackupOrchestrator {
         destinationItemIDs: [UUID],
         filter: FileTypeFilter = FileTypeFilter(),
         organizationName: String = "",
+        includeSubdirectories: Bool = true,
         sessionID: String? = nil,
         prebuiltManifest: [FileManifestEntry]? = nil,
         duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]? = nil,
@@ -172,7 +173,8 @@ class BackupOrchestrator {
                 let builtManifest = await manifestBuilder.build(
                     source: source,
                     shouldCancel: { [weak self] in self?.shouldCancel ?? false },
-                    filter: filter
+                    filter: filter,
+                    includeSubdirectories: includeSubdirectories
                 )
             else {
                 onStatusUpdate?("Backup cancelled or failed")

@@ -7,29 +7,32 @@ ImageIntact is the backup app photographers have been waiting for – built by a
 ![macOS](https://img.shields.io/badge/macOS-14.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.3.0-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.3.1-brightgreen)
 
 ## Why ImageIntact?
 
-After 25+ years in tech and countless hours behind the camera, I built ImageIntact because existing backup solutions just don't get it. They're either too complex, too slow, or – worst of all – they don't verify your files actually copied correctly. 
+After 25+ years in tech and countless hours behind the camera, I built ImageIntact because existing backup solutions just don't get it. They're either too complex, too slow, or – worst of all – they don't verify your files actually copied correctly.
 
 ImageIntact is different. It's fast, it's safe, and it just works.
 
 ## What Makes It Special
 
 ### 🎯 Built for Photographers
+
 - **Understands your files** – RAW, JPEG, TIFF, DNG, and every format you shoot
 - **Respects your workflow** – Works with Lightroom, Capture One, and your folder structure
 - **Multiple destinations** – Back up to 4 drives simultaneously (because one backup isn't enough)
 - **Smart filtering** – Back up only RAWs, only JPEGs, or all images
 
 ### ⚡ Actually Fast
+
 - **Parallel processing** – Each destination runs independently at full speed
 - **Smart copying** – Skips files that are already backed up and are exact copies of the originals
 - **Optimized for SSDs** – Takes advantage of modern drive speeds
 - **Real-time progress** – See exactly what's happening and when it'll finish
 
 ### 🛡️ Genuinely Safe
+
 - **Verification built-in** – Every file is checksummed to ensure perfect copies
 - **Never deletes** – Suspicious files are quarantined, never removed
 - **Complete audit trail** – Know exactly what happened to every file
@@ -38,19 +41,33 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 - **SMB timeout protection** – No more indefinite hangs on network issues (v1.2.7)
 
 ### 🎨 Thoughtfully Designed
+
 - **Clean, native Mac interface** – No Java, no weird UI, just a proper Mac app
 - **Preferences that make sense** – Organized settings, not a maze of options (v1.2.6)
 - **Smart notifications** – Get notified when backups complete (v1.2.6)
 - **Privacy-first** – Anonymize logs when sharing for support (v1.2.6)
 
-## New in Version 1.2.9
+## New in Version 1.3.1
+
+### Features
+
+- **Subdirectory Control** – New toggle to choose whether to scan nested folders or only the top-level source folder. Useful when you only want to back up files at the root of a memory card or folder.
+
+### Improvements
+
+- **Test Suite Stability** – Better test isolation for reliable automated testing
+- **Code Quality** – Refactored architecture with improved separation of concerns
+
+## Version 1.2.9
 
 **CRITICAL FIX:** In some instances with large numbers of source files and multiple destinations, not all files were being copied to all destinations. We apologize sincerely for this bug since it broke one of the fundamental tenets of the app.
 
 ### Bug Fix (1.2.9)
+
 - **Fixed multi-destination file distribution** – All files are now correctly copied to each destination
 
 ### Previous Fixes (1.2.8)
+
 - **Fixed Escape key behavior** – Escape key no longer cancels backups or freezes the UI
 - **Fixed Cancel button** – Properly stops all operations immediately without errors
 - **Fixed UI state after cancellation** – Shows "Backup cancelled" immediately instead of lingering status
@@ -61,17 +78,20 @@ ImageIntact is different. It's fast, it's safe, and it just works.
 This release brings major improvements to reliability and network performance:
 
 ### Critical Fixes
+
 - **Fixed Progress Tracking** – Accurate file counting for multi-destination backups
 - **Fixed Cancel Button** – Now works reliably during all operations
 - **Fixed File Counter Overflow** – No more counting past 100% with multiple destinations
 
 ### Network Performance
+
 - **Network Performance Settings** – Configurable timeouts, speed limiting, and buffer sizes for SMB/NAS
 - **Stream-Based Network Copy** – Cancellable, throttleable copying method for unreliable connections
 - **Enhanced SMB Stability** – No more indefinite hangs when network drives disconnect
 - **Smart Timeout Protection** – Configurable timeout (default 90 seconds) prevents stuck transfers
 
 ### Safety & Security
+
 - **Improved File Handling** – Smarter handling of aliases, symbolic links, and special files
 - **Extended Metadata** – Preserves Finder tags, comments, and custom file attributes
 - **Enhanced Data Integrity** – Better protection when backing up to network volumes
@@ -81,17 +101,21 @@ This release brings major improvements to reliability and network performance:
 ## Real-World Use
 
 ### Daily Workflow
+
 After a shoot, drop your cards into folders and let ImageIntact mirror them to your backup drives. It'll verify every file and show you exactly what was copied.
 
 ### Archive Management
+
 Use ImageIntact to maintain multiple copies of your archive. It understands that your 2015 folder shouldn't change, so it won't waste time re-copying thousands of files.
 
 ### Client Delivery
+
 Need to copy final images to a client drive? ImageIntact ensures every file is perfect with cryptographic verification – no more worried emails about corrupt files.
 
 ## Getting Started
 
 ### Quick Install
+
 1. Download the latest release from the [Releases](https://github.com/Tonal-Photo/ImageIntact/releases/latest) page
 2. Open the DMG and drag ImageIntact to your Applications folder
 3. Launch and approve folder access when asked
@@ -100,6 +124,7 @@ Need to copy final images to a client drive? ImageIntact ensures every file is p
 That's it. No complex configuration, no command lines, no stress.
 
 ### System Requirements
+
 - macOS 14.0 (Sonoma) or later
 - Works great on both Intel and Apple Silicon Macs
 
@@ -110,6 +135,7 @@ This is my give-back to the photography community. The code is open so you can v
 ## Support the Project
 
 ImageIntact is free and always will be. If it saves your photos (and your sanity), consider:
+
 - ⭐ Starring the project on GitHub
 - 🐛 Reporting bugs or suggesting features
 - 📸 Telling other photographers about it
@@ -124,6 +150,7 @@ ImageIntact is free and always will be. If it saves your photos (and your sanity
 ## Technical Details
 
 For the curious or technically inclined:
+
 - Written in Swift using SwiftUI for a native Mac experience
 - SHA-256 checksums for cryptographic verification
 - Queue-based architecture with adaptive worker threads
@@ -145,6 +172,7 @@ Build and run in Xcode (requires Xcode 15+).
 ## Roadmap
 
 Coming in future versions:
+
 - v1.3: Resume interrupted backups, professional video format support
 - v1.4: Spotlight integration for searching backed-up images
 - v1.5: AI-powered similarity detection and face grouping
@@ -157,6 +185,6 @@ MIT License – Use it, modify it, share it. Just keep your photos safe.
 
 ---
 
-*Built with ❤️ by a photographer who was tired of losing sleep over backups.*
+_Built with ❤️ by a photographer who was tired of losing sleep over backups._
 
 **Download ImageIntact today and never worry about losing photos again.**
