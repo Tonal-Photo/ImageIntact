@@ -17,11 +17,10 @@ extension BackupManager {
     @MainActor
     func performQueueBasedBackup(source: URL, destinations: [URL]) async {
         let backupID = UUID().uuidString.prefix(8)
-        #if DEBUG
-            print(
-                "🚀 [BACKUP \(backupID)] Starting backup: \(source.lastPathComponent) → \(destinations.count) destination(s)"
-            )
-        #endif
+        ApplicationLogger.shared.debug(
+            "Starting backup \(backupID): \(source.lastPathComponent) → \(destinations.count) destination(s)",
+            category: .backup
+        )
 
         // Reset state
         resetBackupState()
@@ -30,9 +29,10 @@ extension BackupManager {
         // This is more efficient than building it multiple times
         // NOTE: We must start security-scoped access here for the preflight manifest
         // The orchestrator will start it again for the actual backup (Apple allows nested calls)
-        print("🔨 Building manifest for preflight checks...")
-        print("   - Source: \(source.path)")
-        print("   - File type filter: \(fileTypeFilter.description)")
+        ApplicationLogger.shared.debug(
+            "Building manifest for preflight checks - Source: \(source.path), Filter: \(fileTypeFilter.description)",
+            category: .backup
+        )
 
         statusMessage = "Analyzing source files..."
 
@@ -40,7 +40,7 @@ extension BackupManager {
         // This will be stopped after preflight checks, before orchestrator starts
         let preflightAccess = source.startAccessingSecurityScopedResource()
         guard preflightAccess else {
-            print("❌ Failed to access source folder for preflight checks")
+            ApplicationLogger.shared.debug("Failed to access source folder for preflight checks", category: .backup)
             isProcessing = false
             statusMessage = "Cannot access source folder - permission denied"
             return
@@ -59,16 +59,16 @@ extension BackupManager {
             if preflightAccess {
                 source.stopAccessingSecurityScopedResource()
             }
-            print("❌ Manifest build failed or was cancelled")
+            ApplicationLogger.shared.debug("Manifest build failed or was cancelled", category: .backup)
             isProcessing = false
             statusMessage = "Backup cancelled or failed"
             return
         }
 
-        print("📋 Preflight manifest built: \(preflightManifest.count) files")
+        ApplicationLogger.shared.debug("Preflight manifest built: \(preflightManifest.count) files", category: .backup)
         if preflightManifest.count > 0 {
             let totalBytes = preflightManifest.reduce(0) { $0 + $1.size }
-            print("   - Total size: \(totalBytes) bytes (\(Double(totalBytes) / 1_000_000_000) GB)")
+            ApplicationLogger.shared.debug("Total size: \(totalBytes) bytes (\(Double(totalBytes) / 1_000_000_000) GB)", category: .backup)
         }
 
         // Capture manifest build timestamp for staleness detection
@@ -85,7 +85,7 @@ extension BackupManager {
 
             // If migration dialog is shown, wait for user decision
             if showMigrationDialog, !pendingMigrationPlans.isEmpty {
-                print("⏸️ Waiting for migration decision...")
+                ApplicationLogger.shared.debug("Waiting for migration decision", category: .backup)
                 // Stop preflight security access before waiting for user
                 if preflightAccess {
                     source.stopAccessingSecurityScopedResource()
@@ -104,7 +104,7 @@ extension BackupManager {
 
             // If duplicate dialog is shown, wait for user decision
             if showDuplicateWarning, duplicateAnalyses != nil {
-                print("⏸️ Waiting for duplicate handling decision...")
+                ApplicationLogger.shared.debug("Waiting for duplicate handling decision", category: .backup)
                 // Stop preflight security access before waiting for user
                 if preflightAccess {
                     source.stopAccessingSecurityScopedResource()
@@ -116,16 +116,16 @@ extension BackupManager {
         }
 
         // Check for large backup before starting orchestrator
-        print("🔍 [BACKUP \(backupID)] About to check for large backup...")
+        ApplicationLogger.shared.debug("About to check for large backup \(backupID)", category: .backup)
         let shouldProceed = await checkForLargeBackupAndWait(
             source: source, destinations: destinations, manifest: preflightManifest
         )
-        print("🔍 [BACKUP \(backupID)] Large backup check returned: \(shouldProceed)")
+        ApplicationLogger.shared.debug("Large backup check \(backupID) returned: \(shouldProceed)", category: .backup)
 
         if !shouldProceed {
             // User cancelled the large backup
             // Stop preflight security access
-            print("❌ [BACKUP \(backupID)] User cancelled - stopping")
+            ApplicationLogger.shared.debug("User cancelled backup \(backupID) - stopping", category: .backup)
             if preflightAccess {
                 source.stopAccessingSecurityScopedResource()
             }
@@ -136,19 +136,19 @@ extension BackupManager {
 
         // Preflight checks complete - stop our temporary security access
         // The orchestrator will start its own access
-        print("✅ [BACKUP \(backupID)] User confirmed - proceeding with orchestrator")
+        ApplicationLogger.shared.debug("User confirmed backup \(backupID) - proceeding with orchestrator", category: .backup)
         if preflightAccess {
             source.stopAccessingSecurityScopedResource()
-            print("✅ Stopped preflight security access, orchestrator will start its own")
+            ApplicationLogger.shared.debug("Stopped preflight security access, orchestrator will start its own", category: .backup)
         }
 
         // Validate manifest isn't stale (user didn't modify files during dialogs)
         let timeSinceManifest = Date().timeIntervalSince(manifestTimestamp)
-        print("⏱️ Time since manifest built: \(Int(timeSinceManifest)) seconds")
+        ApplicationLogger.shared.debug("Time since manifest built: \(Int(timeSinceManifest)) seconds", category: .backup)
 
         // If more than 5 minutes have passed, warn and rebuild
         if timeSinceManifest > 300 {
-            print("⚠️ Manifest is stale (> 5 minutes old), should rebuild")
+            ApplicationLogger.shared.debug("Manifest is stale (> 5 minutes old), should rebuild", category: .backup)
             // For now just log - in future could rebuild automatically
             // Not failing here because it's an edge case and rebuild would be disruptive
         }
@@ -174,7 +174,7 @@ extension BackupManager {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds - give UI time to show stats
                 self?.cleanupMemory()
-                print("✅ Memory cleanup completed after UI update")
+                ApplicationLogger.shared.debug("Memory cleanup completed after UI update", category: .backup)
             }
         }
 
@@ -217,7 +217,7 @@ extension BackupManager {
 
         // Perform the backup with file type filter and duplicate preferences
         // Pass the preflight manifest to avoid rebuilding it
-        print("✅ [BACKUP \(backupID)] Passing preflight manifest to orchestrator")
+        ApplicationLogger.shared.debug("Passing preflight manifest to orchestrator for backup \(backupID)", category: .backup)
         let failures = await orchestrator.performBackup(
             source: source,
             destinations: destinations,
@@ -428,7 +428,7 @@ extension BackupManager {
         // Validate source is still accessible
         let validationAccess = source.startAccessingSecurityScopedResource()
         if !validationAccess {
-            print("❌ Source folder is no longer accessible - permission revoked or drive removed")
+            ApplicationLogger.shared.debug("Source folder is no longer accessible - permission revoked or drive removed", category: .backup)
             isProcessing = false
             statusMessage = "Cannot access source folder - please check permissions and try again"
             return false
@@ -439,7 +439,7 @@ extension BackupManager {
         for destination in destinations {
             let destAccess = destination.startAccessingSecurityScopedResource()
             if !destAccess {
-                print("❌ Destination \(destination.lastPathComponent) is no longer accessible")
+                ApplicationLogger.shared.debug("Destination \(destination.lastPathComponent) is no longer accessible", category: .backup)
                 isProcessing = false
                 statusMessage =
                     "Cannot access destination '\(destination.lastPathComponent)' - please check connection and try again"
@@ -448,7 +448,7 @@ extension BackupManager {
             destination.stopAccessingSecurityScopedResource()
         }
 
-        print("✅ Validated all locations accessible before starting orchestrator")
+        ApplicationLogger.shared.debug("Validated all locations accessible before starting orchestrator", category: .backup)
         return true
     }
 
@@ -469,20 +469,20 @@ extension BackupManager {
         statistics.totalFilesInSource = totalFiles
 
         // Debug logging to diagnose the issue
-        print("📊 Statistics Debug:")
-        print("   - progressTracker.sourceTotalBytes: \(progressTracker.sourceTotalBytes)")
-        print("   - progressTracker.totalBytesCopied: \(progressTracker.totalBytesCopied)")
-        print("   - progressTracker.totalBytesToCopy: \(progressTracker.totalBytesToCopy)")
-        print("   - progressTracker.copySpeed: \(progressTracker.copySpeed)")
+        ApplicationLogger.shared.debug(
+            "Statistics Debug - sourceTotalBytes: \(progressTracker.sourceTotalBytes), totalBytesCopied: \(progressTracker.totalBytesCopied), totalBytesToCopy: \(progressTracker.totalBytesToCopy), copySpeed: \(progressTracker.copySpeed)",
+            category: .backup
+        )
 
         // Fix: Use the actual total bytes from source, not the copied bytes which may be 0
         statistics.totalBytesProcessed =
             progressTracker.sourceTotalBytes > 0
                 ? progressTracker.sourceTotalBytes : progressTracker.totalBytesCopied
 
-        print("   - statistics.totalBytesProcessed: \(statistics.totalBytesProcessed)")
-        print("   - statistics.duration: \(statistics.duration ?? 0)")
-        print("   - statistics.averageThroughput: \(statistics.averageThroughput)")
+        ApplicationLogger.shared.debug(
+            "Statistics - totalBytesProcessed: \(statistics.totalBytesProcessed), duration: \(statistics.duration ?? 0), averageThroughput: \(statistics.averageThroughput)",
+            category: .backup
+        )
 
         // Estimate file type breakdown from source scan
         for (fileType, count) in sourceFileTypes {
@@ -554,11 +554,11 @@ extension BackupManager {
     private func checkForMigration(source: URL, destinations: [URL], manifest: [FileManifestEntry])
         async
     {
-        print("🔍 Checking for migration opportunities...")
+        ApplicationLogger.shared.debug("Checking for migration opportunities", category: .backup)
 
         // Check for cancellation
         guard !shouldCancel else {
-            print("❌ Migration check cancelled")
+            ApplicationLogger.shared.debug("Migration check cancelled", category: .backup)
             return
         }
 
@@ -582,7 +582,7 @@ extension BackupManager {
                 organizationName: organizationName,
                 manifest: manifest
             ) {
-                print("📦 Migration needed for \(destination.lastPathComponent): \(plan.fileCount) files")
+                ApplicationLogger.shared.debug("Migration needed for \(destination.lastPathComponent): \(plan.fileCount) files", category: .backup)
                 pendingMigrationPlans.append(plan)
             }
         }
@@ -596,7 +596,7 @@ extension BackupManager {
     /// Continue backup after migration decision
     @MainActor
     func continueBackupAfterMigration() async {
-        print("📦 Continuing backup after migration...")
+        ApplicationLogger.shared.debug("Continuing backup after migration", category: .backup)
         showMigrationDialog = false
 
         // Re-run the backup now that migration is handled
@@ -611,11 +611,11 @@ extension BackupManager {
     private func checkForDuplicates(source _: URL, destinations: [URL], manifest: [FileManifestEntry])
         async
     {
-        print("🔍 Checking for duplicate files...")
+        ApplicationLogger.shared.debug("Checking for duplicate files", category: .backup)
 
         // Check for cancellation
         guard !shouldCancel else {
-            print("❌ Duplicate check cancelled")
+            ApplicationLogger.shared.debug("Duplicate check cancelled", category: .backup)
             return
         }
 
@@ -632,11 +632,11 @@ extension BackupManager {
         let totalDuplicates = analyses.values.reduce(0) { $0 + $1.totalDuplicates }
 
         if totalDuplicates > 0 {
-            print("⚠️ Found \(totalDuplicates) duplicate files across destinations")
+            ApplicationLogger.shared.debug("Found \(totalDuplicates) duplicate files across destinations", category: .backup)
             duplicateAnalyses = analyses
             showDuplicateWarning = true
         } else {
-            print("✅ No duplicates found")
+            ApplicationLogger.shared.debug("No duplicates found", category: .backup)
             duplicateAnalyses = nil
             showDuplicateWarning = false
         }
@@ -645,7 +645,7 @@ extension BackupManager {
     /// Continue backup after duplicate handling decision
     @MainActor
     func continueBackupAfterDuplicateDecision(skipExact: Bool, skipRenamed: Bool) async {
-        print("📦 Continuing backup with duplicate preferences...")
+        ApplicationLogger.shared.debug("Continuing backup with duplicate preferences", category: .backup)
         showDuplicateWarning = false
         skipExactDuplicates = skipExact
         skipRenamedDuplicates = skipRenamed
@@ -660,7 +660,7 @@ extension BackupManager {
     /// Cancel backup from duplicate warning
     @MainActor
     func cancelBackupFromDuplicateWarning() {
-        print("❌ Backup cancelled by user from duplicate warning")
+        ApplicationLogger.shared.debug("Backup cancelled by user from duplicate warning", category: .backup)
         showDuplicateWarning = false
         duplicateAnalyses = nil
         isProcessing = false
@@ -675,11 +675,10 @@ extension BackupManager {
     private func checkForLargeBackupAndWait(
         source _: URL, destinations: [URL], manifest: [FileManifestEntry]
     ) async -> Bool {
-        #if DEBUG
-            print(
-                "🔍 Checking for large backup (threshold: \(PreferencesManager.shared.largeBackupFileThreshold) files / \(PreferencesManager.shared.largeBackupSizeThresholdGB) GB)"
-            )
-        #endif
+        ApplicationLogger.shared.debug(
+            "Checking for large backup (threshold: \(PreferencesManager.shared.largeBackupFileThreshold) files / \(PreferencesManager.shared.largeBackupSizeThresholdGB) GB)",
+            category: .backup
+        )
 
         // Skip if user disabled confirmations or already disabled warnings
         guard
@@ -704,11 +703,10 @@ extension BackupManager {
             return true // Proceed with backup
         }
 
-        #if DEBUG
-            print(
-                "⚠️ Large backup: \(manifest.count) files, \(String(format: "%.1f", Double(totalBytes) / 1_000_000_000)) GB"
-            )
-        #endif
+        ApplicationLogger.shared.debug(
+            "Large backup detected: \(manifest.count) files, \(String(format: "%.1f", Double(totalBytes) / 1_000_000_000)) GB",
+            category: .backup
+        )
 
         // Calculate estimated time
         let estimatedSpeed = 50.0 // MB/s - conservative estimate
@@ -746,7 +744,7 @@ extension BackupManager {
             continuation.resume(returning: shouldContinue)
             largeBackupContinuation = nil
         } else {
-            print("⚠️ No continuation to resume for large backup confirmation")
+            ApplicationLogger.shared.debug("No continuation to resume for large backup confirmation", category: .backup)
         }
     }
 }
