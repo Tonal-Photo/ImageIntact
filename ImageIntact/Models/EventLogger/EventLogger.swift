@@ -7,6 +7,7 @@
 
 import CoreData
 import Foundation
+import OSLog
 
 /// Types of events that can be logged
 enum EventType: String {
@@ -110,11 +111,11 @@ class EventLogger {
             )
 
             if !isCompatible {
-                print("⚠️ Core Data store incompatible with new model, removing old store...")
+                ApplicationLogger.shared.warning("Core Data store incompatible with new model, removing old store", category: .database)
                 destroyStore(at: storeURL, model: model)
             }
         } catch {
-            print("⚠️ Could not read store metadata, removing potentially corrupt store: \(error)")
+            ApplicationLogger.shared.warning("Could not read store metadata, removing potentially corrupt store: \(error)", category: .database)
             destroyStore(at: storeURL, model: model)
         }
     }
@@ -124,16 +125,16 @@ class EventLogger {
         do {
             let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
             try coordinator.destroyPersistentStore(at: url, ofType: NSSQLiteStoreType, options: nil)
-            print("✅ Old store destroyed successfully using Core Data API")
+            ApplicationLogger.shared.debug("Old store destroyed successfully using Core Data API", category: .database)
         } catch {
-            print("❌ Error destroying store: \(error)")
+            ApplicationLogger.shared.error("Error destroying store: \(error)", category: .database)
             // Fallback to manual deletion
             let fileManager = FileManager.default
             try? fileManager.removeItem(at: url)
             try? fileManager.removeItem(at: url.appendingPathExtension("-shm"))
             try? fileManager.removeItem(at: url.appendingPathExtension("-wal"))
             try? fileManager.removeItem(at: url.appendingPathExtension("-journal"))
-            print("⚠️ Attempted manual file deletion as fallback")
+            ApplicationLogger.shared.warning("Attempted manual file deletion as fallback", category: .database)
         }
     }
 
@@ -159,22 +160,22 @@ class EventLogger {
 
         container.loadPersistentStores { storeDescription, error in
             if let error = error {
-                print("❌ EventLogger Core Data error: \(error)")
+                ApplicationLogger.shared.error("Core Data error: \(error)", category: .database)
                 if let storeURL = storeDescription.url {
-                    print("🔄 Attempting to destroy and recreate store...")
+                    ApplicationLogger.shared.debug("Attempting to destroy and recreate store", category: .database)
                     do {
                         let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
                         try coordinator.destroyPersistentStore(at: storeURL, ofType: NSSQLiteStoreType, options: nil)
-                        print("✅ Destroyed problematic store, will recreate on next launch")
+                        ApplicationLogger.shared.debug("Destroyed problematic store, will recreate on next launch", category: .database)
                     } catch {
-                        print("❌ Could not destroy store: \(error)")
+                        ApplicationLogger.shared.error("Could not destroy store: \(error)", category: .database)
                         needsInMemoryFallback = true
                     }
                 } else {
                     needsInMemoryFallback = true
                 }
             } else {
-                print("✅ EventLogger Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")")
+                ApplicationLogger.shared.debug("Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")", category: .database)
             }
         }
 
@@ -185,16 +186,16 @@ class EventLogger {
 
     /// Set up in-memory store as fallback
     private func setupInMemoryStore() {
-        print("🔄 Setting up in-memory store as fallback...")
+        ApplicationLogger.shared.debug("Setting up in-memory store as fallback", category: .database)
         let inMemoryDescription = NSPersistentStoreDescription()
         inMemoryDescription.type = NSInMemoryStoreType
         container.persistentStoreDescriptions = [inMemoryDescription]
 
         container.loadPersistentStores { _, error in
             if let error = error {
-                print("❌ Even in-memory store failed: \(error)")
+                ApplicationLogger.shared.error("Even in-memory store failed: \(error)", category: .database)
             } else {
-                print("✅ In-memory store loaded successfully")
+                ApplicationLogger.shared.debug("In-memory store loaded successfully", category: .database)
             }
         }
     }
@@ -239,9 +240,9 @@ class EventLogger {
 
             do {
                 try self.backgroundContext.save()
-                print("📝 Started logging session: \(uuid.uuidString)")
+                ApplicationLogger.shared.debug("Started logging session: \(uuid.uuidString)", category: .database)
             } catch {
-                print("❌ Failed to save session start: \(error)")
+                ApplicationLogger.shared.error("Failed to save session start: \(error)", category: .database)
             }
         }
 
@@ -281,10 +282,10 @@ class EventLogger {
                     session.completedAt = Date()
                     session.status = status
                     try self.backgroundContext.save()
-                    print("📝 Completed logging session with status: \(status)")
+                    ApplicationLogger.shared.debug("Completed logging session with status: \(status)", category: .database)
                 }
             } catch {
-                print("❌ Failed to save session completion: \(error)")
+                ApplicationLogger.shared.error("Failed to save session completion: \(error)", category: .database)
             }
         }
 
@@ -294,12 +295,12 @@ class EventLogger {
     /// Reset Core Data contexts to free memory (call only when no operations are active)
     func resetContexts() {
         guard currentSessionID == nil else {
-            print("⚠️ Cannot reset contexts while session is active")
+            ApplicationLogger.shared.warning("Cannot reset contexts while session is active", category: .database)
             return
         }
         // Don't reset contexts - it causes validation errors
         // Just let Core Data manage its own memory
-        print("📝 Core Data memory management delegated to system")
+        ApplicationLogger.shared.debug("Core Data memory management delegated to system", category: .database)
     }
 
     /// Delete old sessions and events using batch delete (efficient memory usage)
@@ -321,10 +322,10 @@ class EventLogger {
                 if let deleteResult = eventResult as? NSBatchDeleteResult,
                    let count = deleteResult.result as? Int
                 {
-                    print("🗑️ Deleted \(count) old events")
+                    ApplicationLogger.shared.debug("Deleted \(count) old events", category: .database)
                 }
             } catch {
-                print("❌ Failed to delete old events: \(error)")
+                ApplicationLogger.shared.error("Failed to delete old events: \(error)", category: .database)
             }
 
             // Then delete old sessions
@@ -339,10 +340,10 @@ class EventLogger {
                 if let deleteResult = sessionResult as? NSBatchDeleteResult,
                    let count = deleteResult.result as? Int
                 {
-                    print("🗑️ Deleted \(count) old sessions")
+                    ApplicationLogger.shared.debug("Deleted \(count) old sessions", category: .database)
                 }
             } catch {
-                print("❌ Failed to delete old sessions: \(error)")
+                ApplicationLogger.shared.error("Failed to delete old sessions: \(error)", category: .database)
             }
         }
     }
@@ -362,7 +363,7 @@ class EventLogger {
         duration: TimeInterval? = nil
     ) {
         guard currentSessionID != nil else {
-            print("⚠️ No active session for event logging")
+            ApplicationLogger.shared.warning("No active session for event logging", category: .database)
             return
         }
 
@@ -423,7 +424,7 @@ class EventLogger {
             sessionRequest.fetchLimit = 1
 
             guard let session = try? self.backgroundContext.fetch(sessionRequest).first else {
-                print("⚠️ Session not found for event logging")
+                ApplicationLogger.shared.warning("Session not found for event logging", category: .database)
                 return
             }
 
@@ -450,7 +451,7 @@ class EventLogger {
             do {
                 try self.backgroundContext.save()
             } catch {
-                print("❌ Failed to save event: \(error)")
+                ApplicationLogger.shared.error("Failed to save event: \(error)", category: .database)
             }
         }
     }
@@ -537,7 +538,7 @@ class EventLogger {
 
             return try JSONSerialization.data(withJSONObject: export, options: .prettyPrinted)
         } catch {
-            print("❌ Failed to export JSON: \(error)")
+            ApplicationLogger.shared.error("Failed to export JSON: \(error)", category: .database)
             return nil
         }
     }
@@ -697,7 +698,7 @@ extension EventLogger {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            print("❌ Failed to fetch sessions: \(error)")
+            ApplicationLogger.shared.error("Failed to fetch sessions: \(error)", category: .database)
             return []
         }
     }
@@ -712,7 +713,7 @@ extension EventLogger {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            print("❌ Failed to fetch errors: \(error)")
+            ApplicationLogger.shared.error("Failed to fetch errors: \(error)", category: .database)
             return []
         }
     }
@@ -736,7 +737,7 @@ extension EventLogger {
 
             return grouped
         } catch {
-            print("❌ Failed to fetch sessions by version: \(error)")
+            ApplicationLogger.shared.error("Failed to fetch sessions by version: \(error)", category: .database)
             return [:]
         }
     }
