@@ -3,539 +3,531 @@ import Foundation
 /// Coordinates the entire queue-based backup operation
 @MainActor
 class BackupCoordinator: ObservableObject {
-  @Published var isRunning = false
-  @Published var overallProgress: Double = 0.0
-  @Published var statusMessage = ""
-  @Published var destinationStatuses: [String: DestinationStatus] = [:]
-  @Published var totalBytesToCopy: Int64 = 0
-  @Published var totalBytesCopied: Int64 = 0
-  @Published var currentSpeed: Double = 0.0  // MB/s
-
-  private var destinationQueues: [DestinationQueue] = []
-  private var manifest: [FileManifestEntry] = []
-  private var shouldCancel = false
-  private var collectedFailures: [(file: String, destination: String, error: String)] = []
-  private weak var progressTracker: ProgressTracker?  // Reference to BackupManager's progress tracker
-
-  // Serial queue to protect dictionary access and prevent heap corruption
-  private let statusUpdateQueue = DispatchQueue(
-    label: "com.imageintact.statusUpdates", qos: .userInitiated)
-
-  init(progressTracker: ProgressTracker? = nil) {
-    self.progressTracker = progressTracker
-  }
-
-  struct DestinationStatus {
-    let name: String
-    var completed: Int
-    var total: Int
-    var speed: String
-    var eta: String?
-    var isComplete: Bool
-    var hasFailed: Bool
-    var isVerifying: Bool
-    var verifiedCount: Int
-  }
-
-  // MARK: - Main Entry Point
-
-  func startBackup(
-    source: URL, destinations: [URL], manifest: [FileManifestEntry], organizationName: String = ""
-  ) async {
-    guard !isRunning else { return }
-
-    isRunning = true
-    shouldCancel = false
-    self.manifest = manifest
-    destinationQueues.removeAll()
-    destinationStatuses.removeAll()
-
-    print("🎯 Starting queue-based backup with \(destinations.count) destinations")
-    statusMessage = "Initializing smart backup system..."
-
-    // Create tasks with smart priority
-    let tasks = createFileTasks(from: manifest)
-
-    // Each destination should get ALL tasks (not round-robin distribution!)
-    var tasksByDestination: [Int: [FileTask]] = [:]
-    for i in 0..<destinations.count {
-      // Give each destination a copy of ALL tasks
-      tasksByDestination[i] = tasks
-    }
-
-    // Debug: Print task distribution
-    for (idx, destTasks) in tasksByDestination {
-      print(
-        "📊 Destination \(idx) (\(destinations[idx].lastPathComponent)) will receive \(destTasks.count) tasks"
-      )
-      if destTasks.count > 0 {
-        let firstFew = destTasks.prefix(3).map { $0.relativePath }
-        print("   First few tasks: \(firstFew)")
-      }
-    }
-
-    // Create a queue for each destination with organization name
-    // Use CancellableFileOperations for better cancellation support
-    let cancellableOps = CancellableFileOperations()
-    for (index, destination) in destinations.enumerated() {
-      let queue = DestinationQueue(
-        destination: destination, organizationName: organizationName, fileOperations: cancellableOps
-      )
-      let destName = destination.lastPathComponent  // Capture once
-
-      print("🔍 Creating queue for destination \(index): \(destName)")
-
-      // Set up callbacks before adding to array to avoid retain issues
-      // Use destName consistently to avoid capturing destination in closures
-
-      // Verification callback - use serial queue for dictionary access
-      await queue.setVerificationCallback { [weak self] isVerifying, verifiedCount async in
-        guard let self = self else { return }
-        // Use serial queue to prevent concurrent dictionary access
-        let destinationTasks = tasksByDestination[index] ?? []
-        await self.updateStatusSafely(
-          destName: destName, isVerifying: isVerifying, verifiedCount: verifiedCount,
-          totalFiles: destinationTasks.count)
-      }
-
-      // Progress callback - use serial queue for dictionary access
-      await queue.setProgressCallback { [weak self] completed, total async in
-        guard let self = self else { return }
-        // Use serial queue to prevent concurrent dictionary access
-        await self.updateProgressSafely(destName: destName, completed: completed, total: total)
-      }
-
-      // Now add queue to array
-      destinationQueues.append(queue)
-
-      // Get tasks for this destination
-      let destinationTasks = tasksByDestination[index] ?? []
-
-      print("🔍 About to add \(destinationTasks.count) tasks to \(destName)")
-      if destinationTasks.count > 0 {
-        let sample = destinationTasks.prefix(3).map { $0.relativePath }
-        print("   Sample tasks for \(destName): \(sample)")
-      }
-
-      // Initialize status - no need for serial queue here as we're still in setup phase
-      // and not yet running concurrent operations
-      destinationStatuses[destName] = DestinationStatus(
-        name: destName,
-        completed: 0,
-        total: destinationTasks.count,
-        speed: "0 MB/s",
-        eta: nil,
-        isComplete: false,
-        hasFailed: false,
-        isVerifying: false,
-        verifiedCount: 0
-      )
-
-      // Add tasks to queue
-      await queue.addTasks(destinationTasks)
-      print("🔍 Tasks added to \(destName)")
-    }
-
-    // Start all queues
-    statusMessage = "Starting parallel backup to \(destinations.count) destinations..."
-
-    await withTaskGroup(of: Void.self) { group in
-      for queue in destinationQueues {
-        group.addTask { [weak self, weak queue] in
-          guard let queue = queue else { return }
-          await queue.start()
-
-          // Wait for completion
-          while await !queue.isComplete() {
-            // Check cancellation from main actor
-            let cancelled = await MainActor.run { [weak self] in
-              self?.shouldCancel ?? true
-            }
-            if cancelled {
-              await queue.stop()
-              break
-            }
-            try? await Task.sleep(nanoseconds: 100_000_000)  // Check every 0.1s
-          }
-        }
-      }
-
-      // Start monitoring task with weak self
-      group.addTask { [weak self] in
-        await self?.monitorProgress()
-      }
-
-      // Wait for all to complete
-      await group.waitForAll()
-    }
-
-    // Final status
-    await finalizeBackup()
-
-    // Clean up all queues to prevent retain cycles
-    await withTaskGroup(of: Void.self) { group in
-      for queue in destinationQueues {
-        group.addTask {
-          await queue.stop()
-        }
-      }
-    }
-    destinationQueues.removeAll()
-
-    // Clear manifest to free memory
-    self.manifest.removeAll(keepingCapacity: false)
-
-    // Clear all tracking data
-    self.destinationStatuses.removeAll(keepingCapacity: false)
-    self.collectedFailures.removeAll(keepingCapacity: false)
-
-    print("🎯 BackupCoordinator: Setting isRunning to false")
-    isRunning = false
-    print("🎯 BackupCoordinator: startBackup() complete")
-  }
-
-  func cancelBackup() {
-    guard !shouldCancel else { return }  // Prevent multiple cancellations
-    shouldCancel = true
-    statusMessage = "Backup cancelled"
-
-    // Immediately clear all statuses to stop UI updates
-    for (name, _) in destinationStatuses {
-      destinationStatuses[name] = DestinationStatus(
-        name: name,
-        completed: 0,
-        total: 0,
-        speed: "Cancelled",
-        eta: nil,
-        isComplete: true,  // Mark as complete to stop monitoring
-        hasFailed: false,
-        isVerifying: false,
-        verifiedCount: 0
-      )
-    }
-
-    Task { [weak self] in
-      guard let self = self else { return }
-
-      // Log cancellation
-      print("🛑 CANCELLING: Stopping all destination queues immediately")
-
-      // Stop all queues in parallel for faster cancellation
-      await withTaskGroup(of: Void.self) { group in
-        for queue in self.destinationQueues {
-          group.addTask {
-            await queue.stop()
-          }
-        }
-      }
-
-      print("🛑 All queues stopped")
-
-      // Clear queues to release memory
-      self.destinationQueues.removeAll()
-      // Clear manifest to free memory
-      self.manifest.removeAll(keepingCapacity: false)
-      // Clear all tracking data
-      self.destinationStatuses.removeAll(keepingCapacity: false)
-      self.collectedFailures.removeAll(keepingCapacity: false)
-      // Only set isRunning to false after cleanup
-      self.isRunning = false
-    }
-  }
-
-  func getFailures() -> [(file: String, destination: String, error: String)] {
-    return collectedFailures
-  }
-
-  // MARK: - Task Creation
-
-  private func createFileTasks(from manifest: [FileManifestEntry]) -> [FileTask] {
-    var tasks: [FileTask] = []
-
-    for entry in manifest {
-      let priority = determineTaskPriority(entry)
-      let task = FileTask(from: entry, priority: priority)
-      tasks.append(task)
-    }
-
-    print("📋 Created \(tasks.count) tasks:")
-    print("   - High priority: \(tasks.filter { $0.priority == .high }.count)")
-    print("   - Normal priority: \(tasks.filter { $0.priority == .normal }.count)")
-    print("   - Low priority: \(tasks.filter { $0.priority == .low }.count)")
-
-    return tasks
-  }
-
-  private func determineTaskPriority(_ entry: FileManifestEntry) -> TaskPriority {
-    // Prioritize based on file size and type
-    let sizeInMB = entry.size / (1024 * 1024)
-
-    // Very small files (< 100KB) - highest priority for quick wins
-    if entry.size < 100_000 {
-      return .high
-    }
-    // Small files (< 10MB) - high priority
-    else if sizeInMB < 10 {
-      return .high
-    }
-    // Medium files (10MB - 100MB) - normal priority
-    else if sizeInMB < 100 {
-      return .normal
-    }
-    // Large files (100MB - 1GB) - lower priority
-    else if sizeInMB < 1000 {
-      return .low
-    }
-    // Huge files (> 1GB) - lowest priority
-    else {
-      return .low
-    }
-  }
-
-  // MARK: - Thread-Safe Status Updates
-
-  private func updateStatusSafely(
-    destName: String, isVerifying: Bool, verifiedCount: Int, totalFiles: Int
-  ) async {
-    await MainActor.run {
-      if var status = self.destinationStatuses[destName] {
-        status.isVerifying = isVerifying
-        status.verifiedCount = verifiedCount
-        self.destinationStatuses[destName] = status
-        // Force SwiftUI update
-        self.objectWillChange.send()
-        self.updateOverallProgress(totalFiles: totalFiles)
-      }
-    }
-  }
-
-  private func updateProgressSafely(destName: String, completed: Int, total: Int) async {
-    await MainActor.run {
-      if var status = self.destinationStatuses[destName] {
-        status.completed = completed
-        self.destinationStatuses[destName] = status
-
-        // Update the progress tracker for UI
-        if let tracker = self.progressTracker {
-          tracker.setDestinationProgress(completed, for: destName)
-        }
-
-        // Also update coordinator for monitoring
-        self.objectWillChange.send()
-        self.updateOverallProgress(totalFiles: total)
-      }
-    }
-  }
-
-  // MARK: - Progress Monitoring
-
-  private func parseSpeed(_ speedString: String) -> Double? {
-    // Parse strings like "45.2 MB/s" to return 45.2
-    let components = speedString.components(separatedBy: " ")
-    guard components.count >= 2,
-      let value = Double(components[0])
-    else {
-      return nil
-    }
-    return value
-  }
-
-  private func monitorProgress() async {
-    // Keep monitoring until all queues are truly complete (including verification)
-    var allQueuesActuallyComplete = false
-    while !allQueuesActuallyComplete && !shouldCancel {
-      // Update status for each destination
-      var allQueuesComplete = true
-      var totalTransferred: Int64 = 0
-      var totalBytesAllDestinations: Int64 = 0
-      var combinedSpeed: Double = 0.0
-
-      for queue in destinationQueues {
-        let status = await queue.getStatus()
-        let destination = queue.destination
-        let verifiedFiles = await queue.getVerifiedCount()
-        let isVerifying = await queue.getIsVerifying()
-        let queueComplete = await queue.isComplete()
-        let bytesInfo = await queue.getBytesInfo()
-
-        if !queueComplete {
-          allQueuesComplete = false
-        }
-
-        // Accumulate bytes for all destinations
-        totalTransferred += bytesInfo.transferred
-        totalBytesAllDestinations += bytesInfo.total
-
-        // Parse speed and accumulate
-        if let speedValue = parseSpeed(status.speed) {
-          combinedSpeed += speedValue
-        }
-
-        // Debug log to check if verifiedFiles is being read correctly
-        if verifiedFiles > 0 || isVerifying {
-          print(
-            "📊 Coordinator: \(destination.lastPathComponent) - completed=\(status.completed)/\(status.total), verified=\(verifiedFiles), isVerifying=\(isVerifying), isComplete=\(queueComplete)"
-          )
-        }
-
-        // Update on MainActor for immediate UI updates
-        let destName = destination.lastPathComponent
-        await MainActor.run {
-          self.destinationStatuses[destName] = DestinationStatus(
-            name: destName,
-            completed: status.completed,
-            total: status.total,
-            speed: status.speed,
-            eta: status.eta,
-            isComplete: queueComplete,
-            hasFailed: false,
-            isVerifying: isVerifying,
-            verifiedCount: verifiedFiles
-          )
-          // Force SwiftUI update
-          self.objectWillChange.send()
-        }
-      }
-
-      // Update the byte tracking for ETA calculations
-      await MainActor.run {
-        self.totalBytesToCopy = totalBytesAllDestinations
-        self.totalBytesCopied = totalTransferred
-        self.currentSpeed = combinedSpeed
-
-        // Debug logging for ETA
-        print(
-          "📊 ETA Debug - totalBytes: \(totalBytesAllDestinations), transferred: \(totalTransferred), speed: \(combinedSpeed) MB/s"
-        )
-      }
-
-      // Calculate overall progress (include both copying and verification)
-      // Calculate overall progress as average of all destinations
-      // This ensures we don't show 100% until ALL destinations are complete
-      var totalProgress = 0.0
-      var destinationCount = 0
-
-      for status in destinationStatuses.values {
-        // Each destination has 'total' files to copy and 'total' files to verify
-        let destinationTotal = status.total * 2  // *2 for copy + verify phases
-        let destinationCompleted = status.completed + status.verifiedCount
-
-        if destinationTotal > 0 {
-          let destinationProgress = Double(destinationCompleted) / Double(destinationTotal)
-          totalProgress += destinationProgress
-          destinationCount += 1
-        }
-      }
-
-      let calculatedProgress = destinationCount > 0 ? totalProgress / Double(destinationCount) : 0.0
-      // Sanitize to 0-1 range to prevent UI issues
-      overallProgress = max(0.0, min(1.0, calculatedProgress))
-
-      // Update status message
-      let activeCount = destinationStatuses.values.filter { !$0.isComplete }.count
-      if activeCount > 0 {
-        statusMessage = "\(activeCount) destination\(activeCount == 1 ? "" : "s") still copying..."
-      } else if destinationStatuses.values.allSatisfy({ $0.isComplete }) {
-        statusMessage = "All destinations complete!"
-      }
-
-      // Update the flag to check if we should exit
-      allQueuesActuallyComplete = allQueuesComplete
-
-      // Exit early if all queues are complete
-      if allQueuesComplete {
-        print(
-          "📊 BackupCoordinator: All queues complete (including verification), exiting monitorProgress"
-        )
-      }
-
-      try? await Task.sleep(nanoseconds: 250_000_000)  // Update every 0.25s for smoother progress
-    }
-    print("📊 BackupCoordinator: monitorProgress() finished")
-  }
-
-  @MainActor
-  private func updateOverallProgress(totalFiles: Int) {
-    // Calculate overall progress as average of all destinations
-    // This ensures we don't show 100% until ALL destinations are complete
-    var totalProgress = 0.0
-    var destinationCount = 0
-    var debugInfo = ""
-
-    for (name, status) in destinationStatuses {
-      // Each destination has 'total' files to copy and 'total' files to verify
-      let destinationTotal = status.total * 2  // *2 for copy + verify phases
-      let destinationCompleted = status.completed + status.verifiedCount
-
-      if destinationTotal > 0 {
-        let destinationProgress = Double(destinationCompleted) / Double(destinationTotal)
-        totalProgress += destinationProgress
-        destinationCount += 1
-        debugInfo += "\(name): \(destinationCompleted)/\(destinationTotal), "
-      }
-    }
-
-    let avgProgress = destinationCount > 0 ? totalProgress / Double(destinationCount) : 0.0
-    overallProgress = max(0.0, min(1.0, avgProgress))
-
-    print(
-      "📊 Overall progress update: \(String(format: "%.1f%%", overallProgress * 100)) [\(debugInfo)]"
+    @Published var isRunning = false
+    @Published var overallProgress: Double = 0.0
+    @Published var statusMessage = ""
+    @Published var destinationStatuses: [String: DestinationStatus] = [:]
+    @Published var totalBytesToCopy: Int64 = 0
+    @Published var totalBytesCopied: Int64 = 0
+    @Published var currentSpeed: Double = 0.0 // MB/s
+
+    private var destinationQueues: [DestinationQueue] = []
+    private var manifest: [FileManifestEntry] = []
+    private var shouldCancel = false
+    private var collectedFailures: [(file: String, destination: String, error: String)] = []
+    private weak var progressTracker: ProgressTracker? // Reference to BackupManager's progress tracker
+
+    // Serial queue to protect dictionary access and prevent heap corruption
+    private let statusUpdateQueue = DispatchQueue(
+        label: "com.imageintact.statusUpdates", qos: .userInitiated
     )
-  }
 
-  // MARK: - Finalization
-
-  private func finalizeBackup() async {
-    // Collect results from all queues
-    var totalCompleted = 0
-    var totalFailed = 0
-    var allFailures: [(destination: String, failures: [(file: String, error: String)])] = []
-
-    for queue in destinationQueues {
-      let destination = queue.destination
-      let completed = await queue.completedFiles
-      let failures = await queue.failedFiles
-
-      totalCompleted += completed
-      totalFailed += failures.count
-
-      if !failures.isEmpty {
-        allFailures.append((destination: destination.lastPathComponent, failures: failures))
-        // Store failures for external access
-        for failure in failures {
-          collectedFailures.append(
-            (
-              file: failure.file,
-              destination: destination.lastPathComponent,
-              error: failure.error
-            ))
-        }
-      }
+    init(progressTracker: ProgressTracker? = nil) {
+        self.progressTracker = progressTracker
     }
 
-    // Generate final status message
-    if totalFailed == 0 {
-      statusMessage =
-        "✅ Backup complete! \(totalCompleted) files copied to \(destinationQueues.count) destinations"
-    } else {
-      statusMessage = "⚠️ Backup complete with \(totalFailed) errors"
-
-      // Log failures
-      for (destination, failures) in allFailures {
-        print("Failures for \(destination):")
-        for failure in failures {
-          print("  - \(failure.file): \(failure.error)")
-        }
-      }
+    struct DestinationStatus {
+        let name: String
+        var completed: Int
+        var total: Int
+        var speed: String
+        var eta: String?
+        var isComplete: Bool
+        var hasFailed: Bool
+        var isVerifying: Bool
+        var verifiedCount: Int
     }
-  }
 
-  // MARK: - Work Stealing (Future Enhancement)
+    // MARK: - Main Entry Point
 
-  func enableWorkStealing() {
-    // Future enhancement: Implement work stealing between queues
-    // This would allow fast destinations to help slow ones complete
-    // their work, improving overall backup completion time
-    logInfo("Work stealing not yet implemented - planned for future release")
-  }
+    func startBackup(
+        source _: URL, destinations: [URL], manifest: [FileManifestEntry], organizationName: String = ""
+    ) async {
+        guard !isRunning else { return }
+
+        isRunning = true
+        shouldCancel = false
+        self.manifest = manifest
+        destinationQueues.removeAll()
+        destinationStatuses.removeAll()
+
+        ApplicationLogger.shared.debug("Starting queue-based backup with \(destinations.count) destinations", category: .backup)
+        statusMessage = "Initializing smart backup system..."
+
+        // Create tasks with smart priority
+        let tasks = createFileTasks(from: manifest)
+
+        // Each destination should get ALL tasks (not round-robin distribution!)
+        var tasksByDestination: [Int: [FileTask]] = [:]
+        for i in 0 ..< destinations.count {
+            // Give each destination a copy of ALL tasks
+            tasksByDestination[i] = tasks
+        }
+
+        // Debug: Print task distribution
+        for (idx, destTasks) in tasksByDestination {
+            ApplicationLogger.shared.debug("Destination \(idx) (\(destinations[idx].lastPathComponent)) will receive \(destTasks.count) tasks", category: .backup)
+            if destTasks.count > 0 {
+                let firstFew = destTasks.prefix(3).map { $0.relativePath }
+                ApplicationLogger.shared.debug("First few tasks: \(firstFew)", category: .backup)
+            }
+        }
+
+        // Create a queue for each destination with organization name
+        // Use CancellableFileOperations for better cancellation support
+        let cancellableOps = CancellableFileOperations()
+        for (index, destination) in destinations.enumerated() {
+            let queue = DestinationQueue(
+                destination: destination, organizationName: organizationName, fileOperations: cancellableOps
+            )
+            let destName = destination.lastPathComponent // Capture once
+
+            ApplicationLogger.shared.debug("Creating queue for destination \(index): \(destName)", category: .backup)
+
+            // Set up callbacks before adding to array to avoid retain issues
+            // Use destName consistently to avoid capturing destination in closures
+
+            // Verification callback - use serial queue for dictionary access
+            await queue.setVerificationCallback { [weak self] isVerifying, verifiedCount async in
+                guard let self = self else { return }
+                // Use serial queue to prevent concurrent dictionary access
+                let destinationTasks = tasksByDestination[index] ?? []
+                await self.updateStatusSafely(
+                    destName: destName, isVerifying: isVerifying, verifiedCount: verifiedCount,
+                    totalFiles: destinationTasks.count
+                )
+            }
+
+            // Progress callback - use serial queue for dictionary access
+            await queue.setProgressCallback { [weak self] completed, total async in
+                guard let self = self else { return }
+                // Use serial queue to prevent concurrent dictionary access
+                await self.updateProgressSafely(destName: destName, completed: completed, total: total)
+            }
+
+            // Now add queue to array
+            destinationQueues.append(queue)
+
+            // Get tasks for this destination
+            let destinationTasks = tasksByDestination[index] ?? []
+
+            ApplicationLogger.shared.debug("About to add \(destinationTasks.count) tasks to \(destName)", category: .backup)
+            if destinationTasks.count > 0 {
+                let sample = destinationTasks.prefix(3).map { $0.relativePath }
+                ApplicationLogger.shared.debug("Sample tasks for \(destName): \(sample)", category: .backup)
+            }
+
+            // Initialize status - no need for serial queue here as we're still in setup phase
+            // and not yet running concurrent operations
+            destinationStatuses[destName] = DestinationStatus(
+                name: destName,
+                completed: 0,
+                total: destinationTasks.count,
+                speed: "0 MB/s",
+                eta: nil,
+                isComplete: false,
+                hasFailed: false,
+                isVerifying: false,
+                verifiedCount: 0
+            )
+
+            // Add tasks to queue
+            await queue.addTasks(destinationTasks)
+            ApplicationLogger.shared.debug("Tasks added to \(destName)", category: .backup)
+        }
+
+        // Start all queues
+        statusMessage = "Starting parallel backup to \(destinations.count) destinations..."
+
+        await withTaskGroup(of: Void.self) { group in
+            for queue in destinationQueues {
+                group.addTask { [weak self, weak queue] in
+                    guard let queue = queue else { return }
+                    await queue.start()
+
+                    // Wait for completion
+                    while await !queue.isComplete() {
+                        // Check cancellation from main actor
+                        let cancelled = await MainActor.run { [weak self] in
+                            self?.shouldCancel ?? true
+                        }
+                        if cancelled {
+                            await queue.stop()
+                            break
+                        }
+                        try? await Task.sleep(nanoseconds: 100_000_000) // Check every 0.1s
+                    }
+                }
+            }
+
+            // Start monitoring task with weak self
+            group.addTask { [weak self] in
+                await self?.monitorProgress()
+            }
+
+            // Wait for all to complete
+            await group.waitForAll()
+        }
+
+        // Final status
+        await finalizeBackup()
+
+        // Clean up all queues to prevent retain cycles
+        await withTaskGroup(of: Void.self) { group in
+            for queue in destinationQueues {
+                group.addTask {
+                    await queue.stop()
+                }
+            }
+        }
+        destinationQueues.removeAll()
+
+        // Clear manifest to free memory
+        self.manifest.removeAll(keepingCapacity: false)
+
+        // Clear all tracking data
+        destinationStatuses.removeAll(keepingCapacity: false)
+        collectedFailures.removeAll(keepingCapacity: false)
+
+        ApplicationLogger.shared.debug("BackupCoordinator: Setting isRunning to false", category: .backup)
+        isRunning = false
+        ApplicationLogger.shared.debug("BackupCoordinator: startBackup() complete", category: .backup)
+    }
+
+    func cancelBackup() {
+        guard !shouldCancel else { return } // Prevent multiple cancellations
+        shouldCancel = true
+        statusMessage = "Backup cancelled"
+
+        // Immediately clear all statuses to stop UI updates
+        for (name, _) in destinationStatuses {
+            destinationStatuses[name] = DestinationStatus(
+                name: name,
+                completed: 0,
+                total: 0,
+                speed: "Cancelled",
+                eta: nil,
+                isComplete: true, // Mark as complete to stop monitoring
+                hasFailed: false,
+                isVerifying: false,
+                verifiedCount: 0
+            )
+        }
+
+        Task { [weak self] in
+            guard let self = self else { return }
+
+            // Log cancellation
+            ApplicationLogger.shared.debug("CANCELLING: Stopping all destination queues immediately", category: .backup)
+
+            // Stop all queues in parallel for faster cancellation
+            await withTaskGroup(of: Void.self) { group in
+                for queue in self.destinationQueues {
+                    group.addTask {
+                        await queue.stop()
+                    }
+                }
+            }
+
+            ApplicationLogger.shared.debug("All queues stopped", category: .backup)
+
+            // Clear queues to release memory
+            self.destinationQueues.removeAll()
+            // Clear manifest to free memory
+            self.manifest.removeAll(keepingCapacity: false)
+            // Clear all tracking data
+            self.destinationStatuses.removeAll(keepingCapacity: false)
+            self.collectedFailures.removeAll(keepingCapacity: false)
+            // Only set isRunning to false after cleanup
+            self.isRunning = false
+        }
+    }
+
+    func getFailures() -> [(file: String, destination: String, error: String)] {
+        return collectedFailures
+    }
+
+    // MARK: - Task Creation
+
+    private func createFileTasks(from manifest: [FileManifestEntry]) -> [FileTask] {
+        var tasks: [FileTask] = []
+
+        for entry in manifest {
+            let priority = determineTaskPriority(entry)
+            let task = FileTask(from: entry, priority: priority)
+            tasks.append(task)
+        }
+
+        ApplicationLogger.shared.debug("Created \(tasks.count) tasks:", category: .backup)
+        ApplicationLogger.shared.debug("- High priority: \(tasks.filter { $0.priority == .high }.count)", category: .backup)
+        ApplicationLogger.shared.debug("- Normal priority: \(tasks.filter { $0.priority == .normal }.count)", category: .backup)
+        ApplicationLogger.shared.debug("- Low priority: \(tasks.filter { $0.priority == .low }.count)", category: .backup)
+
+        return tasks
+    }
+
+    private func determineTaskPriority(_ entry: FileManifestEntry) -> TaskPriority {
+        // Prioritize based on file size and type
+        let sizeInMB = entry.size / (1024 * 1024)
+
+        // Very small files (< 100KB) - highest priority for quick wins
+        if entry.size < 100_000 {
+            return .high
+        }
+        // Small files (< 10MB) - high priority
+        else if sizeInMB < 10 {
+            return .high
+        }
+        // Medium files (10MB - 100MB) - normal priority
+        else if sizeInMB < 100 {
+            return .normal
+        }
+        // Large files (100MB - 1GB) - lower priority
+        else if sizeInMB < 1000 {
+            return .low
+        }
+        // Huge files (> 1GB) - lowest priority
+        else {
+            return .low
+        }
+    }
+
+    // MARK: - Thread-Safe Status Updates
+
+    private func updateStatusSafely(
+        destName: String, isVerifying: Bool, verifiedCount: Int, totalFiles: Int
+    ) async {
+        await MainActor.run {
+            if var status = self.destinationStatuses[destName] {
+                status.isVerifying = isVerifying
+                status.verifiedCount = verifiedCount
+                self.destinationStatuses[destName] = status
+                // Force SwiftUI update
+                self.objectWillChange.send()
+                self.updateOverallProgress(totalFiles: totalFiles)
+            }
+        }
+    }
+
+    private func updateProgressSafely(destName: String, completed: Int, total: Int) async {
+        await MainActor.run {
+            if var status = self.destinationStatuses[destName] {
+                status.completed = completed
+                self.destinationStatuses[destName] = status
+
+                // Update the progress tracker for UI
+                if let tracker = self.progressTracker {
+                    tracker.setDestinationProgress(completed, for: destName)
+                }
+
+                // Also update coordinator for monitoring
+                self.objectWillChange.send()
+                self.updateOverallProgress(totalFiles: total)
+            }
+        }
+    }
+
+    // MARK: - Progress Monitoring
+
+    private func parseSpeed(_ speedString: String) -> Double? {
+        // Parse strings like "45.2 MB/s" to return 45.2
+        let components = speedString.components(separatedBy: " ")
+        guard components.count >= 2,
+              let value = Double(components[0])
+        else {
+            return nil
+        }
+        return value
+    }
+
+    private func monitorProgress() async {
+        // Keep monitoring until all queues are truly complete (including verification)
+        var allQueuesActuallyComplete = false
+        while !allQueuesActuallyComplete, !shouldCancel {
+            // Update status for each destination
+            var allQueuesComplete = true
+            var totalTransferred: Int64 = 0
+            var totalBytesAllDestinations: Int64 = 0
+            var combinedSpeed = 0.0
+
+            for queue in destinationQueues {
+                let status = await queue.getStatus()
+                let destination = queue.destination
+                let verifiedFiles = await queue.getVerifiedCount()
+                let isVerifying = await queue.getIsVerifying()
+                let queueComplete = await queue.isComplete()
+                let bytesInfo = await queue.getBytesInfo()
+
+                if !queueComplete {
+                    allQueuesComplete = false
+                }
+
+                // Accumulate bytes for all destinations
+                totalTransferred += bytesInfo.transferred
+                totalBytesAllDestinations += bytesInfo.total
+
+                // Parse speed and accumulate
+                if let speedValue = parseSpeed(status.speed) {
+                    combinedSpeed += speedValue
+                }
+
+                // Debug log to check if verifiedFiles is being read correctly
+                if verifiedFiles > 0 || isVerifying {
+                    ApplicationLogger.shared.debug("Coordinator: \(destination.lastPathComponent) - completed=\(status.completed)/\(status.total), verified=\(verifiedFiles), isVerifying=\(isVerifying), isComplete=\(queueComplete)", category: .backup)
+                }
+
+                // Update on MainActor for immediate UI updates
+                let destName = destination.lastPathComponent
+                await MainActor.run {
+                    self.destinationStatuses[destName] = DestinationStatus(
+                        name: destName,
+                        completed: status.completed,
+                        total: status.total,
+                        speed: status.speed,
+                        eta: status.eta,
+                        isComplete: queueComplete,
+                        hasFailed: false,
+                        isVerifying: isVerifying,
+                        verifiedCount: verifiedFiles
+                    )
+                    // Force SwiftUI update
+                    self.objectWillChange.send()
+                }
+            }
+
+            // Update the byte tracking for ETA calculations
+            await MainActor.run {
+                self.totalBytesToCopy = totalBytesAllDestinations
+                self.totalBytesCopied = totalTransferred
+                self.currentSpeed = combinedSpeed
+
+                // Debug logging for ETA
+                ApplicationLogger.shared.debug("ETA Debug - totalBytes: \(totalBytesAllDestinations), transferred: \(totalTransferred), speed: \(combinedSpeed) MB/s", category: .backup)
+            }
+
+            // Calculate overall progress (include both copying and verification)
+            // Calculate overall progress as average of all destinations
+            // This ensures we don't show 100% until ALL destinations are complete
+            var totalProgress = 0.0
+            var destinationCount = 0
+
+            for status in destinationStatuses.values {
+                // Each destination has 'total' files to copy and 'total' files to verify
+                let destinationTotal = status.total * 2 // *2 for copy + verify phases
+                let destinationCompleted = status.completed + status.verifiedCount
+
+                if destinationTotal > 0 {
+                    let destinationProgress = Double(destinationCompleted) / Double(destinationTotal)
+                    totalProgress += destinationProgress
+                    destinationCount += 1
+                }
+            }
+
+            let calculatedProgress = destinationCount > 0 ? totalProgress / Double(destinationCount) : 0.0
+            // Sanitize to 0-1 range to prevent UI issues
+            overallProgress = max(0.0, min(1.0, calculatedProgress))
+
+            // Update status message
+            let activeCount = destinationStatuses.values.filter { !$0.isComplete }.count
+            if activeCount > 0 {
+                statusMessage = "\(activeCount) destination\(activeCount == 1 ? "" : "s") still copying..."
+            } else if destinationStatuses.values.allSatisfy({ $0.isComplete }) {
+                statusMessage = "All destinations complete!"
+            }
+
+            // Update the flag to check if we should exit
+            allQueuesActuallyComplete = allQueuesComplete
+
+            // Exit early if all queues are complete
+            if allQueuesComplete {
+                ApplicationLogger.shared.debug("BackupCoordinator: All queues complete (including verification), exiting monitorProgress", category: .backup)
+            }
+
+            try? await Task.sleep(nanoseconds: 250_000_000) // Update every 0.25s for smoother progress
+        }
+        ApplicationLogger.shared.debug("BackupCoordinator: monitorProgress() finished", category: .backup)
+    }
+
+    @MainActor
+    private func updateOverallProgress(totalFiles _: Int) {
+        // Calculate overall progress as average of all destinations
+        // This ensures we don't show 100% until ALL destinations are complete
+        var totalProgress = 0.0
+        var destinationCount = 0
+        var debugInfo = ""
+
+        for (name, status) in destinationStatuses {
+            // Each destination has 'total' files to copy and 'total' files to verify
+            let destinationTotal = status.total * 2 // *2 for copy + verify phases
+            let destinationCompleted = status.completed + status.verifiedCount
+
+            if destinationTotal > 0 {
+                let destinationProgress = Double(destinationCompleted) / Double(destinationTotal)
+                totalProgress += destinationProgress
+                destinationCount += 1
+                debugInfo += "\(name): \(destinationCompleted)/\(destinationTotal), "
+            }
+        }
+
+        let avgProgress = destinationCount > 0 ? totalProgress / Double(destinationCount) : 0.0
+        overallProgress = max(0.0, min(1.0, avgProgress))
+
+        ApplicationLogger.shared.debug("Overall progress update: \(String(format: "%.1f%%", overallProgress * 100)) [\(debugInfo)]", category: .backup)
+    }
+
+    // MARK: - Finalization
+
+    private func finalizeBackup() async {
+        // Collect results from all queues
+        var totalCompleted = 0
+        var totalFailed = 0
+        var allFailures: [(destination: String, failures: [(file: String, error: String)])] = []
+
+        for queue in destinationQueues {
+            let destination = queue.destination
+            let completed = await queue.completedFiles
+            let failures = await queue.failedFiles
+
+            totalCompleted += completed
+            totalFailed += failures.count
+
+            if !failures.isEmpty {
+                allFailures.append((destination: destination.lastPathComponent, failures: failures))
+                // Store failures for external access
+                for failure in failures {
+                    collectedFailures.append(
+                        (
+                            file: failure.file,
+                            destination: destination.lastPathComponent,
+                            error: failure.error
+                        ))
+                }
+            }
+        }
+
+        // Generate final status message
+        if totalFailed == 0 {
+            statusMessage =
+                "✅ Backup complete! \(totalCompleted) files copied to \(destinationQueues.count) destinations"
+        } else {
+            statusMessage = "⚠️ Backup complete with \(totalFailed) errors"
+
+            // Log failures
+            for (destination, failures) in allFailures {
+                ApplicationLogger.shared.debug("Failures for \(destination):", category: .backup)
+                for failure in failures {
+                    ApplicationLogger.shared.debug("- \(failure.file): \(failure.error)", category: .backup)
+                }
+            }
+        }
+    }
+
+    // MARK: - Work Stealing (Future Enhancement)
+
+    func enableWorkStealing() {
+        // Future enhancement: Implement work stealing between queues
+        // This would allow fast destinations to help slow ones complete
+        // their work, improving overall backup completion time
+        logInfo("Work stealing not yet implemented - planned for future release")
+    }
 }

@@ -74,10 +74,10 @@ actor DestinationQueue {
         totalBytes += tasks.reduce(0) { $0 + $1.size }
         // Store the tasks assigned to this destination
         assignedTasks = tasks
-        print("📋 \(destination.lastPathComponent) assigned \(tasks.count) tasks")
+        ApplicationLogger.shared.debug("\(destination.lastPathComponent) assigned \(tasks.count) tasks", category: .backup)
         if tasks.count > 0 {
             let firstFew = tasks.prefix(3).map { $0.relativePath }
-            print("   First few: \(firstFew)")
+            ApplicationLogger.shared.debug("First few: \(firstFew)", category: .backup)
         }
     }
 
@@ -88,7 +88,7 @@ actor DestinationQueue {
         shouldCancel = false
         await throughputMonitor.start()
 
-        print("🚀 Starting queue for \(destination.lastPathComponent) with \(await queue.count) files")
+        ApplicationLogger.shared.debug("Starting queue for \(destination.lastPathComponent) with \(await queue.count) files", category: .backup)
 
         // Start initial workers
         for _ in 0 ..< currentWorkerCount {
@@ -115,7 +115,7 @@ actor DestinationQueue {
         shouldCancel = true
         isRunning = false
 
-        print("🛑 DestinationQueue.stop() called for \(destination.lastPathComponent)")
+        ApplicationLogger.shared.debug("DestinationQueue.stop() called for \(destination.lastPathComponent)", category: .backup)
 
         // Cancel all worker tasks immediately
         for task in workerTasks {
@@ -133,7 +133,7 @@ actor DestinationQueue {
         onStatusUpdate = nil
         onVerificationStateChange = nil
 
-        print("🛑 DestinationQueue stopped for \(destination.lastPathComponent)")
+        ApplicationLogger.shared.debug("DestinationQueue stopped for \(destination.lastPathComponent)", category: .backup)
     }
 
     // MARK: - Worker Management
@@ -144,15 +144,15 @@ actor DestinationQueue {
         defer {
             activeWorkers.remove(workerId)
             // Clean up any resources used by this worker
-            print("🧹 Worker \(workerId.uuidString.prefix(8)) cleaned up")
+            ApplicationLogger.shared.debug("Worker \(workerId.uuidString.prefix(8)) cleaned up", category: .backup)
         }
 
-        print("👷 Worker \(workerId.uuidString.prefix(8)) started for \(destination.lastPathComponent)")
+        ApplicationLogger.shared.debug("Worker \(workerId.uuidString.prefix(8)) started for \(destination.lastPathComponent)", category: .backup)
 
         while !shouldCancel, isRunning {
             // Check for cancellation before dequeue
             if shouldCancel {
-                print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled before dequeue")
+                ApplicationLogger.shared.debug("Worker \(workerId.uuidString.prefix(8)) cancelled before dequeue", category: .backup)
                 break
             }
 
@@ -164,7 +164,7 @@ actor DestinationQueue {
 
             // Check for cancellation after dequeue
             if shouldCancel {
-                print("🛑 Worker \(workerId.uuidString.prefix(8)) cancelled after dequeue")
+                ApplicationLogger.shared.debug("Worker \(workerId.uuidString.prefix(8)) cancelled after dequeue", category: .backup)
                 // Don't re-queue when cancelled, just exit
                 break
             }
@@ -198,7 +198,7 @@ actor DestinationQueue {
                 }
 
             case let .failed(error):
-                print("❌ Failed \(task.relativePath): \(error)")
+                ApplicationLogger.shared.debug("Failed \(task.relativePath): \(error)", category: .backup)
                 failedFiles.append((file: task.relativePath, error: error.localizedDescription))
 
                 // Retry logic
@@ -218,7 +218,7 @@ actor DestinationQueue {
 
             case .cancelled:
                 // Don't re-queue cancelled tasks, just exit the worker
-                print("🛑 Task cancelled for \(task.relativePath)")
+                ApplicationLogger.shared.debug("Task cancelled for \(task.relativePath)", category: .backup)
             }
 
             // Update progress with throttling to prevent overwhelming the UI
@@ -238,7 +238,7 @@ actor DestinationQueue {
             }
         }
 
-        print("👷 Worker \(workerId.uuidString.prefix(8)) finished for \(destination.lastPathComponent)")
+        ApplicationLogger.shared.debug("Worker \(workerId.uuidString.prefix(8)) finished for \(destination.lastPathComponent)", category: .backup)
     }
 
     private func manageWorkerCount() async {
@@ -249,9 +249,7 @@ actor DestinationQueue {
             // Check memory usage before adjusting workers
             let memoryUsage = getMemoryUsage()
             if memoryUsage > maxMemoryUsageMB {
-                print(
-                    "⚠️ High memory usage (\(memoryUsage)MB), limiting workers for \(destination.lastPathComponent)"
-                )
+                ApplicationLogger.shared.debug("High memory usage (\(memoryUsage)MB), limiting workers for \(destination.lastPathComponent)", category: .backup)
                 // Don't add more workers if memory is high
                 continue
             }
@@ -268,14 +266,12 @@ actor DestinationQueue {
                     workerTasks.append(task)
                 }
                 currentWorkerCount += toAdd
-                print(
-                    "📈 Added \(toAdd) workers for \(destination.lastPathComponent) (now \(currentWorkerCount))"
-                )
+                ApplicationLogger.shared.debug("Added \(toAdd) workers for \(destination.lastPathComponent) (now \(currentWorkerCount))", category: .backup)
 
             } else if recommendedWorkers < currentWorkerCount, currentWorkerCount > minWorkers {
                 // Reduce workers (they'll naturally exit when they finish current task)
                 currentWorkerCount = max(minWorkers, recommendedWorkers)
-                print("📉 Reducing to \(currentWorkerCount) workers for \(destination.lastPathComponent)")
+                ApplicationLogger.shared.debug("Reducing to \(currentWorkerCount) workers for \(destination.lastPathComponent)", category: .backup)
             }
         }
     }
@@ -336,7 +332,7 @@ actor DestinationQueue {
 
             let duration = Date().timeIntervalSince(startTime)
             await logCopySuccess(task, to: destPath, duration: duration)
-            print("✅ Copied \(task.relativePath) to \(destination.lastPathComponent)")
+            ApplicationLogger.shared.debug("Copied \(task.relativePath) to \(destination.lastPathComponent)", category: .backup)
             return .success
         } catch {
             await logCopyError(task, to: destPath, error: error)
@@ -493,9 +489,7 @@ actor DestinationQueue {
         let complete = allFilesProcessed && !isVerifying
 
         if complete || verifiedFiles > 0 {
-            print(
-                "📊 Queue.isComplete(\(destination.lastPathComponent)): verified=\(verifiedFiles)/\(totalFiles), failed=\(failedFiles.count), isVerifying=\(isVerifying) -> \(complete)"
-            )
+            ApplicationLogger.shared.debug("Queue.isComplete(\(destination.lastPathComponent)): verified=\(verifiedFiles)/\(totalFiles), failed=\(failedFiles.count), isVerifying=\(isVerifying) -> \(complete)", category: .backup)
         }
         return complete
     }
@@ -537,19 +531,16 @@ actor DestinationQueue {
 
         guard !shouldCancel else { return }
 
-        print("✅ Copying complete for \(destination.lastPathComponent), starting verification...")
-        print(
-            "📊 Debug: assignedTasks.count = \(assignedTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)"
-        )
+        ApplicationLogger.shared.debug("Copying complete for \(destination.lastPathComponent), starting verification...", category: .backup)
+        ApplicationLogger.shared.debug("Debug: assignedTasks.count = \(assignedTasks.count), successfullyCopiedFiles.count = \(successfullyCopiedFiles.count)", category: .backup)
 
         // Debug: Check what files are in assignedTasks
         let sampleFiles = assignedTasks.prefix(5).map { $0.relativePath }
-        print("📊 Sample of assignedTasks for \(destination.lastPathComponent): \(sampleFiles)")
+        ApplicationLogger.shared.debug("Sample of assignedTasks for \(destination.lastPathComponent): \(sampleFiles)", category: .backup)
 
         // Debug: Check what files were successfully copied
         let copiedSample = Array(successfullyCopiedFiles.prefix(5))
-        print(
-            "📊 Sample of successfullyCopiedFiles for \(destination.lastPathComponent): \(copiedSample)")
+        ApplicationLogger.shared.debug("Sample of successfullyCopiedFiles for \(destination.lastPathComponent): \(copiedSample)", category: .backup)
 
         // Small delay before setting isVerifying to ensure UI sees copying complete first
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
@@ -586,9 +577,7 @@ actor DestinationQueue {
             do {
                 // Check if file exists
                 guard fileOperations.fileExists(at: destPath) else {
-                    print(
-                        "❌ Verification failed: \(task.relativePath) missing at \(destination.lastPathComponent)"
-                    )
+                    ApplicationLogger.shared.debug("Verification failed: \(task.relativePath) missing at \(destination.lastPathComponent)", category: .backup)
                     failedFiles.append((file: task.relativePath, error: "File missing after copy"))
                     continue
                 }
@@ -602,9 +591,7 @@ actor DestinationQueue {
 
                 if actualChecksum == task.checksum {
                     verifiedFiles += 1
-                    print(
-                        "✅ Verified: \(task.relativePath) at \(destination.lastPathComponent) (total verified: \(verifiedFiles))"
-                    )
+                    ApplicationLogger.shared.debug("Verified: \(task.relativePath) at \(destination.lastPathComponent) (total verified: \(verifiedFiles))", category: .backup)
 
                     // Log successful verification
                     let duration = Date().timeIntervalSince(verifyStartTime)
@@ -632,7 +619,7 @@ actor DestinationQueue {
                         await callback(true, currentVerified)
                     }
                 } else {
-                    print("❌ Checksum mismatch: \(task.relativePath) at \(destination.lastPathComponent)")
+                    ApplicationLogger.shared.debug("Checksum mismatch: \(task.relativePath) at \(destination.lastPathComponent)", category: .backup)
                     failedFiles.append((file: task.relativePath, error: "Checksum mismatch"))
 
                     // Log verification failure
@@ -658,7 +645,7 @@ actor DestinationQueue {
                     }
                 }
             } catch {
-                print("❌ Verification error for \(task.relativePath): \(error)")
+                ApplicationLogger.shared.debug("Verification error for \(task.relativePath): \(error)", category: .backup)
                 failedFiles.append((file: task.relativePath, error: error.localizedDescription))
             }
 
@@ -674,8 +661,6 @@ actor DestinationQueue {
             let finalVerified = verifiedFiles
             await callback(false, finalVerified)
         }
-        print(
-            "🎉 Verification complete for \(destination.lastPathComponent): \(verifiedFiles)/\(successfullyCopiedFiles.count) verified"
-        )
+        ApplicationLogger.shared.debug("Verification complete for \(destination.lastPathComponent): \(verifiedFiles)/\(successfullyCopiedFiles.count) verified", category: .backup)
     }
 }
