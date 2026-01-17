@@ -923,7 +923,7 @@ class BackupManager {
         // Clean up any pending large backup confirmation
         // This resumes the continuation with false to unblock the waiting backup
         if let continuation = largeBackupContinuation {
-            print("⚠️ Cleaning up pending large backup continuation due to cancellation")
+            ApplicationLogger.shared.warning("Cleaning up pending large backup continuation due to cancellation", category: .backup)
             continuation.resume(returning: false)
             largeBackupContinuation = nil
             showLargeBackupConfirmation = false

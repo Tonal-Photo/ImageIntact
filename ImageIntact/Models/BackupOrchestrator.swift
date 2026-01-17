@@ -94,7 +94,7 @@ class BackupOrchestrator {
         skipExactDuplicates: Bool = false,
         skipRenamedDuplicates: Bool = false
     ) async -> [(file: String, destination: String, error: String)] {
-        print("🚀 BackupOrchestrator: Starting backup operation")
+        ApplicationLogger.shared.debug("BackupOrchestrator: Starting backup operation", category: .backup)
         let backupStartTime = Date()
         var failedFiles: [(file: String, destination: String, error: String)] = []
 
@@ -151,7 +151,7 @@ class BackupOrchestrator {
 
         if let prebuiltManifest = prebuiltManifest {
             // Use the pre-built manifest from preflight checks
-            print("📋 Using pre-built manifest with \(prebuiltManifest.count) files (skipping rebuild)")
+            ApplicationLogger.shared.debug("Using pre-built manifest with \(prebuiltManifest.count) files (skipping rebuild)", category: .backup)
             manifest = prebuiltManifest
         } else {
             // Build the manifest
@@ -189,13 +189,13 @@ class BackupOrchestrator {
             }
 
             manifest = builtManifest
-            print("📋 Manifest contains \(manifest.count) files")
+            ApplicationLogger.shared.debug("Manifest contains \(manifest.count) files", category: .backup)
         }
 
         // Filter manifest based on duplicate preferences if analyses provided
         var filteredManifest = manifest
         if let duplicateAnalyses = duplicateAnalyses, !duplicateAnalyses.isEmpty {
-            print("🔍 Filtering duplicates from manifest...")
+            ApplicationLogger.shared.debug("Filtering duplicates from manifest...", category: .backup)
 
             // Apply filtering per destination and combine results
             var allChecksumToSkip = Set<String>()
@@ -220,7 +220,7 @@ class BackupOrchestrator {
 
             let skippedCount = originalCount - filteredManifest.count
             if skippedCount > 0 {
-                print("📊 Skipping \(skippedCount) duplicate files")
+                ApplicationLogger.shared.debug("Skipping \(skippedCount) duplicate files", category: .backup)
                 onStatusUpdate?("Skipping \(skippedCount) duplicate files...")
 
                 // Log the filtering
@@ -271,7 +271,7 @@ class BackupOrchestrator {
         progressTracker.totalBytesToCopy = totalBytesPerDestination * Int64(destinations.count)
         progressTracker.totalBytesCopied = 0
 
-        print("📊 Total bytes to copy: \(progressTracker.totalBytesToCopy) bytes")
+        ApplicationLogger.shared.debug("Total bytes to copy: \(progressTracker.totalBytesToCopy) bytes", category: .backup)
 
         // Use estimated speeds for initial ETA
         var slowestSpeed = Double.greatestFiniteMagnitude
@@ -286,7 +286,7 @@ class BackupOrchestrator {
 
         if slowestSpeed < Double.greatestFiniteMagnitude, slowestSpeed > 0 {
             progressTracker.copySpeed = slowestSpeed
-            print("📊 Using estimated speed of \(slowestSpeed) MB/s for initial ETA")
+            ApplicationLogger.shared.debug("Using estimated speed of \(slowestSpeed) MB/s for initial ETA", category: .backup)
         }
 
         // Initialize destination progress
@@ -389,7 +389,7 @@ class BackupOrchestrator {
 
             if allDone {
                 updateProgressFromCoordinator(coordinator, destinations: destinations)
-                print("📊 All destinations complete, exiting monitor")
+                ApplicationLogger.shared.debug("All destinations complete, exiting monitor", category: .backup)
                 break
             }
 
@@ -420,7 +420,7 @@ class BackupOrchestrator {
                 }
 
                 if !stalledDestinations.isEmpty {
-                    print("⚠️ Detected stalled destinations: \(stalledDestinations.joined(separator: ", "))")
+                    ApplicationLogger.shared.warning("Detected stalled destinations: \(stalledDestinations.joined(separator: ", "))", category: .backup)
                     for dest in stalledDestinations {
                         onFailedFile?(
                             "Network timeout",
@@ -436,7 +436,7 @@ class BackupOrchestrator {
 
             // Check for cancellation
             if shouldCancel {
-                print("📊 User cancelled, exiting monitor")
+                ApplicationLogger.shared.debug("User cancelled, exiting monitor", category: .backup)
                 break
             }
 
@@ -458,7 +458,7 @@ class BackupOrchestrator {
                 onStatusUpdate?("Backup cancelled")
             }
         }
-        print("📊 Monitor task completed")
+        ApplicationLogger.shared.debug("Monitor task completed", category: .backup)
     }
 
     /// Update progress tracker from coordinator status

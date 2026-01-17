@@ -9,211 +9,213 @@ import Foundation
 
 /// Processes files in batches for better memory efficiency
 actor BatchFileProcessor {
+    // MARK: - URL Cache
 
-  // MARK: - URL Cache
-  private var urlCache = [String: URL]()
-  private let maxCacheSize = 1000
+    private var urlCache = [String: URL]()
+    private let maxCacheSize = 1000
 
-  // MARK: - Buffer Pool
-  private var bufferPool: [Data] = []
-  private let bufferSize = 4 * 1024 * 1024  // 4MB buffers for better disk I/O
-  private let maxBuffers = 4
+    // MARK: - Buffer Pool
 
-  // MARK: - Batch Configuration
-  private let batchSize = 50  // Process 50 files at a time
+    private var bufferPool: [Data] = []
+    private let bufferSize = 4 * 1024 * 1024 // 4MB buffers for better disk I/O
+    private let maxBuffers = 4
 
-  init() {
-    // Pre-allocate buffers
-    for _ in 0..<maxBuffers {
-      bufferPool.append(Data(capacity: bufferSize))
-    }
-  }
+    // MARK: - Batch Configuration
 
-  // MARK: - URL Caching
+    private let batchSize = 50 // Process 50 files at a time
 
-  /// Get a cached URL or create a new one
-  func getCachedURL(for path: String) -> URL {
-    if let cached = urlCache[path] {
-      return cached
+    init() {
+        // Pre-allocate buffers
+        for _ in 0 ..< maxBuffers {
+            bufferPool.append(Data(capacity: bufferSize))
+        }
     }
 
-    let url = URL(fileURLWithPath: path)
+    // MARK: - URL Caching
 
-    // Limit cache size
-    if urlCache.count >= maxCacheSize {
-      // Remove oldest entries (simple FIFO)
-      let toRemove = urlCache.count / 4
-      urlCache = Dictionary(
-        uniqueKeysWithValues:
-          urlCache.dropFirst(toRemove).map { ($0.key, $0.value) })
+    /// Get a cached URL or create a new one
+    func getCachedURL(for path: String) -> URL {
+        if let cached = urlCache[path] {
+            return cached
+        }
+
+        let url = URL(fileURLWithPath: path)
+
+        // Limit cache size
+        if urlCache.count >= maxCacheSize {
+            // Remove oldest entries (simple FIFO)
+            let toRemove = urlCache.count / 4
+            urlCache = Dictionary(
+                uniqueKeysWithValues:
+                urlCache.dropFirst(toRemove).map { ($0.key, $0.value) })
+        }
+
+        urlCache[path] = url
+        return url
     }
 
-    urlCache[path] = url
-    return url
-  }
-
-  /// Clear the URL cache to free memory
-  func clearURLCache() {
-    urlCache.removeAll(keepingCapacity: true)
-  }
-
-  // MARK: - Buffer Management
-
-  /// Get a buffer from the pool
-  func borrowBuffer() -> Data {
-    if !bufferPool.isEmpty {
-      return bufferPool.removeLast()
+    /// Clear the URL cache to free memory
+    func clearURLCache() {
+        urlCache.removeAll(keepingCapacity: true)
     }
-    // Create new buffer if pool is empty
-    return Data(capacity: bufferSize)
-  }
 
-  /// Return a buffer to the pool
-  func returnBuffer(_ buffer: Data) {
-    if bufferPool.count < maxBuffers {
-      var reusableBuffer = buffer
-      reusableBuffer.removeAll(keepingCapacity: true)
-      bufferPool.append(reusableBuffer)
+    // MARK: - Buffer Management
+
+    /// Get a buffer from the pool
+    func borrowBuffer() -> Data {
+        if !bufferPool.isEmpty {
+            return bufferPool.removeLast()
+        }
+        // Create new buffer if pool is empty
+        return Data(capacity: bufferSize)
     }
-  }
 
-  // MARK: - Batch Processing
-
-  /// Process files in batches
-  func processBatch<T>(
-    _ files: [T],
-    batchOperation: @escaping ([T]) async throws -> Void
-  ) async throws {
-    for batch in files.chunked(into: batchSize) {
-      try await batchOperation(batch)
+    /// Return a buffer to the pool
+    func returnBuffer(_ buffer: Data) {
+        if bufferPool.count < maxBuffers {
+            var reusableBuffer = buffer
+            reusableBuffer.removeAll(keepingCapacity: true)
+            bufferPool.append(reusableBuffer)
+        }
     }
-  }
 
-  /// Copy files in batches with optimized buffer usage
-  func batchCopyFiles(
-    _ tasks: [(source: URL, destination: URL)],
-    progress: @escaping (Int) -> Void
-  ) async throws {
-    var completed = 0
+    // MARK: - Batch Processing
 
-    for batch in tasks.chunked(into: batchSize) {
-      // Use autoreleasepool for each batch
-      try await withCheckedThrowingContinuation {
-        (continuation: CheckedContinuation<Void, Error>) in
-        autoreleasepool {
-          do {
-            for (source, destination) in batch {
-              // Create parent directory if needed
-              let destDir = destination.deletingLastPathComponent()
-              if !FileManager.default.fileExists(atPath: destDir.path) {
-                try FileManager.default.createDirectory(
-                  at: destDir,
-                  withIntermediateDirectories: true
-                )
-              }
+    /// Process files in batches
+    func processBatch<T>(
+        _ files: [T],
+        batchOperation: @escaping ([T]) async throws -> Void
+    ) async throws {
+        for batch in files.chunked(into: batchSize) {
+            try await batchOperation(batch)
+        }
+    }
 
-              // Use optimized copy with larger buffer
-              try copyFileWithBuffer(from: source, to: destination)
+    /// Copy files in batches with optimized buffer usage
+    func batchCopyFiles(
+        _ tasks: [(source: URL, destination: URL)],
+        progress: @escaping (Int) -> Void
+    ) async throws {
+        var completed = 0
 
-              completed += 1
-              let currentProgress = completed
-              Task {
-                await MainActor.run {
-                  progress(currentProgress)
+        for batch in tasks.chunked(into: batchSize) {
+            // Use autoreleasepool for each batch
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
+                autoreleasepool {
+                    do {
+                        for (source, destination) in batch {
+                            // Create parent directory if needed
+                            let destDir = destination.deletingLastPathComponent()
+                            if !FileManager.default.fileExists(atPath: destDir.path) {
+                                try FileManager.default.createDirectory(
+                                    at: destDir,
+                                    withIntermediateDirectories: true
+                                )
+                            }
+
+                            // Use optimized copy with larger buffer
+                            try copyFileWithBuffer(from: source, to: destination)
+
+                            completed += 1
+                            let currentProgress = completed
+                            Task {
+                                await MainActor.run {
+                                    progress(currentProgress)
+                                }
+                            }
+                        }
+                        continuation.resume()
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
-              }
             }
-            continuation.resume()
-          } catch {
-            continuation.resume(throwing: error)
-          }
         }
-      }
-    }
-  }
-
-  /// Copy a file using an optimized buffer
-  private func copyFileWithBuffer(from source: URL, to destination: URL) throws {
-    // Check if source is a symbolic link
-    var isSymlink = false
-    if let resourceValues = try? source.resourceValues(forKeys: [.isSymbolicLinkKey]) {
-      isSymlink = resourceValues.isSymbolicLink ?? false
     }
 
-    if isSymlink {
-      // Silently skip symbolic links - they should have been filtered during manifest building
-      // This is just a safety check. Log for debugging but don't throw user-visible error
-      print("🔗 Skipping symbolic link in batch copy (safety check): \(source.lastPathComponent)")
-      return  // Return successfully without copying
+    /// Copy a file using an optimized buffer
+    private func copyFileWithBuffer(from source: URL, to destination: URL) throws {
+        // Check if source is a symbolic link
+        var isSymlink = false
+        if let resourceValues = try? source.resourceValues(forKeys: [.isSymbolicLinkKey]) {
+            isSymlink = resourceValues.isSymbolicLink ?? false
+        }
+
+        if isSymlink {
+            // Silently skip symbolic links - they should have been filtered during manifest building
+            // This is just a safety check. Log for debugging but don't throw user-visible error
+            ApplicationLogger.shared.debug("Skipping symbolic link in batch copy (safety check): \(source.lastPathComponent)", category: .fileSystem)
+            return // Return successfully without copying
+        }
+
+        // For now, use FileManager's optimized copy
+        // In future, could implement streaming copy with our buffer pool
+        try FileManager.default.copyItem(at: source, to: destination)
     }
 
-    // For now, use FileManager's optimized copy
-    // In future, could implement streaming copy with our buffer pool
-    try FileManager.default.copyItem(at: source, to: destination)
-  }
+    // MARK: - Batch Checksum Calculation
 
-  // MARK: - Batch Checksum Calculation
+    /// Calculate checksums for multiple files in a batch
+    func batchCalculateChecksums(
+        _ files: [URL],
+        shouldCancel: @escaping () -> Bool
+    ) async throws -> [URL: String] {
+        var results = [URL: String]()
 
-  /// Calculate checksums for multiple files in a batch
-  func batchCalculateChecksums(
-    _ files: [URL],
-    shouldCancel: @escaping () -> Bool
-  ) async throws -> [URL: String] {
-    var results = [URL: String]()
+        for batch in files.chunked(into: batchSize) {
+            // Process batch with autoreleasepool
+            let batchResults = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<[URL: String], Error>) in
+                autoreleasepool {
+                    var batchChecksums = [URL: String]()
 
-    for batch in files.chunked(into: batchSize) {
-      // Process batch with autoreleasepool
-      let batchResults = try await withCheckedThrowingContinuation {
-        (continuation: CheckedContinuation<[URL: String], Error>) in
-        autoreleasepool {
-          var batchChecksums = [URL: String]()
+                    do {
+                        for file in batch {
+                            guard !shouldCancel() else {
+                                continuation.resume(returning: batchChecksums)
+                                return
+                            }
 
-          do {
-            for file in batch {
-              guard !shouldCancel() else {
-                continuation.resume(returning: batchChecksums)
-                return
-              }
-
-              let checksum = try BackupManager.sha256ChecksumStatic(
-                for: file,
-                shouldCancel: shouldCancel()
-              )
-              batchChecksums[file] = checksum
+                            let checksum = try BackupManager.sha256ChecksumStatic(
+                                for: file,
+                                shouldCancel: shouldCancel()
+                            )
+                            batchChecksums[file] = checksum
+                        }
+                        continuation.resume(returning: batchChecksums)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
-            continuation.resume(returning: batchChecksums)
-          } catch {
-            continuation.resume(throwing: error)
-          }
+
+            // Merge batch results
+            results.merge(batchResults) { _, new in new }
+
+            // Check cancellation between batches
+            guard !shouldCancel() else {
+                throw CancellationError()
+            }
         }
-      }
 
-      // Merge batch results
-      results.merge(batchResults) { _, new in new }
-
-      // Check cancellation between batches
-      guard !shouldCancel() else {
-        throw CancellationError()
-      }
+        return results
     }
-
-    return results
-  }
 }
 
 // MARK: - Helper Extensions
 
 extension Array {
-  /// Split array into chunks of specified size
-  func chunked(into size: Int) -> [[Element]] {
-    return stride(from: 0, to: count, by: size).map {
-      Array(self[$0..<Swift.min($0 + size, count)])
+    /// Split array into chunks of specified size
+    func chunked(into size: Int) -> [[Element]] {
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
     }
-  }
 }
 
 struct CancellationError: Error {
-  var localizedDescription: String {
-    "Operation was cancelled"
-  }
+    var localizedDescription: String {
+        "Operation was cancelled"
+    }
 }
