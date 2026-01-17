@@ -170,14 +170,14 @@ actor ManifestBuilder {
                 options: enumeratorOptions
             )
         else {
-            print("❌ Failed to create directory enumerator for: \(source.path)")
+            ApplicationLogger.shared.debug("Failed to create directory enumerator for: \(source.path)", category: .fileSystem)
             return nil
         }
 
-        print("📂 Created enumerator for: \(source.path)")
-        print("   - Skip hidden files: \(PreferencesManager.shared.skipHiddenFiles)")
-        print("   - Exclude cache files: \(PreferencesManager.shared.excludeCacheFiles)")
-        print("   - Include subdirectories: \(includeSubdirectories)")
+        ApplicationLogger.shared.debug("Created enumerator for: \(source.path)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skip hidden files: \(PreferencesManager.shared.skipHiddenFiles)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Exclude cache files: \(PreferencesManager.shared.excludeCacheFiles)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Include subdirectories: \(includeSubdirectories)", category: .fileSystem)
 
         var fileCount = 0
         var skippedSymlinks = 0
@@ -197,7 +197,7 @@ actor ManifestBuilder {
 
                 // Skip symbolic links - we don't follow them for security
                 if resourceValues.isSymbolicLink == true {
-                    print("🔗 Skipping symbolic link: \(url.lastPathComponent)")
+                    ApplicationLogger.shared.debug("Skipping symbolic link: \(url.lastPathComponent)", category: .fileSystem)
                     skippedSymlinks += 1
                     continue
                 }
@@ -210,7 +210,7 @@ actor ManifestBuilder {
                 // Skip cache and temporary files if preference is enabled
                 if PreferencesManager.shared.excludeCacheFiles && isCacheFile(url) {
                     // Debug: log cache files being skipped
-                    print("🗑️ Skipping cache/temp file: \(url.lastPathComponent)")
+                    ApplicationLogger.shared.debug("Skipping cache/temp file: \(url.lastPathComponent)", category: .fileSystem)
                     skippedCache += 1
                     continue
                 }
@@ -218,11 +218,11 @@ actor ManifestBuilder {
                 guard ImageFileType.isSupportedFile(url) else {
                     // Debug: log skipped files
                     if url.pathExtension.lowercased() == "mp4" || url.pathExtension.lowercased() == "mov" {
-                        print("⚠️ Video file skipped (not supported?): \(url.lastPathComponent)")
+                        ApplicationLogger.shared.debug("Video file skipped (not supported?): \(url.lastPathComponent)", category: .fileSystem)
                     } else if url.pathExtension.lowercased() == "tif"
                         || url.pathExtension.lowercased() == "tiff"
                     {
-                        print("⚠️ TIFF file marked as unsupported: \(url.lastPathComponent)")
+                        ApplicationLogger.shared.debug("TIFF file marked as unsupported: \(url.lastPathComponent)", category: .fileSystem)
                     }
                     skippedUnsupported += 1
                     continue
@@ -247,7 +247,7 @@ actor ManifestBuilder {
 
                 // Debug logging for video files in manifest
                 if url.pathExtension.lowercased() == "mp4" || url.pathExtension.lowercased() == "mov" {
-                    print("🎬 Found video: \(url.lastPathComponent)")
+                    ApplicationLogger.shared.debug("Found video: \(url.lastPathComponent)", category: .fileSystem)
                 }
 
                 let relativePath = url.path.replacingOccurrences(of: source.path + "/", with: "")
@@ -256,24 +256,24 @@ actor ManifestBuilder {
                 filesToProcess.append((url: url, relativePath: relativePath, size: Int64(size)))
 
             } catch {
-                print("Error scanning \(url.lastPathComponent): \(error)")
+                ApplicationLogger.shared.debug("Error scanning \(url.lastPathComponent): \(error)", category: .fileSystem)
             }
         }
 
         guard !shouldCancel() else { return nil }
 
-        // Print summary of file scanning
-        print("📊 File scanning summary:")
-        print("   - Files found: \(fileCount)")
-        print("   - Skipped (symlinks): \(skippedSymlinks)")
-        print("   - Skipped (non-regular): \(skippedNonRegular)")
-        print("   - Skipped (cache): \(skippedCache)")
-        print("   - Skipped (unsupported): \(skippedUnsupported)")
-        print("   - Skipped (filter): \(skippedByFilter)")
-        print("   - Ready to process: \(filesToProcess.count)")
+        // Log summary of file scanning
+        ApplicationLogger.shared.debug("File scanning summary:", category: .fileSystem)
+        ApplicationLogger.shared.debug("Files found: \(fileCount)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skipped (symlinks): \(skippedSymlinks)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skipped (non-regular): \(skippedNonRegular)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skipped (cache): \(skippedCache)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skipped (unsupported): \(skippedUnsupported)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skipped (filter): \(skippedByFilter)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Ready to process: \(filesToProcess.count)", category: .fileSystem)
 
         // Phase 2: Calculate checksums in batches
-        print("📋 Processing \(filesToProcess.count) files for checksums...")
+        ApplicationLogger.shared.debug("Processing \(filesToProcess.count) files for checksums...", category: .fileSystem)
 
         if let callback = onStatusUpdate {
             let fileCount = filesToProcess.count
@@ -290,7 +290,7 @@ actor ManifestBuilder {
                 shouldCancel: shouldCancel
             )
         } catch {
-            print("❌ Batch checksum calculation failed: \(error)")
+            ApplicationLogger.shared.debug("Batch checksum calculation failed: \(error)", category: .fileSystem)
             return nil
         }
 
@@ -301,7 +301,7 @@ actor ManifestBuilder {
 
         for (url, relativePath, size) in filesToProcess {
             guard let checksum = checksums[url] else {
-                print("⚠️ No checksum for \(url.lastPathComponent)")
+                ApplicationLogger.shared.debug("No checksum for \(url.lastPathComponent)", category: .fileSystem)
                 if let callback = onFileError {
                     Task { @MainActor in
                         callback(url.lastPathComponent, "manifest", "Failed to calculate checksum")
@@ -320,7 +320,7 @@ actor ManifestBuilder {
             manifest.append(entry)
         }
 
-        print("✅ Manifest built with \(manifest.count) files")
+        ApplicationLogger.shared.debug("Manifest built with \(manifest.count) files", category: .fileSystem)
         return manifest
     }
 
