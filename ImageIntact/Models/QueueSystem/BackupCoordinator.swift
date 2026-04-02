@@ -41,27 +41,29 @@ class BackupCoordinator: ObservableObject {
     // MARK: - Main Entry Point
 
     func startBackup(
-        source _: URL, destinations: [URL], manifest: [FileManifestEntry], organizationName: String = ""
+        source _: URL, destinations: [URL],
+        perDestinationManifests: [URL: [FileManifestEntry]],
+        organizationName: String = ""
     ) async {
         guard !isRunning else { return }
 
         isRunning = true
         shouldCancel = false
-        self.manifest = manifest
+        // Store combined manifest for memory cleanup later
+        self.manifest = perDestinationManifests.values.flatMap { $0 }
         destinationQueues.removeAll()
         destinationStatuses.removeAll()
 
         ApplicationLogger.shared.debug("Starting queue-based backup with \(destinations.count) destinations", category: .backup)
         statusMessage = "Initializing smart backup system..."
 
-        // Create tasks with smart priority
-        let tasks = createFileTasks(from: manifest)
-
-        // Each destination should get ALL tasks (not round-robin distribution!)
+        // Each destination gets its own filtered manifest.
+        // Per-destination filtering prevents skipping files that only exist on
+        // some destinations. See: GH issue #91, finding #1.
         var tasksByDestination: [Int: [FileTask]] = [:]
         for i in 0 ..< destinations.count {
-            // Give each destination a copy of ALL tasks
-            tasksByDestination[i] = tasks
+            let destManifest = perDestinationManifests[destinations[i]] ?? []
+            tasksByDestination[i] = createFileTasks(from: destManifest)
         }
 
         // Debug: Print task distribution

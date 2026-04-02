@@ -67,7 +67,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: manifest,
+                perDestinationManifests: allDestinationsManifest(manifest, destinations: destinations),
                 organizationName: "TestOrg"
             )
             expectation.fulfill()
@@ -99,7 +99,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: manifest,
+                perDestinationManifests: allDestinationsManifest(manifest, destinations: destinations),
                 organizationName: "TestOrg"
             )
         }
@@ -137,7 +137,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: evenManifest,
+                perDestinationManifests: allDestinationsManifest(evenManifest, destinations: destinations),
                 organizationName: "TestOrg"
             )
         }
@@ -176,7 +176,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: manifest,
+                perDestinationManifests: allDestinationsManifest(manifest, destinations: destinations),
                 organizationName: "TestOrg"
             )
         }
@@ -201,7 +201,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: createMockManifest(count: 50), // More files to ensure it's still running
+                perDestinationManifests: allDestinationsManifest(createMockManifest(count: 50), destinations: destinations), // More files to ensure it's still running
                 organizationName: "TestOrg"
             )
         }
@@ -239,7 +239,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: createMockManifest(count: 100), // Many files to ensure it's still running
+                perDestinationManifests: allDestinationsManifest(createMockManifest(count: 100), destinations: destinations), // Many files to ensure it's still running
                 organizationName: "TestOrg"
             )
         }
@@ -276,7 +276,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: multipleDestinations,
-                manifest: largeManifest,
+                perDestinationManifests: allDestinationsManifest(largeManifest, destinations: multipleDestinations),
                 organizationName: "TestOrg"
             )
         }
@@ -323,7 +323,7 @@ final class BackupCoordinatorTests: XCTestCase {
             await coordinator.startBackup(
                 source: sourceURL,
                 destinations: destinations,
-                manifest: createMockManifest(count: 2), // Small number for quick test
+                perDestinationManifests: allDestinationsManifest(createMockManifest(count: 2), destinations: destinations), // Small number for quick test
                 organizationName: "TestOrg"
             )
         }
@@ -350,6 +350,17 @@ final class BackupCoordinatorTests: XCTestCase {
                 size: Int64(1000 * (index + 1))
             )
         }
+    }
+
+    /// Build per-destination manifests where every destination gets the same manifest.
+    private func allDestinationsManifest(
+        _ manifest: [FileManifestEntry], destinations: [URL]
+    ) -> [URL: [FileManifestEntry]] {
+        var result: [URL: [FileManifestEntry]] = [:]
+        for dest in destinations {
+            result[dest] = manifest
+        }
+        return result
     }
 }
 
