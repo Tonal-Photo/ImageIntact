@@ -199,15 +199,17 @@ actor DestinationQueue {
 
             case let .failed(error):
                 ApplicationLogger.shared.debug("Failed \(task.relativePath): \(error)", category: .backup)
-                failedFiles.append((file: task.relativePath, error: error.localizedDescription))
 
-                // Retry logic
+                // Retry logic — only record failure on final attempt to avoid
+                // inflating failedFiles.count which breaks isComplete().
+                // See: GH issue #91, finding #2.
                 if task.attemptCount < 3 {
                     var retryTask = task
                     retryTask.attemptCount += 1
                     retryTask.lastError = error
                     await queue.enqueue(retryTask)
                 } else {
+                    failedFiles.append((file: task.relativePath, error: error.localizedDescription))
                     completedFiles += 1 // Count as completed even if failed
 
                     // Report progress update
