@@ -192,48 +192,57 @@ class BackupOrchestrator {
             ApplicationLogger.shared.debug("Manifest contains \(manifest.count) files", category: .backup)
         }
 
-        // Filter manifest based on duplicate preferences if analyses provided
-        var filteredManifest = manifest
-        if let duplicateAnalyses = duplicateAnalyses, !duplicateAnalyses.isEmpty {
-            ApplicationLogger.shared.debug("Filtering duplicates from manifest...", category: .backup)
+        // Build per-destination filtered manifests. Each destination gets only the
+        // files it doesn't already have, based on its own duplicate analysis.
+        // Previous code built a union skip set across all destinations, causing files
+        // to be silently skipped for destinations that didn't have them.
+        // See: GH issue #91, finding #1.
+        var perDestinationManifests: [URL: [FileManifestEntry]] = [:]
+        var totalSkipped = 0
 
-            // Apply filtering per destination and combine results
-            var allChecksumToSkip = Set<String>()
-            for (_, analysis) in duplicateAnalyses {
+        for destination in destinations {
+            if let duplicateAnalyses = duplicateAnalyses,
+               let analysis = duplicateAnalyses[destination] {
+                var checksumsToSkip = Set<String>()
                 if skipExactDuplicates {
                     for dup in analysis.exactDuplicates {
-                        allChecksumToSkip.insert(dup.checksum)
+                        checksumsToSkip.insert(dup.checksum)
                     }
                 }
                 if skipRenamedDuplicates {
                     for dup in analysis.renamedDuplicates {
-                        allChecksumToSkip.insert(dup.checksum)
+                        checksumsToSkip.insert(dup.checksum)
                     }
                 }
-            }
-
-            // Filter manifest
-            let originalCount = manifest.count
-            filteredManifest = manifest.filter { entry in
-                !allChecksumToSkip.contains(entry.checksum)
-            }
-
-            let skippedCount = originalCount - filteredManifest.count
-            if skippedCount > 0 {
-                ApplicationLogger.shared.debug("Skipping \(skippedCount) duplicate files", category: .backup)
-                onStatusUpdate?("Skipping \(skippedCount) duplicate files...")
-
-                // Log the filtering
-                eventLogger.logEvent(
-                    type: .scan, severity: .info,
-                    metadata: [
-                        "duplicatesSkipped": skippedCount,
-                        "skipExact": skipExactDuplicates,
-                        "skipRenamed": skipRenamedDuplicates,
-                    ]
-                )
+                let filtered = manifest.filter { !checksumsToSkip.contains($0.checksum) }
+                perDestinationManifests[destination] = filtered
+                let skipped = manifest.count - filtered.count
+                if skipped > 0 {
+                    ApplicationLogger.shared.debug(
+                        "Destination \(destination.lastPathComponent): skipping \(skipped) duplicates",
+                        category: .backup
+                    )
+                    totalSkipped += skipped
+                }
+            } else {
+                perDestinationManifests[destination] = manifest
             }
         }
+
+        if totalSkipped > 0 {
+            onStatusUpdate?("Skipping duplicates (\(totalSkipped) total across destinations)...")
+            eventLogger.logEvent(
+                type: .scan, severity: .info,
+                metadata: [
+                    "duplicatesSkipped": totalSkipped,
+                    "skipExact": skipExactDuplicates,
+                    "skipRenamed": skipRenamedDuplicates,
+                ]
+            )
+        }
+
+        // Use the full manifest for progress tracking (largest possible set)
+        let filteredManifest = manifest
 
         // Log manifest completion with filtered count
         let totalBytes = filteredManifest.reduce(0) { $0 + $1.size }
@@ -309,7 +318,7 @@ class BackupOrchestrator {
         await coordinator.startBackup(
             source: source,
             destinations: destinations,
-            manifest: filteredManifest,
+            perDestinationManifests: perDestinationManifests,
             organizationName: organizationName
         )
 

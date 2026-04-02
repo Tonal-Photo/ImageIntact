@@ -65,7 +65,9 @@ class SubdirectoryTraversalTests: XCTestCase {
         // Default should be true for backwards compatibility
         let prefs = PreferencesManager.shared
 
-        // Reset to default by removing the key
+        // Reset fully — removeObject alone doesn't reset @AppStorage's in-memory cache
+        // if another test changed the value in this process
+        prefs.includeSubdirectories = true
         UserDefaults.standard.removeObject(forKey: "includeSubdirectories")
 
         XCTAssertTrue(
