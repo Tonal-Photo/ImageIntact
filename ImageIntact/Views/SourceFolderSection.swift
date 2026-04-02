@@ -36,7 +36,8 @@ struct SourceFolderSection: View {
                     },
                     onSelect: { _ in
                         // Already handled in backupManager.setSource()
-                    }
+                    },
+                    defaultDirectory: backupManager.sourceURL?.deletingLastPathComponent()
                 )
                 .focused($focusedField, equals: .source)
                 .onTapGesture {
