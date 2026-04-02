@@ -54,6 +54,17 @@ final class PreferencesTests: XCTestCase {
     func testSkipHiddenFilesDefault() {
         XCTAssertTrue(preferencesManager.skipHiddenFiles, "Should default to true")
     }
+
+    func testTrashSourceAfterBackupDefault() {
+        XCTAssertFalse(preferencesManager.trashSourceAfterBackup, "Should default to false")
+    }
+
+    func testTrashSourceAfterBackupPersistence() {
+        preferencesManager.trashSourceAfterBackup = true
+        XCTAssertTrue(preferencesManager.trashSourceAfterBackup)
+        preferencesManager.trashSourceAfterBackup = false
+        XCTAssertFalse(preferencesManager.trashSourceAfterBackup)
+    }
     
     func testDefaultFileTypeFilterPersistence() {
         preferencesManager.defaultFileTypeFilter = "photos"
@@ -155,7 +166,8 @@ final class PreferencesTests: XCTestCase {
         preferencesManager.preventSleepDuringBackup = false
         preferencesManager.showNotificationOnComplete = false
         preferencesManager.anonymizePathsInExport = false
-        
+        preferencesManager.trashSourceAfterBackup = true
+
         // Reset
         preferencesManager.resetToDefaults()
         
@@ -171,6 +183,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertTrue(preferencesManager.preventSleepDuringBackup)
         XCTAssertTrue(preferencesManager.showNotificationOnComplete)
         XCTAssertTrue(preferencesManager.anonymizePathsInExport)
+        XCTAssertFalse(preferencesManager.trashSourceAfterBackup)
     }
     
     // MARK: - Cache Exclusion Paths Tests
