@@ -222,6 +222,18 @@ struct ContentView: View {
         Text("This is a large backup. Do you want to continue?")
       }
     }
+    .alert("Move Source to Trash?", isPresented: $backupManager.showTrashConfirmation) {
+      Button("Move to Trash", role: .destructive) {
+        backupManager.trashSourceFolder()
+      }
+      Button("Keep", role: .cancel) {}
+    } message: {
+      if let source = backupManager.sourceURL {
+        Text("Move \"\(source.lastPathComponent)\" to the Trash? This cannot be undone from within ImageIntact.")
+      } else {
+        Text("Move the source folder to the Trash?")
+      }
+    }
     .onDisappear {
       // Clean up event monitor when view disappears
       if let monitor = eventMonitor {

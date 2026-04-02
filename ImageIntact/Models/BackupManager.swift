@@ -195,6 +195,10 @@ class BackupManager {
     var skipExactDuplicates = true
     var skipRenamedDuplicates = false
 
+    // Trash source state
+    var showTrashConfirmation = false
+    var trashSourceResult: String? = nil
+
     // Large backup confirmation state
     var showLargeBackupConfirmation = false
     var largeBackupInfo: LargeBackupInfo?
@@ -440,6 +444,32 @@ class BackupManager {
         // Reset to show at least one destination slot
         destinationURLs = [nil]
         destinationItems = [DestinationItem()]
+    }
+
+    /// Move the source folder to Trash after successful backup
+    @MainActor
+    func trashSourceFolder() {
+        guard let source = sourceURL else {
+            trashSourceResult = "No source folder to move"
+            return
+        }
+
+        do {
+            var trashedURL: NSURL?
+            try FileManager.default.trashItem(at: source, resultingItemURL: &trashedURL)
+            let name = source.lastPathComponent
+            logInfo("Moved source folder to Trash: \(name)")
+            trashSourceResult = "Moved \"\(name)\" to Trash"
+
+            // Clear the source selection since the folder no longer exists
+            sourceURL = nil
+            sourceFileTypes = [:]
+            scanProgress = ""
+            UserDefaults.standard.removeObject(forKey: sourceKey)
+        } catch {
+            logWarning("Failed to move source to Trash: \(error.localizedDescription)")
+            trashSourceResult = "Failed to move to Trash: \(error.localizedDescription)"
+        }
     }
 
     func addDestination() {
