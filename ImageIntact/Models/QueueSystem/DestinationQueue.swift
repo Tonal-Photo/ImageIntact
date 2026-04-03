@@ -13,10 +13,15 @@ actor DestinationQueue {
     private var activeWorkers: Set<UUID> = []
     private var workerTasks: [Task<Void, Never>] = []
     private var isRunning = false
-    // nonisolated(unsafe) allows @Sendable closures to read this for cancellation checks.
-    // Writes only happen on the actor (stop/cancel methods). A slightly stale read is
-    // acceptable — cancellation is best-effort, not atomic.
-    nonisolated(unsafe) private var shouldCancel = false
+    // Thread-safe cancellation flag readable from @Sendable closures.
+    // NSLock protects cross-thread access. Both backing store and lock are
+    // nonisolated(unsafe) because the lock provides the synchronization guarantee.
+    nonisolated(unsafe) private let _cancelLock = NSLock()
+    nonisolated(unsafe) private var _shouldCancel = false
+    nonisolated private(set) var shouldCancel: Bool {
+        get { _cancelLock.lock(); defer { _cancelLock.unlock() }; return _shouldCancel }
+        set { _cancelLock.lock(); defer { _cancelLock.unlock() }; _shouldCancel = newValue }
+    }
 
     // Progress tracking
     private(set) var totalFiles: Int = 0
