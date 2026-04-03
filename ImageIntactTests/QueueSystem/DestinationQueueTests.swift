@@ -12,7 +12,6 @@ final class DestinationQueueTests: XCTestCase {
     // MARK: - Properties
 
     var mockFileOps: MockFileOperations!
-    var mockChecksum: MockChecksumCalculator!
     var destinationURL: URL!
     var queue: DestinationQueue!
 
@@ -22,7 +21,6 @@ final class DestinationQueueTests: XCTestCase {
         try await super.setUp()
 
         mockFileOps = MockFileOperations()
-        mockChecksum = MockChecksumCalculator()
         destinationURL = URL(fileURLWithPath: "/test/destination")
 
         // Create the queue with mock dependencies
@@ -35,7 +33,6 @@ final class DestinationQueueTests: XCTestCase {
 
     override func tearDown() async throws {
         mockFileOps.reset()
-        mockChecksum.reset()
         queue = nil
 
         try await super.tearDown()

@@ -128,10 +128,10 @@ actor RetryHandler {
         source: URL,
         destination: URL,
         expectedChecksum: String,
-        hasher: HashingProtocol
+        fileOperations: FileOperationsProtocol
     ) async throws -> Bool {
         try await executeWithRetry(operation: "Verify \(source.lastPathComponent)") {
-            let actualChecksum = try await hasher.sha256(for: destination, shouldCancel: { false })
+            let actualChecksum = try await fileOperations.calculateChecksum(for: destination, shouldCancel: { false })
             return actualChecksum == expectedChecksum
         }
     }

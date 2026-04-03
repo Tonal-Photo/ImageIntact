@@ -25,6 +25,7 @@ class MockFileOperations: FileOperationsProtocol {
     // MARK: - Configurable behaviors
     var shouldFailCopy = false
     var shouldFailChecksum = false
+    var shouldFailCreateFile = false
     var filesExist: Set<URL> = []
     var mockChecksums: [URL: String] = [:]
     var mockFileSizes: [URL: Int64] = [:]
@@ -130,7 +131,9 @@ class MockFileOperations: FileOperationsProtocol {
     }
 
     func createFile(at url: URL, contents data: Data?, attributes: [FileAttributeKey: Any]?) -> Bool {
+        if shouldFailCreateFile { return false }
         createdFiles.append((url: url, data: data, attributes: attributes))
+        filesExist.insert(url)
         return true
     }
     
@@ -146,6 +149,7 @@ class MockFileOperations: FileOperationsProtocol {
         
         shouldFailCopy = false
         shouldFailChecksum = false
+        shouldFailCreateFile = false
         filesExist.removeAll()
         mockChecksums.removeAll()
         mockFileSizes.removeAll()
