@@ -3,40 +3,41 @@ import Foundation
 /// Handles all progress tracking for backup operations
 /// Extracted from BackupManager to follow Single Responsibility Principle
 @MainActor
-class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
+@Observable
+class ProgressTracker: ProgressTrackerProtocol {
     // MARK: - File Progress
 
-    @Published var totalFiles = 0
-    @Published var processedFiles = 0
-    @Published var verifiedFiles = 0 // Track verification separately
-    @Published var currentFileIndex = 0
-    @Published var currentFileName = ""
-    @Published var currentFile = ""
+    var totalFiles = 0
+    var processedFiles = 0
+    var verifiedFiles = 0 // Track verification separately
+    var currentFileIndex = 0
+    var currentFileName = ""
+    var currentFile = ""
 
     // MARK: - Byte Progress
 
-    @Published var totalBytesToCopy: Int64 = 0
-    @Published var totalBytesCopied: Int64 = 0
-    @Published var sourceTotalBytes: Int64 = 0
+    var totalBytesToCopy: Int64 = 0
+    var totalBytesCopied: Int64 = 0
+    var sourceTotalBytes: Int64 = 0
 
     // MARK: - Speed & ETA
 
-    @Published var copySpeed: Double = 0.0 // MB/s
-    @Published var estimatedSecondsRemaining: Double?
+    var copySpeed: Double = 0.0 // MB/s
+    var estimatedSecondsRemaining: Double?
     var copyStartTime = Date() // Made internal for BackupManager access
     private var lastETAUpdate = Date()
     private var recentSpeedSamples: [Double] = []
 
     // MARK: - Phase Progress
 
-    @Published var phaseProgress: Double = 0.0 // Progress within current phase (0-1)
-    @Published var overallProgress: Double = 0.0 // Overall progress across all phases (0-1)
+    var phaseProgress: Double = 0.0 // Progress within current phase (0-1)
+    var overallProgress: Double = 0.0 // Overall progress across all phases (0-1)
 
     // MARK: - Destination Progress
 
-    @Published var destinationProgress: [String: Int] = [:] // destinationName -> completed files
-    @Published var destinationTotalFiles: [String: Int] = [:] // destinationName -> total files for that destination
-    @Published var destinationStates: [String: String] = [:] // destinationName -> "copying" | "verifying" | "complete"
+    var destinationProgress: [String: Int] = [:] // destinationName -> completed files
+    var destinationTotalFiles: [String: Int] = [:] // destinationName -> total files for that destination
+    var destinationStates: [String: String] = [:] // destinationName -> "copying" | "verifying" | "complete"
 
     // MARK: - Initialization
 
@@ -118,7 +119,7 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
 
     }
 
-    @Published var currentDestinationName = ""
+    var currentDestinationName = ""
 
     // MARK: - Destination Progress
 
