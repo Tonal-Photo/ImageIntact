@@ -181,8 +181,8 @@ final class BackupCoordinatorTests: XCTestCase {
             )
         }
         
-        // Wait for some progress
-        await fulfillment(of: [expectation], timeout: 5.0)
+        // Wait for some progress (retry backoff delays mean this can take longer)
+        await fulfillment(of: [expectation], timeout: 15.0)
         
         // Then
         XCTAssertFalse(progressUpdates.isEmpty, "Should have progress updates")

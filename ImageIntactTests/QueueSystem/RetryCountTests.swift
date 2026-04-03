@@ -136,7 +136,7 @@ final class RetryCountTests: XCTestCase {
         // When
         await queue.addTasks(tasks)
         await queue.start()
-        await waitForCompletion(queue: queue, timeout: 10.0)
+        await waitForCompletion(queue: queue, timeout: 30.0)
 
         // Then
         let failedFiles = await queue.failedFiles
@@ -171,7 +171,8 @@ final class RetryCountTests: XCTestCase {
             fileOperations: alwaysFailMock
         )
 
-        let totalFileCount = 10
+        // Use small count — each file has retry backoff delays (0.5s + 1s + 2s = 3.5s per file)
+        let totalFileCount = 3
         var tasks: [FileTask] = []
         for i in 0..<totalFileCount {
             let sourceURL = URL(fileURLWithPath: "/source/file\(i).jpg")
@@ -185,7 +186,7 @@ final class RetryCountTests: XCTestCase {
 
         await queue.addTasks(tasks)
         await queue.start()
-        await waitForCompletion(queue: queue, timeout: 15.0)
+        await waitForCompletion(queue: queue, timeout: 30.0)
 
         let failedFiles = await queue.failedFiles
         let verifiedFiles = await queue.verifiedFiles
@@ -195,6 +196,8 @@ final class RetryCountTests: XCTestCase {
             "BUG #2: verified (\(verifiedFiles)) + failed (\(failedFiles.count)) = " +
             "\(verifiedFiles + failedFiles.count), which exceeds total (\(totalFileCount)). " +
             "Retry inflation is causing overcounting.")
+        XCTAssertEqual(failedFiles.count, totalFileCount,
+                       "All \(totalFileCount) files should have exactly 1 failure entry each")
     }
 
     // MARK: - Helpers

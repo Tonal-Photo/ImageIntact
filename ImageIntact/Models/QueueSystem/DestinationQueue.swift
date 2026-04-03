@@ -212,9 +212,22 @@ actor DestinationQueue {
                 // inflating failedFiles.count which breaks isComplete().
                 // See: GH issue #91, finding #2.
                 if task.attemptCount < 3 {
+                    // Exponential backoff: 0.5s, 1s, 2s
+                    // See: GH issue #91, finding #11.
+                    let delayNs = UInt64(500_000_000) << UInt64(task.attemptCount)
+                    do {
+                        try await Task.sleep(nanoseconds: delayNs)
+                    } catch {
+                        // Task was cancelled during the delay — don't retry
+                        break
+                    }
+
+                    // Don't retry if backup was cancelled during the delay
+                    guard !shouldCancel else { break }
+
                     var retryTask = task
                     retryTask.attemptCount += 1
-                    retryTask.lastError = error
+                    retryTask.lastError = String(describing: error)
                     await queue.enqueue(retryTask)
                 } else {
                     failedFiles.append((file: task.relativePath, error: error.localizedDescription))
