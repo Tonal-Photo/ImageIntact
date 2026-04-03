@@ -3,7 +3,6 @@ import SwiftUI
 
 struct ContentView: View {
   @State private var backupManager = BackupManager()
-  @State private var updateManager = UpdateManager()
   @FocusState private var focusedField: FocusField?
 
   // First-run and help system
@@ -21,24 +20,6 @@ struct ContentView: View {
     VStack(spacing: 0) {
       // Header - following HIG for window headers
       VStack(spacing: 4) {
-        // Test mode indicator (only in debug builds)
-        #if DEBUG
-          if updateManager.isTestMode {
-            HStack {
-              Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
-              Text("TEST MODE - Mock Version: \(updateManager.currentVersion)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.orange)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(6)
-            .padding(.top, 8)
-          }
-        #endif
-
         Text("ImageIntact")
           .font(.system(size: 20, weight: .semibold))
 
@@ -156,16 +137,11 @@ struct ContentView: View {
       // Check for first run
       checkFirstRun()
 
-      // Check for updates
-      updateManager.checkForUpdates()
     }
     // Menu command handlers — .onReceive with .receive(on:) for main-thread safety.
     // Previously used NotificationCenter.addObserver in onAppear which leaked observers
     // on every appearance, causing N simultaneous backups on a single menu click.
     // See: GH issue #91, finding #13.
-    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TestUpdateFlow")).receive(on: RunLoop.main)) { _ in
-      Task { await testUpdateFlow() }
-    }
     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SelectSourceFolder")).receive(on: RunLoop.main)) { _ in
       selectSourceFolder()
     }
@@ -196,9 +172,6 @@ struct ContentView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowImageIntactHelp")).receive(on: RunLoop.main)) { _ in
       HelpWindowManager.shared.showHelp()
-    }
-    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CheckForUpdates")).receive(on: RunLoop.main)) { _ in
-      Task { await updateManager.performUpdateCheck(isManual: true) }
     }
     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("VerifyCoreData")).receive(on: RunLoop.main)) { _ in
       verifyCoreDataStorage()
@@ -288,23 +261,6 @@ struct ContentView: View {
     .onExitCommand {
       // Do nothing - prevent default cancelOperation behavior
       // Users must use the explicit Cancel button
-    }
-    .sheet(isPresented: $updateManager.showUpdateSheet) {
-      UpdateStatusSheet(
-        result: updateManager.updateCheckResult,
-        currentVersion: updateManager.currentVersion,
-        onDownload: { update in
-          Task {
-            await updateManager.downloadUpdate(update)
-          }
-        },
-        onSkipVersion: { version in
-          updateManager.skipVersion(version)
-        },
-        onCancel: {
-          updateManager.cancelDownload()
-        }
-      )
     }
   }
 
@@ -540,32 +496,6 @@ struct ContentView: View {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
-      }
-    }
-  }
-
-  // MARK: - Test Update Flow
-  func testUpdateFlow() async {
-    print("🧪 Test Update Flow triggered")
-
-    // Enable test mode temporarily if not already enabled
-    let wasInTestMode = UpdateManager.testMode
-    if !wasInTestMode {
-      UpdateManager.testMode = true
-      UpdateManager.mockVersion = "1.0.0"
-      print("🧪 Temporarily enabled test mode with version 1.0.0")
-    }
-
-    // Trigger update check
-    await updateManager.performUpdateCheck(isManual: true)
-
-    // Restore previous test mode state after a delay
-    if !wasInTestMode {
-      Task {
-        try? await Task.sleep(nanoseconds: 5_000_000_000)  // 5 seconds
-        UpdateManager.testMode = false
-        UpdateManager.mockVersion = nil
-        print("🧪 Test mode disabled")
       }
     }
   }

@@ -178,38 +178,7 @@ struct ImageIntactApp: App {
           NotificationCenter.default.post(name: NSNotification.Name("VerifyCoreData"), object: nil)
         }
 
-        Divider()
-
-        Button("Check for Updates...") {
-          NotificationCenter.default.post(name: NSNotification.Name("CheckForUpdates"), object: nil)
-        }
-
       }
-
-      // Add Debug menu (only in debug builds)
-      #if DEBUG
-        CommandMenu("Debug") {
-          Button("Test Update Flow") {
-            NotificationCenter.default.post(
-              name: NSNotification.Name("TestUpdateFlow"), object: nil)
-          }
-          .keyboardShortcut("u", modifiers: [.command, .shift, .option])
-
-          Divider()
-
-          Button("Enable Test Mode") {
-            UpdateManager.testMode = true
-            UpdateManager.mockVersion = "1.0.0"
-            print("🧪 Test mode enabled with version 1.0.0")
-          }
-
-          Button("Disable Test Mode") {
-            UpdateManager.testMode = false
-            UpdateManager.mockVersion = nil
-            print("🧪 Test mode disabled")
-          }
-        }
-      #endif
 
       // Replace the default Help menu with our custom one
       CommandGroup(replacing: .help) {
