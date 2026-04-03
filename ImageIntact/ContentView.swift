@@ -12,6 +12,20 @@ struct ContentView: View {
   // Store event monitor to properly clean it up
   @State private var eventMonitor: Any?
 
+  // Notification publishers for menu commands (SwiftUI lifecycle-managed)
+  private let testUpdateFlowPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("TestUpdateFlow"))
+  private let selectSourcePublisher = NotificationCenter.default.publisher(for: NSNotification.Name("SelectSourceFolder"))
+  private let selectDest1Publisher = NotificationCenter.default.publisher(for: NSNotification.Name("SelectDestination1"))
+  private let addDestPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("AddDestination"))
+  private let runBackupPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("RunBackup"))
+  private let clearAllPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ClearAll"))
+  private let showDebugLogPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ShowDebugLog"))
+  private let exportDebugLogPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ExportDebugLog"))
+  private let showHelpPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ShowHelp"))
+  private let showImageIntactHelpPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ShowImageIntactHelp"))
+  private let checkForUpdatesPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("CheckForUpdates"))
+  private let verifyCoreDataPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("VerifyCoreData"))
+
   enum FocusField: Hashable {
     case source
     case destination(Int)
@@ -150,7 +164,6 @@ struct ContentView: View {
     .background(Color(NSColor.windowBackgroundColor))
     .onAppear {
       setupKeyboardShortcuts()
-      setupMenuCommands()
 
       print("🔐 Using SHA-1 checksums for faster verification")
 
@@ -160,6 +173,26 @@ struct ContentView: View {
       // Check for updates
       updateManager.checkForUpdates()
     }
+    // Menu command handlers — using .onReceive for automatic SwiftUI lifecycle management.
+    // Previously used NotificationCenter.addObserver in onAppear which leaked observers
+    // on every appearance, causing N simultaneous backups on a single menu click.
+    // See: GH issue #91, finding #13.
+    .onReceive(testUpdateFlowPublisher) { _ in Task { await testUpdateFlow() } }
+    .onReceive(selectSourcePublisher) { _ in selectSourceFolder() }
+    .onReceive(selectDest1Publisher) { _ in
+      if !backupManager.destinationURLs.isEmpty { selectDestinationFolder(at: 0) }
+    }
+    .onReceive(addDestPublisher) { _ in backupManager.addDestination() }
+    .onReceive(runBackupPublisher) { _ in
+      if backupManager.canRunBackup() { backupManager.runBackup() }
+    }
+    .onReceive(clearAllPublisher) { _ in backupManager.clearAllSelections() }
+    .onReceive(showDebugLogPublisher) { _ in showDebugLog() }
+    .onReceive(exportDebugLogPublisher) { _ in exportDebugLog() }
+    .onReceive(showHelpPublisher) { _ in HelpWindowManager.shared.showHelp() }
+    .onReceive(showImageIntactHelpPublisher) { _ in HelpWindowManager.shared.showHelp() }
+    .onReceive(checkForUpdatesPublisher) { _ in Task { await updateManager.performUpdateCheck(isManual: true) } }
+    .onReceive(verifyCoreDataPublisher) { _ in verifyCoreDataStorage() }
     .sheet(isPresented: $showWelcomePopup) {
       WelcomeView(isPresented: $showWelcomePopup)
     }
@@ -265,122 +298,7 @@ struct ContentView: View {
     }
   }
 
-  // MARK: - Menu Commands
-  func setupMenuCommands() {
-    // Debug menu - Test Update Flow
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("TestUpdateFlow"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task {
-        await testUpdateFlow()
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("SelectSourceFolder"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      selectSourceFolder()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("SelectDestination1"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        if !backupManager.destinationURLs.isEmpty {
-          selectDestinationFolder(at: 0)
-        }
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("AddDestination"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        backupManager.addDestination()
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("RunBackup"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        if backupManager.canRunBackup() {
-          backupManager.runBackup()
-        }
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ClearAll"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        backupManager.clearAllSelections()
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ShowDebugLog"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      showDebugLog()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ExportDebugLog"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      exportDebugLog()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ShowHelp"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      HelpWindowManager.shared.showHelp()
-    }
-
-    // Also listen for the ImageIntact Help command
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ShowImageIntactHelp"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      HelpWindowManager.shared.showHelp()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("CheckForUpdates"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task {
-        await updateManager.performUpdateCheck(isManual: true)
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("VerifyCoreData"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      verifyCoreDataStorage()
-    }
-  }
+  // MARK: - Menu Commands (handled via .onReceive modifiers on the view body)
 
   // MARK: - Keyboard Shortcuts
   func setupKeyboardShortcuts() {
