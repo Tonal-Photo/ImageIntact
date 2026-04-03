@@ -88,12 +88,6 @@ class DuplicateDetector: ObservableObject {
         // Get drive UUID if possible
         let driveUUID = getDriveUUID(for: destination)
 
-        // Build checksum map from source
-        var sourceByChecksum: [String: FileManifestEntry] = [:]
-        for entry in manifest {
-            sourceByChecksum[entry.checksum] = entry
-        }
-
         // Query existing files at destination from Core Data
         let existingFiles = await queryExistingFiles(at: destination, driveUUID: driveUUID)
 

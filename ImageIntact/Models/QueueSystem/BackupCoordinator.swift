@@ -17,11 +17,6 @@ class BackupCoordinator: ObservableObject {
     private var collectedFailures: [(file: String, destination: String, error: String)] = []
     private weak var progressTracker: ProgressTracker? // Reference to BackupManager's progress tracker
 
-    // Serial queue to protect dictionary access and prevent heap corruption
-    private let statusUpdateQueue = DispatchQueue(
-        label: "com.imageintact.statusUpdates", qos: .userInitiated
-    )
-
     init(progressTracker: ProgressTracker? = nil) {
         self.progressTracker = progressTracker
     }

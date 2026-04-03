@@ -89,12 +89,6 @@ actor ResourceManager {
         fileHandles.removeAll()
     }
 
-    /// Track a timer
-    func track(timer _: Timer) {
-        // Note: Timer operations should be done on MainActor
-        // For now, we'll skip timer tracking in the actor
-    }
-
     /// Invalidate all timers
     func invalidateAllTimers() {
         for timer in timers {
