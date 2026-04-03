@@ -136,37 +136,39 @@ class BackupCoordinator: ObservableObject {
         // Start all queues
         statusMessage = "Starting parallel backup to \(destinations.count) destinations..."
 
-        await withTaskGroup(of: Void.self) { group in
-            for queue in destinationQueues {
-                group.addTask { [weak self, weak queue] in
-                    guard let queue = queue else { return }
-                    await queue.start()
+        // Run queue management and monitoring off the main thread.
+        // Property mutations inside monitorProgress() use await MainActor.run.
+        // See: GH issue #91, finding #9.
+        await Task.detached { [weak self] in
+            guard let self = self else { return }
+            await withTaskGroup(of: Void.self) { group in
+                for queue in await self.destinationQueues {
+                    group.addTask { [weak self, weak queue] in
+                        guard let queue = queue else { return }
+                        await queue.start()
 
-                    // Wait for completion
-                    while await !queue.isComplete() {
-                        // Check cancellation from main actor
-                        let cancelled = await MainActor.run { [weak self] in
-                            self?.shouldCancel ?? true
+                        // Wait for completion
+                        while await !queue.isComplete() {
+                            if await self?.shouldCancel ?? true {
+                                await queue.stop()
+                                break
+                            }
+                            try? await Task.sleep(nanoseconds: 100_000_000) // Check every 0.1s
                         }
-                        if cancelled {
-                            await queue.stop()
-                            break
-                        }
-                        try? await Task.sleep(nanoseconds: 100_000_000) // Check every 0.1s
                     }
                 }
+
+                // Start monitoring task with weak self
+                group.addTask { [weak self] in
+                    await self?.monitorProgress()
+                }
+
+                // Wait for all to complete
+                await group.waitForAll()
             }
+        }.value
 
-            // Start monitoring task with weak self
-            group.addTask { [weak self] in
-                await self?.monitorProgress()
-            }
-
-            // Wait for all to complete
-            await group.waitForAll()
-        }
-
-        // Final status
+        // Back on MainActor after detached task completes
         await finalizeBackup()
 
         // Clean up all queues to prevent retain cycles
