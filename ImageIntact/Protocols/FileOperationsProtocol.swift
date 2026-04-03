@@ -45,7 +45,6 @@ protocol FileOperationsProtocol {
   ///   - shouldCancel: Closure to check if operation should be cancelled
   /// - Returns: SHA256 checksum as hex string
   /// - Throws: Error if checksum calculation fails
-  /// Note: Unified checksum calculation - replaces the former separate ChecksumCalculatorProtocol
   func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String
 
   /// Start accessing a security-scoped resource
