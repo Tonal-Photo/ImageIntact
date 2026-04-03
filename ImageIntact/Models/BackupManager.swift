@@ -175,7 +175,33 @@ class BackupManager {
     var fileTypeFilter = FileTypeFilter() // Default to no filtering (all files)
 
     // Backup organization
-    var organizationName: String = "" // Custom folder name for organizing backups
+    // Custom folder name for organizing backups.
+    // Sanitized on set to prevent filesystem issues from special characters.
+    // See: GH issue #91, finding #8.
+    var organizationName: String = "" {
+        didSet {
+            var cleaned = organizationName
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "\\", with: "_")
+                .replacingOccurrences(of: ":", with: "_")  // macOS Finder path separator
+                .replacingOccurrences(of: "\0", with: "")  // null bytes
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+            // APFS/HFS+ limit is 255 UTF-8 bytes, not characters.
+            if cleaned.utf8.count > 255 {
+                var truncated = ""
+                for char in cleaned {
+                    let next = truncated + String(char)
+                    if next.utf8.count > 255 { break }
+                    truncated = next
+                }
+                cleaned = truncated
+            }
+            let sanitized = cleaned
+            if sanitized != organizationName {
+                organizationName = sanitized
+            }
+        }
+    }
 
     // UI state for completion report
     var showCompletionReport = false
@@ -1090,15 +1116,43 @@ class BackupManager {
 
     static func loadBookmark(forKey key: String) -> URL? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return loadBookmark(from: data)
+        return loadBookmark(from: data, forKey: key)
     }
 
-    static func loadBookmark(from data: Data) -> URL? {
+    static func loadBookmark(from data: Data, forKey key: String? = nil) -> URL? {
         var isStale = false
-        return try? URL(
+        guard let url = try? URL(
             resolvingBookmarkData: data, options: [.withoutUI, .withSecurityScope], relativeTo: nil,
             bookmarkDataIsStale: &isStale
-        )
+        ) else { return nil }
+
+        // Re-create stale bookmarks while we still have access.
+        // Without this, bookmarks degrade silently after system updates or
+        // volume renames until they stop resolving entirely.
+        // See: GH issue #91, finding #5.
+        if isStale, let key = key {
+            // Must access the security-scoped resource before creating new bookmark data
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessing { url.stopAccessingSecurityScopedResource() }
+            }
+
+            guard accessing else {
+                ApplicationLogger.shared.debug("Cannot refresh stale bookmark for \(key): access denied", category: .fileSystem)
+                return url // Still return the URL — it resolved, just can't refresh
+            }
+
+            if let refreshed = try? url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                UserDefaults.standard.set(refreshed, forKey: key)
+                ApplicationLogger.shared.debug("Refreshed stale bookmark for \(key)", category: .fileSystem)
+            }
+        }
+
+        return url
     }
 
     static func createBookmark(for url: URL) -> Data? {

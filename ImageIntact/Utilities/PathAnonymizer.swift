@@ -59,17 +59,20 @@ class PathAnonymizer {
 
     // Anonymize usernames in home directories
     if options.anonymizeUsernames {
-      // Handle regular home directories
-      result = result.replacingOccurrences(
-        of: homeDirectoryPattern,
-        with: "/Users/[USER]",
-        options: .regularExpression
-      )
-
-      // Handle iCloud Drive paths
+      // iCloud paths MUST be matched before home directories, otherwise
+      // homeDirectoryPattern replaces the username first and the iCloud
+      // pattern can't match, leaking container IDs.
+      // See: GH issue #91, finding #7.
       result = result.replacingOccurrences(
         of: iCloudPattern,
         with: "/Users/[USER]/Library/Mobile Documents/[ICLOUD]",
+        options: .regularExpression
+      )
+
+      // Handle regular home directories (after iCloud paths are already anonymized)
+      result = result.replacingOccurrences(
+        of: homeDirectoryPattern,
+        with: "/Users/[USER]",
         options: .regularExpression
       )
 
