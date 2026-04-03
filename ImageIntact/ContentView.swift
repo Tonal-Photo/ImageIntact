@@ -170,7 +170,9 @@ struct ContentView: View {
       selectSourceFolder()
     }
     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SelectDestination1")).receive(on: RunLoop.main)) { _ in
-      if !backupManager.destinationURLs.isEmpty { selectDestinationFolder(at: 0) }
+      Task { @MainActor in
+        if !backupManager.destinationURLs.isEmpty { selectDestinationFolder(at: 0) }
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AddDestination")).receive(on: RunLoop.main)) { _ in
       Task { @MainActor in backupManager.addDestination() }
