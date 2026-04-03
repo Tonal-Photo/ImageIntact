@@ -17,6 +17,10 @@ class MockFileOperations: FileOperationsProtocol {
     var removedItems: [URL] = []
     var checksumCalculations: [URL] = []
     var securityScopedAccesses: [URL] = []
+    var movedItems: [(source: URL, destination: URL)] = []
+    var setAttributesCalls: [(attributes: [FileAttributeKey: Any], url: URL)] = []
+    var mockDirectoryContents: [URL: [URL]] = [:]
+    var createdFiles: [(url: URL, data: Data?, attributes: [FileAttributeKey: Any]?)] = []
     
     // MARK: - Configurable behaviors
     var shouldFailCopy = false
@@ -111,6 +115,24 @@ class MockFileOperations: FileOperationsProtocol {
     func fileSize(at url: URL) -> Int64? {
         return mockFileSizes[url]
     }
+
+    func moveItem(at source: URL, to destination: URL) throws {
+        if shouldFailCopy { throw MockError.copyFailed }
+        movedItems.append((source: source, destination: destination))
+    }
+
+    func setAttributes(_ attributes: [FileAttributeKey: Any], at url: URL) throws {
+        setAttributesCalls.append((attributes: attributes, url: url))
+    }
+
+    func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?) throws -> [URL] {
+        return mockDirectoryContents[url] ?? []
+    }
+
+    func createFile(at url: URL, contents data: Data?, attributes: [FileAttributeKey: Any]?) -> Bool {
+        createdFiles.append((url: url, data: data, attributes: attributes))
+        return true
+    }
     
     // MARK: - Test helper methods
     
@@ -128,6 +150,10 @@ class MockFileOperations: FileOperationsProtocol {
         mockChecksums.removeAll()
         mockFileSizes.removeAll()
         mockAttributes.removeAll()
+        movedItems.removeAll()
+        setAttributesCalls.removeAll()
+        mockDirectoryContents.removeAll()
+        createdFiles.removeAll()
     }
     
     /// Add a mock file with specified properties
