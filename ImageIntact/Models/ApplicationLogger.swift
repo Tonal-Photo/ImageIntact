@@ -181,8 +181,12 @@ class ApplicationLogger {
 
         // Output to OS Log if enabled
         if enableOSLogOutput {
+            // Level and category are public (safe metadata).
+            // Message uses %{private}@ to redact file paths and user data
+            // from Console.app and system log archives.
+            // See: GH issue #91, finding #6.
             os_log(
-                "%{public}@ [%{public}@] %{public}@",
+                "%{public}@ [%{public}@] %{private}@",
                 log: osLog,
                 type: osLogType(for: level),
                 level.name, category.rawValue, message

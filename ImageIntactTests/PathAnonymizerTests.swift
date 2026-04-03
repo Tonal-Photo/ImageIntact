@@ -176,4 +176,36 @@ final class PathAnonymizerTests: XCTestCase {
             XCTAssertEqual(originalExtension, resultExtension)
         }
     }
+
+    // MARK: - iCloud Path Anonymization (GH #91 finding #7)
+
+    func testAnonymizeICloudPathRedactsContainerID() {
+        let input = "/Users/konrad/Library/Mobile Documents/com~apple~CloudDocs/XCode/ImageIntact/file.swift"
+        let result = PathAnonymizer.anonymize(input)
+
+        XCTAssertFalse(result.contains("konrad"), "Username should be redacted")
+        XCTAssertFalse(result.contains("com~apple~CloudDocs"),
+                       "iCloud container ID should be redacted. If this fails, the home directory " +
+                       "pattern is matching before the iCloud pattern, preventing container redaction.")
+        XCTAssertTrue(result.contains("[ICLOUD]"), "Container should be replaced with [ICLOUD]")
+        XCTAssertTrue(result.contains("[USER]"), "Username should be replaced with [USER]")
+    }
+
+    func testAnonymizeICloudPathWithThirdPartyContainer() {
+        let input = "/Users/alice/Library/Mobile Documents/iCloud~com~example~app/Documents/file.txt"
+        let result = PathAnonymizer.anonymize(input)
+
+        XCTAssertFalse(result.contains("alice"))
+        XCTAssertFalse(result.contains("iCloud~com~example~app"),
+                       "Third-party iCloud container ID should be redacted")
+        XCTAssertTrue(result.contains("[ICLOUD]"))
+    }
+
+    func testAnonymizeRegularPathStillWorks() {
+        // Ensure the reordering didn't break regular path anonymization
+        let input = "/Users/testuser/Documents/Photos/image.jpg"
+        let result = PathAnonymizer.anonymize(input)
+
+        XCTAssertEqual(result, "/Users/[USER]/Documents/Photos/image.jpg")
+    }
 }

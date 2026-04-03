@@ -175,7 +175,22 @@ class BackupManager {
     var fileTypeFilter = FileTypeFilter() // Default to no filtering (all files)
 
     // Backup organization
-    var organizationName: String = "" // Custom folder name for organizing backups
+    // Custom folder name for organizing backups.
+    // Sanitized on set to prevent filesystem issues from special characters.
+    // See: GH issue #91, finding #8.
+    var organizationName: String = "" {
+        didSet {
+            let sanitized = organizationName
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "\\", with: "_")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                .prefix(255)
+            let result = String(sanitized)
+            if result != organizationName {
+                organizationName = result
+            }
+        }
+    }
 
     // UI state for completion report
     var showCompletionReport = false
@@ -1095,10 +1110,33 @@ class BackupManager {
 
     static func loadBookmark(from data: Data) -> URL? {
         var isStale = false
-        return try? URL(
+        guard let url = try? URL(
             resolvingBookmarkData: data, options: [.withoutUI, .withSecurityScope], relativeTo: nil,
             bookmarkDataIsStale: &isStale
-        )
+        ) else { return nil }
+
+        // Re-create stale bookmarks while we still have access.
+        // Without this, bookmarks degrade silently after system updates or
+        // volume renames until they stop resolving entirely.
+        // See: GH issue #91, finding #5.
+        if isStale {
+            if let refreshed = try? url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                // Find and update the stored bookmark
+                for key in ["sourceBookmark", "dest1Bookmark", "dest2Bookmark", "dest3Bookmark", "dest4Bookmark"] {
+                    if UserDefaults.standard.data(forKey: key) == data {
+                        UserDefaults.standard.set(refreshed, forKey: key)
+                        ApplicationLogger.shared.debug("Refreshed stale bookmark for \(key)", category: .fileSystem)
+                        break
+                    }
+                }
+            }
+        }
+
+        return url
     }
 
     static func createBookmark(for url: URL) -> Data? {
