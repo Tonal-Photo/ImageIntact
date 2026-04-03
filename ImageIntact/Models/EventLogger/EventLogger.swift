@@ -43,7 +43,7 @@ class EventLogger {
     // Expose container for other components that need to use the same Core Data stack
     let container: NSPersistentContainer
     var currentSessionID: UUID?
-    let backgroundContext: NSManagedObjectContext
+    private(set) var backgroundContext: NSManagedObjectContext
     private let batchLogger = BatchEventLogger(batchSize: 100, maxBatchWaitTime: 2.0)
 
     private init() {
@@ -59,7 +59,8 @@ class EventLogger {
         // Create container
         container = NSPersistentContainer(name: "ImageIntactEvents", managedObjectModel: model)
 
-        // Create background context early (needed before loadStores)
+        // Initialize background context (required before self can be used).
+        // This is a temporary context — replaced after stores load.
         backgroundContext = container.newBackgroundContext()
 
         // Handle migration if needed
@@ -70,6 +71,10 @@ class EventLogger {
 
         // Load stores with error recovery
         loadStoresWithRecovery(model: model)
+
+        // Re-create background context AFTER stores are loaded to avoid
+        // "Background context created with no stores loaded" warning.
+        backgroundContext = container.newBackgroundContext()
 
         // Configure contexts
         configureContexts()
@@ -263,18 +268,24 @@ class EventLogger {
     func completeSession(status: String = "completed") {
         guard let sessionID = currentSessionID else { return }
 
-        // Flush any pending events before completing
-        Task {
-            await batchLogger.flushEvents()
+        // Clear session ID first, then flush with the captured ID.
+        // Previously, the async flush ran after currentSessionID was nil'd,
+        // causing "No active session" warning and dropping the final event batch.
+        // See: runtime warning investigation, 2026-04-03.
+        let capturedSessionID = sessionID
+        currentSessionID = nil
+
+        // Flush pending events with the captured session ID
+        Task { [capturedSessionID] in
+            await batchLogger.flushEvents(sessionID: capturedSessionID)
         }
 
-        // Use perform instead of performAndWait to avoid potential deadlocks
+        // Save session completion to Core Data
         backgroundContext.perform { [weak self] in
             guard let self = self else { return }
 
-            // Fetch the session in this context
             let request = NSFetchRequest<BackupSession>(entityName: "BackupSession")
-            request.predicate = NSPredicate(format: "id == %@", sessionID as CVarArg)
+            request.predicate = NSPredicate(format: "id == %@", capturedSessionID as CVarArg)
             request.fetchLimit = 1
 
             do {
@@ -288,8 +299,6 @@ class EventLogger {
                 ApplicationLogger.shared.error("Failed to save session completion: \(error)", category: .database)
             }
         }
-
-        currentSessionID = nil
     }
 
     /// Reset Core Data contexts to free memory (call only when no operations are active)

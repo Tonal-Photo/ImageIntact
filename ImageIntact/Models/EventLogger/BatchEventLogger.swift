@@ -88,8 +88,10 @@ actor BatchEventLogger {
         }
     }
 
-    /// Flush all pending events to Core Data using batch insert
-    func flushEvents() async {
+    /// Flush all pending events to Core Data using batch insert.
+    /// Pass a sessionID when flushing during session completion (the session
+    /// may already be cleared on EventLogger by the time this runs).
+    func flushEvents(sessionID: UUID? = nil) async {
         guard !pendingEvents.isEmpty else { return }
 
         // Cancel any scheduled flush
@@ -102,7 +104,7 @@ actor BatchEventLogger {
 
         // Perform batch insert on main actor to access EventLogger
         await MainActor.run {
-            EventLogger.shared.batchInsertEvents(eventsToFlush)
+            EventLogger.shared.batchInsertEvents(eventsToFlush, sessionID: sessionID)
         }
     }
 
@@ -115,9 +117,10 @@ actor BatchEventLogger {
 // MARK: - Extension to EventLogger for Batch Operations
 
 extension EventLogger {
-    /// Batch insert multiple events at once
-    func batchInsertEvents(_ events: [PendingEvent]) {
-        guard let sessionID = currentSessionID else {
+    /// Batch insert multiple events at once.
+    /// Pass an explicit sessionID when flushing after session completion.
+    func batchInsertEvents(_ events: [PendingEvent], sessionID override: UUID? = nil) {
+        guard let sessionID = override ?? currentSessionID else {
             ApplicationLogger.shared.warning("No active session for batch event logging", category: .database)
             return
         }
