@@ -1081,7 +1081,7 @@ class BackupManager {
                 options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil
             )
             UserDefaults.standard.set(bookmark, forKey: key)
-            UserDefaults.standard.synchronize() // Force save immediately
+            // UserDefaults auto-saves; synchronize() is a deprecated no-op
             logInfo("Successfully saved bookmark for \(key): \(url.lastPathComponent)")
         } catch {
             logError("Failed to save bookmark for \(key): \(error)")

@@ -191,26 +191,13 @@ public struct OptimizedChecksum {
   private static func readIntoBuffer(
     fileHandle: FileHandle, buffer: UnsafeMutableRawBufferPointer, maxLength: Int
   ) throws -> Int {
-    // Use dispatch_io for optimal I/O if available, otherwise fall back to FileHandle
-    if #available(macOS 10.15, *) {
-      // Read directly into buffer without intermediate Data object
-      guard let data = try? fileHandle.read(upToCount: maxLength) else {
-        return 0
-      }
-      data.withUnsafeBytes { dataBytes in
-        buffer.copyMemory(from: dataBytes)
-      }
-      return data.count
-    } else {
-      // Fallback for older systems
-      guard let data = try? fileHandle.read(upToCount: maxLength) else {
-        return 0
-      }
-      data.withUnsafeBytes { dataBytes in
-        buffer.copyMemory(from: dataBytes)
-      }
-      return data.count
+    guard let data = try? fileHandle.read(upToCount: maxLength) else {
+      return 0
     }
+    data.withUnsafeBytes { dataBytes in
+      buffer.copyMemory(from: dataBytes)
+    }
+    return data.count
   }
 }
 
@@ -238,89 +225,3 @@ extension SHA256.Digest {
   }
 }
 
-// MARK: - Alternative implementation using DispatchIO for even better performance
-
-/// Ultra-optimized checksum using DispatchIO for concurrent I/O
-@available(macOS 10.15, *)
-public struct DispatchIOChecksum {
-
-  public static func sha256(for fileURL: URL, shouldCancel: @escaping () -> Bool = { false }) throws
-    -> String
-  {
-    let fileSize =
-      try FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64 ?? 0
-
-    if fileSize == 0 {
-      return "empty-file-0-bytes"
-    }
-
-    // For small files, use simple approach
-    if fileSize < 10_000_000 {
-      let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-      return SHA256.hash(data: data).hexString
-    }
-
-    // For large files, use DispatchIO for concurrent reading
-    return try calculateWithDispatchIO(
-      fileURL: fileURL, fileSize: fileSize, shouldCancel: shouldCancel)
-  }
-
-  private static func calculateWithDispatchIO(
-    fileURL: URL, fileSize: Int64, shouldCancel: @escaping () -> Bool
-  ) throws -> String {
-    var hasher = SHA256()
-    let semaphore = DispatchSemaphore(value: 0)
-    var readError: Error?
-
-    // Open file descriptor
-    let fd = open(fileURL.path, O_RDONLY)
-    guard fd >= 0 else {
-      throw ChecksumError.readError("Cannot open file")
-    }
-    defer { close(fd) }
-
-    // Create dispatch I/O channel
-    let queue = DispatchQueue(label: "checksum.io", qos: .userInitiated)
-    let channel = DispatchIO(
-      type: .stream, fileDescriptor: fd, queue: queue, cleanupHandler: { _ in })
-
-    // Set optimal chunk size
-    let chunkSize = OptimizedChecksum.optimalChunkSize(for: fileSize)
-    channel.setLimit(lowWater: chunkSize)
-
-    // Read file in chunks
-    channel.read(offset: 0, length: Int(fileSize), queue: queue) { done, data, error in
-      if error != 0 {
-        readError = ChecksumError.readError("I/O error: \(error)")
-        semaphore.signal()
-        return
-      }
-
-      if let data = data, !data.isEmpty {
-        // Update hasher with dispatch data directly
-        data.enumerateBytes { bytes, byteIndex, stop in
-          hasher.update(bufferPointer: UnsafeRawBufferPointer(bytes))
-
-          // Check cancellation
-          if shouldCancel() {
-            stop = true
-            readError = ChecksumError.cancelled
-          }
-        }
-      }
-
-      if done {
-        semaphore.signal()
-      }
-    }
-
-    // Wait for completion
-    semaphore.wait()
-
-    if let error = readError {
-      throw error
-    }
-
-    return hasher.finalize().hexString
-  }
-}

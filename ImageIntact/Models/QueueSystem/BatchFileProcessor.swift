@@ -91,69 +91,6 @@ actor BatchFileProcessor {
         }
     }
 
-    /// Copy files in batches with optimized buffer usage
-    func batchCopyFiles(
-        _ tasks: [(source: URL, destination: URL)],
-        progress: @escaping (Int) -> Void
-    ) async throws {
-        var completed = 0
-
-        for batch in tasks.chunked(into: batchSize) {
-            // Use autoreleasepool for each batch
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, Error>) in
-                autoreleasepool {
-                    do {
-                        for (source, destination) in batch {
-                            // Create parent directory if needed
-                            let destDir = destination.deletingLastPathComponent()
-                            if !FileManager.default.fileExists(atPath: destDir.path) {
-                                try FileManager.default.createDirectory(
-                                    at: destDir,
-                                    withIntermediateDirectories: true
-                                )
-                            }
-
-                            // Use optimized copy with larger buffer
-                            try copyFileWithBuffer(from: source, to: destination)
-
-                            completed += 1
-                            let currentProgress = completed
-                            Task {
-                                await MainActor.run {
-                                    progress(currentProgress)
-                                }
-                            }
-                        }
-                        continuation.resume()
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Copy a file using an optimized buffer
-    private func copyFileWithBuffer(from source: URL, to destination: URL) throws {
-        // Check if source is a symbolic link
-        var isSymlink = false
-        if let resourceValues = try? source.resourceValues(forKeys: [.isSymbolicLinkKey]) {
-            isSymlink = resourceValues.isSymbolicLink ?? false
-        }
-
-        if isSymlink {
-            // Silently skip symbolic links - they should have been filtered during manifest building
-            // This is just a safety check. Log for debugging but don't throw user-visible error
-            ApplicationLogger.shared.debug("Skipping symbolic link in batch copy (safety check): \(source.lastPathComponent)", category: .fileSystem)
-            return // Return successfully without copying
-        }
-
-        // For now, use FileManager's optimized copy
-        // In future, could implement streaming copy with our buffer pool
-        try FileManager.default.copyItem(at: source, to: destination)
-    }
-
     // MARK: - Batch Checksum Calculation
 
     /// Calculate checksums for multiple files in a batch
