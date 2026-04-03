@@ -61,6 +61,36 @@ protocol FileOperationsProtocol {
   /// - Parameter url: File URL
   /// - Returns: File size in bytes, or nil if unable to determine
   func fileSize(at url: URL) -> Int64?
+
+  /// Move a file from source to destination
+  /// - Parameters:
+  ///   - source: Source file URL
+  ///   - destination: Destination file URL
+  /// - Throws: Error if move fails
+  func moveItem(at source: URL, to destination: URL) throws
+
+  /// Set file attributes at the given URL
+  /// - Parameters:
+  ///   - attributes: Dictionary of attributes to set
+  ///   - url: File URL
+  /// - Throws: Error if setting attributes fails
+  func setAttributes(_ attributes: [FileAttributeKey: Any], at url: URL) throws
+
+  /// List contents of a directory
+  /// - Parameters:
+  ///   - url: Directory URL
+  ///   - keys: Resource keys to prefetch
+  /// - Returns: Array of file URLs in the directory
+  /// - Throws: Error if listing fails
+  func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?) throws -> [URL]
+
+  /// Create a file at the given URL
+  /// - Parameters:
+  ///   - url: File URL
+  ///   - data: File contents
+  ///   - attributes: File attributes
+  /// - Returns: true if file was created
+  func createFile(at url: URL, contents data: Data?, attributes: [FileAttributeKey: Any]?) -> Bool
 }
 
 /// Extension to provide convenience methods
