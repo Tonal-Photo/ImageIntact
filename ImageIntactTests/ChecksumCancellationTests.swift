@@ -64,22 +64,13 @@ final class ChecksumCancellationTests: XCTestCase {
     /// The critical test: a closure that changes from false to true mid-operation
     /// must cause cancellation. This is the bug — previously the Bool was frozen.
     func testMidOperationCancellationIsRespected() throws {
-        var chunkCount = 0
+        let counter = AtomicCounter()
         let cancelAfterChunks = 3
-
-        // This closure will return false for the first 3 checks, then true.
-        // With 10MB file and 1MB chunks, there are ~10 chunks.
-        // If the closure is evaluated per-chunk (correct), it cancels after chunk 3.
-        // If the closure is frozen (bug), it never cancels.
-        let shouldCancel: @Sendable () -> Bool = {
-            chunkCount += 1
-            return chunkCount > cancelAfterChunks
-        }
 
         XCTAssertThrowsError(
             try BackupManager.sha256ChecksumStatic(
                 for: tempFile,
-                shouldCancel: shouldCancel
+                shouldCancel: { counter.increment() > cancelAfterChunks }
             )
         ) { error in
             XCTAssertTrue(
@@ -102,14 +93,35 @@ final class ChecksumCancellationTests: XCTestCase {
 
     /// Verify OptimizedChecksum directly respects cancellation closures.
     func testOptimizedChecksumRespectsClosureCancellation() throws {
-        var callCount = 0
+        let counter = AtomicCounter()
         XCTAssertThrowsError(
             try OptimizedChecksum.sha256(for: tempFile, shouldCancel: {
-                callCount += 1
-                return callCount > 2
+                counter.increment() > 2
             })
         )
-        XCTAssertGreaterThan(callCount, 1,
+        XCTAssertGreaterThan(counter.value, 1,
                              "shouldCancel closure should be called multiple times during checksumming")
+    }
+}
+
+// MARK: - Thread-safe counter for @Sendable test closures
+
+private final class AtomicCounter: @unchecked Sendable {
+    private var _value = 0
+    private let lock = NSLock()
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _value
+    }
+
+    /// Increments and returns the new value.
+    @discardableResult
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        _value += 1
+        return _value
     }
 }
