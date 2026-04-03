@@ -1542,6 +1542,9 @@ extension BackupManager {
         } catch let checksumError as ChecksumError {
             // Never swallow ChecksumError (includes .cancelled) — rethrow immediately
             throw checksumError
+        } catch is CancellationError {
+            // Never swallow Swift Task cancellation either
+            throw ChecksumError.cancelled
         } catch {
             // Fall back to size-based checksum if file can't be read
             if let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
