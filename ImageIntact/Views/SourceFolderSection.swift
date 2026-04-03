@@ -36,7 +36,8 @@ struct SourceFolderSection: View {
                     },
                     onSelect: { _ in
                         // Already handled in backupManager.setSource()
-                    }
+                    },
+                    defaultDirectory: backupManager.sourceURL?.deletingLastPathComponent()
                 )
                 .focused($focusedField, equals: .source)
                 .onTapGesture {
@@ -62,6 +63,25 @@ struct SourceFolderSection: View {
                     .toggleStyle(.checkbox)
                     .padding(.leading, 20)
                     .help("When enabled, scans all nested folders. When disabled, only scans files in the selected folder.")
+
+                    // Move source to Trash after backup
+                    Toggle(isOn: Binding(
+                        get: { PreferencesManager.shared.trashSourceAfterBackup },
+                        set: { newValue in
+                            PreferencesManager.shared.trashSourceAfterBackup = newValue
+                        }
+                    )) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("Move source to Trash after backup")
+                                .font(.caption)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .padding(.leading, 20)
+                    .help("After a successful backup, move the source folder to the Trash. Useful when archiving to external drives.")
                 }
 
                 // File type summary and filter results - indented further

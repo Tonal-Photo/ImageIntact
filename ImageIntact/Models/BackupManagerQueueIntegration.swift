@@ -537,6 +537,14 @@ extension BackupManager {
             // Small delay to ensure UI is ready
             try? await Task.sleep(nanoseconds: 100_000_000)
             showCompletionReport = true
+
+            // Offer to trash source if enabled and backup was fully successful
+            if PreferencesManager.shared.trashSourceAfterBackup
+                && failedFiles.isEmpty
+                && sourceURL != nil
+            {
+                showTrashConfirmation = true
+            }
         } else {
             // Clear the overall status text when cancelled
             overallStatusText = ""

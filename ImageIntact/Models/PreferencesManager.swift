@@ -23,6 +23,7 @@ class PreferencesManager: ObservableObject {
     @AppStorage("excludeCacheFiles") var excludeCacheFiles: Bool = true
     @AppStorage("skipHiddenFiles") var skipHiddenFiles: Bool = true
     @AppStorage("includeSubdirectories") var includeSubdirectories: Bool = true // Scan subdirectories recursively
+    @AppStorage("trashSourceAfterBackup") var trashSourceAfterBackup: Bool = false // Move source to Trash after backup
     @AppStorage("defaultFileTypeFilter") var defaultFileTypeFilter: String = "all" // all, photos, raw, videos
 
     // MARK: - Backup Confirmations
@@ -136,6 +137,7 @@ class PreferencesManager: ObservableObject {
         // File Handling
         excludeCacheFiles = true
         skipHiddenFiles = true
+        trashSourceAfterBackup = false
         defaultFileTypeFilter = "all"
 
         // Performance
