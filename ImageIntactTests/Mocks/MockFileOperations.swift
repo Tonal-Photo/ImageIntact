@@ -84,7 +84,7 @@ class MockFileOperations: FileOperationsProtocol {
         return attributes
     }
     
-    func calculateChecksum(for url: URL, shouldCancel: () -> Bool) async throws -> String {
+    func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
         checksumCalculations.append(url)
         
         if shouldFailChecksum {

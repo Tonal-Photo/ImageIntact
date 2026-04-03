@@ -103,7 +103,7 @@ class BackupMigrationDetector {
                 do {
                     let destChecksum = try BackupManager.sha256ChecksumStatic(
                         for: destFile,
-                        shouldCancel: false
+                        shouldCancel: { false }
                     )
 
                     // Check if checksums match
@@ -173,7 +173,7 @@ class BackupMigrationDetector {
             // Verify the move with checksum
             let movedChecksum = try BackupManager.sha256ChecksumStatic(
                 for: newPath,
-                shouldCancel: false
+                shouldCancel: { false }
             )
 
             if movedChecksum != candidate.checksum {

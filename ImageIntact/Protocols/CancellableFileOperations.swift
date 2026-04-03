@@ -380,13 +380,13 @@ class CancellableFileOperations: FileOperationsProtocol {
     return try fileManager.attributesOfItem(atPath: url.path)
   }
 
-  func calculateChecksum(for url: URL, shouldCancel: () -> Bool) async throws -> String {
+  func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
     // Use the existing static method from BackupManager for consistency
     // This uses SHA-256 which is what the rest of the app expects
     // Pass network volume status for optimized reading
     let isNetwork = isNetworkVolume(url: url)
     return try BackupManager.sha256ChecksumStatic(
-      for: url, shouldCancel: shouldCancel(), isNetworkVolume: isNetwork)
+      for: url, shouldCancel: shouldCancel, isNetworkVolume: isNetwork)
   }
 
   func fileSize(at url: URL) -> Int64? {

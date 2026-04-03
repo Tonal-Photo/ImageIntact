@@ -58,7 +58,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         let file5MB = try createTestFile(name: "5mb.bin", size: 5 * 1024 * 1024)
         
         self.measure {
-            _ = try! BackupManager.sha256ChecksumStatic(for: file5MB, shouldCancel: false)
+            _ = try! BackupManager.sha256ChecksumStatic(for: file5MB, shouldCancel: { false })
         }
     }
     
@@ -67,7 +67,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         let file20MB = try createTestFile(name: "20mb.bin", size: 20 * 1024 * 1024)
         
         self.measure {
-            _ = try! BackupManager.sha256ChecksumStatic(for: file20MB, shouldCancel: false)
+            _ = try! BackupManager.sha256ChecksumStatic(for: file20MB, shouldCancel: { false })
         }
     }
     
@@ -76,7 +76,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         let file100MB = try createTestFile(name: "100mb.bin", size: 100 * 1024 * 1024)
         
         self.measure {
-            _ = try! BackupManager.sha256ChecksumStatic(for: file100MB, shouldCancel: false)
+            _ = try! BackupManager.sha256ChecksumStatic(for: file100MB, shouldCancel: { false })
         }
     }
     
@@ -85,7 +85,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         let file500MB = try createTestFile(name: "500mb.bin", size: 500 * 1024 * 1024)
         
         self.measure {
-            _ = try! BackupManager.sha256ChecksumStatic(for: file500MB, shouldCancel: false)
+            _ = try! BackupManager.sha256ChecksumStatic(for: file500MB, shouldCancel: { false })
         }
     }
     
@@ -99,7 +99,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         
         self.measure {
             for file in files {
-                _ = try! BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+                _ = try! BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
             }
         }
     }
@@ -114,7 +114,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         
         self.measure {
             for file in files {
-                _ = try! BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+                _ = try! BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
             }
         }
     }
@@ -133,7 +133,7 @@ final class ChecksumPerformanceTests: XCTestCase {
             let file = try createTestFile(name: "\(label).bin", size: size)
             
             let start = CFAbsoluteTimeGetCurrent()
-            _ = try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+            _ = try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
             let elapsed = CFAbsoluteTimeGetCurrent() - start
             
             let throughputMBps = Double(size) / (elapsed * 1024 * 1024)
@@ -151,12 +151,12 @@ final class ChecksumPerformanceTests: XCTestCase {
         
         // Time 9MB (direct)
         let start9 = CFAbsoluteTimeGetCurrent()
-        _ = try BackupManager.sha256ChecksumStatic(for: file9MB, shouldCancel: false)
+        _ = try BackupManager.sha256ChecksumStatic(for: file9MB, shouldCancel: { false })
         let time9 = CFAbsoluteTimeGetCurrent() - start9
         
         // Time 11MB (streaming)
         let start11 = CFAbsoluteTimeGetCurrent()
-        _ = try BackupManager.sha256ChecksumStatic(for: file11MB, shouldCancel: false)
+        _ = try BackupManager.sha256ChecksumStatic(for: file11MB, shouldCancel: { false })
         let time11 = CFAbsoluteTimeGetCurrent() - start11
         
         // Calculate per-MB time
@@ -176,7 +176,7 @@ final class ChecksumPerformanceTests: XCTestCase {
         
         // Note: For accurate memory profiling, run this with Instruments
         self.measure {
-            _ = try! BackupManager.sha256ChecksumStatic(for: file200MB, shouldCancel: false)
+            _ = try! BackupManager.sha256ChecksumStatic(for: file200MB, shouldCancel: { false })
         }
     }
 }

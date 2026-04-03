@@ -361,7 +361,7 @@ class MockFileOperationsWithDelay: MockFileOperations {
 class MockFileOperationsWithCorruption: MockFileOperations {
     var corruptFile: String?
 
-    override func calculateChecksum(for url: URL, shouldCancel: () -> Bool) async throws -> String {
+    override func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
         // If this is the corrupted file's destination, return a different checksum
         if let corruptFile = corruptFile,
            url.path.contains(corruptFile) && url.path.contains("TestOrg")

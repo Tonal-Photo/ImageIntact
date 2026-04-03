@@ -13,7 +13,15 @@ actor DestinationQueue {
     private var activeWorkers: Set<UUID> = []
     private var workerTasks: [Task<Void, Never>] = []
     private var isRunning = false
-    private var shouldCancel = false
+    // Thread-safe cancellation flag readable from @Sendable closures.
+    // NSLock protects cross-thread access. Both backing store and lock are
+    // nonisolated(unsafe) because the lock provides the synchronization guarantee.
+    nonisolated(unsafe) private let _cancelLock = NSLock()
+    nonisolated(unsafe) private var _shouldCancel = false
+    nonisolated private(set) var shouldCancel: Bool {
+        get { _cancelLock.lock(); defer { _cancelLock.unlock() }; return _shouldCancel }
+        set { _cancelLock.lock(); defer { _cancelLock.unlock() }; _shouldCancel = newValue }
+    }
 
     // Progress tracking
     private(set) var totalFiles: Int = 0
@@ -380,7 +388,7 @@ actor DestinationQueue {
         ) {
             let existingChecksum = try await fileOperations.calculateChecksum(
                 for: destPath,
-                shouldCancel: { shouldCancel }
+                shouldCancel: { self.shouldCancel }
             )
             return existingChecksum == task.checksum
         }
@@ -588,7 +596,7 @@ actor DestinationQueue {
                 let verifyStartTime = Date()
                 let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
-                    shouldCancel: { shouldCancel }
+                    shouldCancel: { self.shouldCancel }
                 )
 
                 if actualChecksum == task.checksum {

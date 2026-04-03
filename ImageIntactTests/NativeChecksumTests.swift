@@ -25,14 +25,14 @@ final class NativeChecksumTests: XCTestCase {
         try testData.write(to: testFile)
 
         // Calculate checksum
-        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
 
         // Verify it's a valid SHA-256 (64 hex characters)
         XCTAssertEqual(checksum.count, 64, "SHA-256 should be 64 hex characters")
         XCTAssertTrue(checksum.allSatisfy { $0.isHexDigit }, "Should only contain hex characters")
 
         // Verify consistency
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
         XCTAssertEqual(checksum, checksum2, "Checksum should be consistent")
     }
 
@@ -42,7 +42,7 @@ final class NativeChecksumTests: XCTestCase {
         try Data().write(to: testFile)
 
         // Calculate checksum
-        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
 
         // Empty files should return special marker
         XCTAssertEqual(checksum, "empty-file-0-bytes", "Empty file should return special marker")
@@ -60,15 +60,15 @@ final class NativeChecksumTests: XCTestCase {
         try largeData.write(to: largeFile)
 
         // Both should calculate correctly
-        let smallChecksum = try BackupManager.sha256ChecksumStatic(for: smallFile, shouldCancel: false)
-        let largeChecksum = try BackupManager.sha256ChecksumStatic(for: largeFile, shouldCancel: false)
+        let smallChecksum = try BackupManager.sha256ChecksumStatic(for: smallFile, shouldCancel: { false })
+        let largeChecksum = try BackupManager.sha256ChecksumStatic(for: largeFile, shouldCancel: { false })
 
         XCTAssertEqual(smallChecksum.count, 64, "9MB file should produce valid SHA-256")
         XCTAssertEqual(largeChecksum.count, 64, "11MB file should produce valid SHA-256")
 
         // Verify consistency
-        let smallChecksum2 = try BackupManager.sha256ChecksumStatic(for: smallFile, shouldCancel: false)
-        let largeChecksum2 = try BackupManager.sha256ChecksumStatic(for: largeFile, shouldCancel: false)
+        let smallChecksum2 = try BackupManager.sha256ChecksumStatic(for: smallFile, shouldCancel: { false })
+        let largeChecksum2 = try BackupManager.sha256ChecksumStatic(for: largeFile, shouldCancel: { false })
 
         XCTAssertEqual(smallChecksum, smallChecksum2, "9MB checksum should be consistent")
         XCTAssertEqual(largeChecksum, largeChecksum2, "11MB checksum should be consistent")
@@ -81,20 +81,20 @@ final class NativeChecksumTests: XCTestCase {
         try largeData.write(to: testFile)
 
         // Calculate checksum (should use streaming)
-        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
 
         // Verify it's valid
         XCTAssertEqual(checksum.count, 64, "SHA-256 should be 64 hex characters")
 
         // Verify consistency with streaming
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
         XCTAssertEqual(checksum, checksum2, "Large file checksum should be consistent")
     }
 
     func testSHA256ChecksumForNonExistentFile() {
         let nonExistent = testDirectory.appendingPathComponent("does-not-exist.txt")
 
-        XCTAssertThrowsError(try BackupManager.sha256ChecksumStatic(for: nonExistent, shouldCancel: false)) { error in
+        XCTAssertThrowsError(try BackupManager.sha256ChecksumStatic(for: nonExistent, shouldCancel: { false })) { error in
             let nsError = error as NSError
             XCTAssertEqual(nsError.domain, "ImageIntact", "Should be ImageIntact error")
             XCTAssertEqual(nsError.code, 1, "Should be file not exist error")
@@ -111,11 +111,11 @@ final class NativeChecksumTests: XCTestCase {
         try binaryData.write(to: testFile)
 
         // Calculate checksum
-        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
 
         // Verify it's valid and consistent
         XCTAssertEqual(checksum.count, 64)
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
         XCTAssertEqual(checksum, checksum2)
     }
 
@@ -129,8 +129,8 @@ final class NativeChecksumTests: XCTestCase {
         try testData.write(to: file1)
         try testData.write(to: file2)
 
-        let checksum1 = try BackupManager.sha256ChecksumStatic(for: file1, shouldCancel: false)
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: file2, shouldCancel: false)
+        let checksum1 = try BackupManager.sha256ChecksumStatic(for: file1, shouldCancel: { false })
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: file2, shouldCancel: { false })
 
         XCTAssertEqual(checksum1, checksum2, "Identical files should have same checksum")
     }
@@ -142,8 +142,8 @@ final class NativeChecksumTests: XCTestCase {
         try "Content A".data(using: .utf8)!.write(to: file1)
         try "Content B".data(using: .utf8)!.write(to: file2)
 
-        let checksum1 = try BackupManager.sha256ChecksumStatic(for: file1, shouldCancel: false)
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: file2, shouldCancel: false)
+        let checksum1 = try BackupManager.sha256ChecksumStatic(for: file1, shouldCancel: { false })
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: file2, shouldCancel: { false })
 
         XCTAssertNotEqual(checksum1, checksum2, "Different files should have different checksums")
     }
@@ -155,8 +155,8 @@ final class NativeChecksumTests: XCTestCase {
         try "Hello World!".data(using: .utf8)!.write(to: file1)
         try "Hello World?".data(using: .utf8)!.write(to: file2) // Just one character different
 
-        let checksum1 = try BackupManager.sha256ChecksumStatic(for: file1, shouldCancel: false)
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: file2, shouldCancel: false)
+        let checksum1 = try BackupManager.sha256ChecksumStatic(for: file1, shouldCancel: { false })
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: file2, shouldCancel: { false })
 
         XCTAssertNotEqual(checksum1, checksum2, "Even single byte difference should produce different checksum")
     }
@@ -174,7 +174,7 @@ final class NativeChecksumTests: XCTestCase {
 
         measure {
             for file in files {
-                _ = try? BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+                _ = try? BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
             }
         }
     }
@@ -186,7 +186,7 @@ final class NativeChecksumTests: XCTestCase {
         try data.write(to: file)
 
         measure {
-            _ = try? BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+            _ = try? BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
         }
     }
 
@@ -197,14 +197,14 @@ final class NativeChecksumTests: XCTestCase {
         let file = testDirectory.appendingPathComponent(specialName)
         try "Content".data(using: .utf8)!.write(to: file)
 
-        XCTAssertNoThrow(try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false))
+        XCTAssertNoThrow(try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false }))
     }
 
     func testChecksumForHiddenFile() throws {
         let file = testDirectory.appendingPathComponent(".hidden")
         try "Hidden content".data(using: .utf8)!.write(to: file)
 
-        let checksum = try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
         XCTAssertEqual(checksum.count, 64, "Hidden files should work normally")
     }
 
@@ -217,7 +217,7 @@ final class NativeChecksumTests: XCTestCase {
 
         // Calculate checksum 10 times
         for _ in 0 ..< 10 {
-            let checksum = try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: false)
+            let checksum = try BackupManager.sha256ChecksumStatic(for: file, shouldCancel: { false })
             checksums.insert(checksum)
         }
 

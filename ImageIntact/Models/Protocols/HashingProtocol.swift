@@ -3,17 +3,17 @@ import Foundation
 
 /// Protocol abstraction for file hashing operations
 protocol HashingProtocol {
-  func sha256(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String
+  func sha256(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String
   func sha256(for data: Data) -> String
 }
 
 /// Real implementation using CryptoKit
 final class RealHasher: HashingProtocol {
 
-  func sha256(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String {
+  func sha256(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
     // Use the existing static method from BackupManager
     // Note: The static method takes a Bool, not a closure, so we evaluate it once
-    return try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel())
+    return try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel)
   }
 
   func sha256(for data: Data) -> String {
@@ -38,7 +38,7 @@ final class MockHasher: HashingProtocol {
     "test content": "5e3235c8c94e703870cf3a39317c8eb09158ce221e36e29b5dd0f921ffa22c6f",
   ]
 
-  func sha256(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String {
+  func sha256(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
     callCount += 1
     lastHashedURL = url
 
