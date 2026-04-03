@@ -52,7 +52,7 @@ class DefaultChecksumCalculator: ChecksumCalculatorProtocol {
           // Call the existing static method that's been thoroughly tested
           let checksum = try BackupManager.sha256ChecksumStatic(
             for: url,
-            shouldCancel: shouldCancel()
+            shouldCancel: shouldCancel
           )
           continuation.resume(returning: checksum)
         } catch {
@@ -97,7 +97,7 @@ class DefaultChecksumCalculator: ChecksumCalculatorProtocol {
 extension DefaultChecksumCalculator {
   /// Direct synchronous method for compatibility with existing code
   /// This wraps the async method for use in synchronous contexts
-  func calculateSHA256Sync(for url: URL, shouldCancel: Bool) throws -> String {
+  func calculateSHA256Sync(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) throws -> String {
     // Use the existing static method directly
     return try BackupManager.sha256ChecksumStatic(
       for: url,

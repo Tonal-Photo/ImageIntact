@@ -331,7 +331,7 @@ actor ManifestBuilder {
         -> String
     {
         try await Task.detached(priority: .userInitiated) {
-            try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel())
+            try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel)
         }.value
     }
 }

@@ -107,7 +107,7 @@ class BackupMigrationTests: XCTestCase {
         _ = try createTestFile(name: "photo.jpg", content: content, at: tempDestination)
 
         // Create manifest with proper checksum
-        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
         manifest = [
             FileManifestEntry(
                 relativePath: "photo.jpg",
@@ -145,7 +145,7 @@ class BackupMigrationTests: XCTestCase {
             let sourceFile = try createTestFile(name: name, content: content, at: tempSource)
             _ = try createTestFile(name: name, content: content, at: tempDestination)
 
-            let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
+            let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
             manifest.append(FileManifestEntry(
                 relativePath: name,
                 sourceURL: sourceFile,
@@ -175,7 +175,7 @@ class BackupMigrationTests: XCTestCase {
         let sourceFile = try createTestFile(name: "photo.jpg", content: content, at: tempSource)
         let destFileURL = try createTestFile(name: "photo.jpg", content: content, at: tempDestination)
 
-        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
         let candidate = BackupMigrationDetector.MigrationCandidate(
             sourceFile: sourceFile,
             destinationFile: destFileURL,
@@ -217,7 +217,7 @@ class BackupMigrationTests: XCTestCase {
         let sourceFile = try createTestFile(name: "photo.jpg", content: content, at: tempSource)
         let destFileURL = try createTestFile(name: "photo.jpg", content: content, at: tempDestination)
 
-        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
         let candidate = BackupMigrationDetector.MigrationCandidate(
             sourceFile: sourceFile,
             destinationFile: destFileURL,
@@ -239,7 +239,7 @@ class BackupMigrationTests: XCTestCase {
             .appendingPathComponent("TestOrg")
             .appendingPathComponent("photo.jpg")
 
-        let movedChecksum = try BackupManager.sha256ChecksumStatic(for: movedFile, shouldCancel: false)
+        let movedChecksum = try BackupManager.sha256ChecksumStatic(for: movedFile, shouldCancel: { false })
         XCTAssertEqual(movedChecksum, checksum, "Checksum should match after move")
     }
 
@@ -278,7 +278,7 @@ class BackupMigrationTests: XCTestCase {
         let sourceFile = try createTestFile(name: "photo.jpg", content: content, at: tempSource)
         _ = try createTestFile(name: "photo.jpg", content: content, at: subdir)
 
-        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
         manifest = [
             FileManifestEntry(
                 relativePath: "photo.jpg",
@@ -310,7 +310,7 @@ class BackupMigrationTests: XCTestCase {
             let sourceFile = try createTestFile(name: name, content: content, at: tempSource)
             _ = try createTestFile(name: name, content: content, at: tempDestination)
 
-            let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
+            let checksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
             manifest.append(FileManifestEntry(
                 relativePath: name,
                 sourceURL: sourceFile,

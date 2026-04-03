@@ -188,7 +188,7 @@ class MemoryOptimizationTests: XCTestCase {
         // Calculate checksum (should use autoreleasepool internally)
         let checksum = try BackupManager.sha256ChecksumStatic(
             for: testFile,
-            shouldCancel: false,
+            shouldCancel: { false },
             isNetworkVolume: false
         )
 
@@ -206,7 +206,7 @@ class MemoryOptimizationTests: XCTestCase {
         // Calculate checksum (should use streaming for large files)
         let checksum = try BackupManager.sha256ChecksumStatic(
             for: testFile,
-            shouldCancel: false,
+            shouldCancel: { false },
             isNetworkVolume: false
         )
 

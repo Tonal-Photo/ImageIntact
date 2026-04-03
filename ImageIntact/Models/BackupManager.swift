@@ -1494,7 +1494,7 @@ extension BackupManager {
     // Static checksum calculation method used by all backup engines
     // Now uses native Swift SHA-256 for maximum reliability with all file types
     nonisolated static func sha256ChecksumStatic(
-        for fileURL: URL, shouldCancel: Bool, isNetworkVolume _: Bool = false
+        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool, isNetworkVolume _: Bool = false
     ) throws -> String {
         // First check if file exists
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -1534,11 +1534,14 @@ extension BackupManager {
 
     // Native Swift checksum using CryptoKit - now with optimized implementation
     private nonisolated static func calculateNativeChecksum(
-        for fileURL: URL, shouldCancel: Bool = false
+        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool = { false }
     ) throws -> String {
         // Use the optimized checksum implementation for better performance
         do {
-            return try OptimizedChecksum.sha256(for: fileURL, shouldCancel: { shouldCancel })
+            return try OptimizedChecksum.sha256(for: fileURL, shouldCancel: shouldCancel)
+        } catch let checksumError as ChecksumError {
+            // Never swallow ChecksumError (includes .cancelled) — rethrow immediately
+            throw checksumError
         } catch {
             // Fall back to size-based checksum if file can't be read
             if let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),

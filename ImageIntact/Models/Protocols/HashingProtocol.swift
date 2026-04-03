@@ -13,7 +13,7 @@ final class RealHasher: HashingProtocol {
   func sha256(for url: URL, shouldCancel: @escaping () -> Bool) async throws -> String {
     // Use the existing static method from BackupManager
     // Note: The static method takes a Bool, not a closure, so we evaluate it once
-    return try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel())
+    return try BackupManager.sha256ChecksumStatic(for: url, shouldCancel: shouldCancel)
   }
 
   func sha256(for data: Data) -> String {

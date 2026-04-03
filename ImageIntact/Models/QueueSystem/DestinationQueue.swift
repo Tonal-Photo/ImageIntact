@@ -13,7 +13,10 @@ actor DestinationQueue {
     private var activeWorkers: Set<UUID> = []
     private var workerTasks: [Task<Void, Never>] = []
     private var isRunning = false
-    private var shouldCancel = false
+    // nonisolated(unsafe) allows @Sendable closures to read this for cancellation checks.
+    // Writes only happen on the actor (stop/cancel methods). A slightly stale read is
+    // acceptable — cancellation is best-effort, not atomic.
+    nonisolated(unsafe) private var shouldCancel = false
 
     // Progress tracking
     private(set) var totalFiles: Int = 0
@@ -380,7 +383,7 @@ actor DestinationQueue {
         ) {
             let existingChecksum = try await fileOperations.calculateChecksum(
                 for: destPath,
-                shouldCancel: { shouldCancel }
+                shouldCancel: { self.shouldCancel }
             )
             return existingChecksum == task.checksum
         }
@@ -588,7 +591,7 @@ actor DestinationQueue {
                 let verifyStartTime = Date()
                 let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
-                    shouldCancel: { shouldCancel }
+                    shouldCancel: { self.shouldCancel }
                 )
 
                 if actualChecksum == task.checksum {

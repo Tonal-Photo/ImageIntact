@@ -160,7 +160,7 @@ class ImageIntactTests: XCTestCase {
         try "Hello, World!".write(to: testFile, atomically: true, encoding: .utf8)
         
         // Calculate checksum using static method
-        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
         
         // Verify it returns a valid SHA256 hash (64 hex characters)
         XCTAssertEqual(checksum.count, 64, "SHA256 should be 64 characters long")
@@ -174,8 +174,8 @@ class ImageIntactTests: XCTestCase {
         try "Consistent content".write(to: testFile, atomically: true, encoding: .utf8)
         
         // Calculate checksum twice
-        let checksum1 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
-        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: false)
+        let checksum1 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
+        let checksum2 = try BackupManager.sha256ChecksumStatic(for: testFile, shouldCancel: { false })
         
         XCTAssertEqual(checksum1, checksum2, "Checksum should be consistent for same file")
     }
@@ -205,8 +205,8 @@ class ImageIntactTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: destFile.path))
         
         // Verify checksums match
-        let sourceChecksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
-        let destChecksum = try BackupManager.sha256ChecksumStatic(for: destFile, shouldCancel: false)
+        let sourceChecksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
+        let destChecksum = try BackupManager.sha256ChecksumStatic(for: destFile, shouldCancel: { false })
         XCTAssertEqual(sourceChecksum, destChecksum, "Checksums should match after copy")
     }
     
@@ -272,8 +272,8 @@ class ImageIntactTests: XCTestCase {
         try "Different content".write(to: destFile, atomically: true, encoding: .utf8)
         
         // Get checksums
-        let sourceChecksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: false)
-        let destChecksum = try BackupManager.sha256ChecksumStatic(for: destFile, shouldCancel: false)
+        let sourceChecksum = try BackupManager.sha256ChecksumStatic(for: sourceFile, shouldCancel: { false })
+        let destChecksum = try BackupManager.sha256ChecksumStatic(for: destFile, shouldCancel: { false })
         
         // Verify checksums are different
         XCTAssertNotEqual(sourceChecksum, destChecksum, "Checksums should be different for different content")
