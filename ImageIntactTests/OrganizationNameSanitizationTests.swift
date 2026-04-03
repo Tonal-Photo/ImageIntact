@@ -71,4 +71,16 @@ final class OrganizationNameSanitizationTests: XCTestCase {
         XCTAssertFalse(backupManager.organizationName.hasPrefix("."),
                        "Leading dots from traversal should be stripped")
     }
+
+    func testColonReplacedWithUnderscore() {
+        backupManager.organizationName = "Photos:2024"
+        XCTAssertEqual(backupManager.organizationName, "Photos_2024",
+                       "Colons should be replaced (macOS Finder path separator)")
+    }
+
+    func testNullBytesStripped() {
+        backupManager.organizationName = "Photos\0Backup"
+        XCTAssertFalse(backupManager.organizationName.contains("\0"),
+                       "Null bytes should be stripped")
+    }
 }

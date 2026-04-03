@@ -180,14 +180,17 @@ class BackupManager {
     // See: GH issue #91, finding #8.
     var organizationName: String = "" {
         didSet {
-            let sanitized = organizationName
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "\\", with: "_")
-                .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-                .prefix(255)
-            let result = String(sanitized)
-            if result != organizationName {
-                organizationName = result
+            let sanitized = String(
+                organizationName
+                    .replacingOccurrences(of: "/", with: "_")
+                    .replacingOccurrences(of: "\\", with: "_")
+                    .replacingOccurrences(of: ":", with: "_")  // macOS Finder path separator
+                    .replacingOccurrences(of: "\0", with: "")  // null bytes
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                    .prefix(255)
+            )
+            if sanitized != organizationName {
+                organizationName = sanitized
             }
         }
     }
@@ -1105,10 +1108,10 @@ class BackupManager {
 
     static func loadBookmark(forKey key: String) -> URL? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return loadBookmark(from: data)
+        return loadBookmark(from: data, forKey: key)
     }
 
-    static func loadBookmark(from data: Data) -> URL? {
+    static func loadBookmark(from data: Data, forKey key: String? = nil) -> URL? {
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: data, options: [.withoutUI, .withSecurityScope], relativeTo: nil,
@@ -1119,20 +1122,20 @@ class BackupManager {
         // Without this, bookmarks degrade silently after system updates or
         // volume renames until they stop resolving entirely.
         // See: GH issue #91, finding #5.
-        if isStale {
+        if isStale, let key = key {
+            // Must access the security-scoped resource before creating new bookmark data
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessing { url.stopAccessingSecurityScopedResource() }
+            }
+
             if let refreshed = try? url.bookmarkData(
                 options: .withSecurityScope,
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             ) {
-                // Find and update the stored bookmark
-                for key in ["sourceBookmark", "dest1Bookmark", "dest2Bookmark", "dest3Bookmark", "dest4Bookmark"] {
-                    if UserDefaults.standard.data(forKey: key) == data {
-                        UserDefaults.standard.set(refreshed, forKey: key)
-                        ApplicationLogger.shared.debug("Refreshed stale bookmark for \(key)", category: .fileSystem)
-                        break
-                    }
-                }
+                UserDefaults.standard.set(refreshed, forKey: key)
+                ApplicationLogger.shared.debug("Refreshed stale bookmark for \(key)", category: .fileSystem)
             }
         }
 
