@@ -150,7 +150,6 @@ struct ContentView: View {
     .background(Color(NSColor.windowBackgroundColor))
     .onAppear {
       setupKeyboardShortcuts()
-      setupMenuCommands()
 
       print("🔐 Using SHA-1 checksums for faster verification")
 
@@ -159,6 +158,50 @@ struct ContentView: View {
 
       // Check for updates
       updateManager.checkForUpdates()
+    }
+    // Menu command handlers — .onReceive with .receive(on:) for main-thread safety.
+    // Previously used NotificationCenter.addObserver in onAppear which leaked observers
+    // on every appearance, causing N simultaneous backups on a single menu click.
+    // See: GH issue #91, finding #13.
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TestUpdateFlow")).receive(on: RunLoop.main)) { _ in
+      Task { await testUpdateFlow() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SelectSourceFolder")).receive(on: RunLoop.main)) { _ in
+      selectSourceFolder()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SelectDestination1")).receive(on: RunLoop.main)) { _ in
+      Task { @MainActor in
+        if !backupManager.destinationURLs.isEmpty { selectDestinationFolder(at: 0) }
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AddDestination")).receive(on: RunLoop.main)) { _ in
+      Task { @MainActor in backupManager.addDestination() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RunBackup")).receive(on: RunLoop.main)) { _ in
+      Task { @MainActor in
+        if backupManager.canRunBackup() { backupManager.runBackup() }
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ClearAll")).receive(on: RunLoop.main)) { _ in
+      Task { @MainActor in backupManager.clearAllSelections() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowDebugLog")).receive(on: RunLoop.main)) { _ in
+      showDebugLog()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ExportDebugLog")).receive(on: RunLoop.main)) { _ in
+      exportDebugLog()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowHelp")).receive(on: RunLoop.main)) { _ in
+      HelpWindowManager.shared.showHelp()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowImageIntactHelp")).receive(on: RunLoop.main)) { _ in
+      HelpWindowManager.shared.showHelp()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CheckForUpdates")).receive(on: RunLoop.main)) { _ in
+      Task { await updateManager.performUpdateCheck(isManual: true) }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("VerifyCoreData")).receive(on: RunLoop.main)) { _ in
+      verifyCoreDataStorage()
     }
     .sheet(isPresented: $showWelcomePopup) {
       WelcomeView(isPresented: $showWelcomePopup)
@@ -265,122 +308,7 @@ struct ContentView: View {
     }
   }
 
-  // MARK: - Menu Commands
-  func setupMenuCommands() {
-    // Debug menu - Test Update Flow
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("TestUpdateFlow"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task {
-        await testUpdateFlow()
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("SelectSourceFolder"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      selectSourceFolder()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("SelectDestination1"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        if !backupManager.destinationURLs.isEmpty {
-          selectDestinationFolder(at: 0)
-        }
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("AddDestination"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        backupManager.addDestination()
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("RunBackup"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        if backupManager.canRunBackup() {
-          backupManager.runBackup()
-        }
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ClearAll"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task { @MainActor in
-        backupManager.clearAllSelections()
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ShowDebugLog"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      showDebugLog()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ExportDebugLog"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      exportDebugLog()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ShowHelp"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      HelpWindowManager.shared.showHelp()
-    }
-
-    // Also listen for the ImageIntact Help command
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("ShowImageIntactHelp"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      HelpWindowManager.shared.showHelp()
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("CheckForUpdates"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      Task {
-        await updateManager.performUpdateCheck(isManual: true)
-      }
-    }
-
-    NotificationCenter.default.addObserver(
-      forName: NSNotification.Name("VerifyCoreData"),
-      object: nil,
-      queue: .main
-    ) { _ in
-      verifyCoreDataStorage()
-    }
-  }
+  // MARK: - Menu Commands (handled via .onReceive modifiers on the view body)
 
   // MARK: - Keyboard Shortcuts
   func setupKeyboardShortcuts() {
