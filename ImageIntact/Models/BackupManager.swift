@@ -186,9 +186,15 @@ class BackupManager {
                 .replacingOccurrences(of: ":", with: "_")  // macOS Finder path separator
                 .replacingOccurrences(of: "\0", with: "")  // null bytes
                 .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
-            // APFS/HFS+ limit is 255 UTF-8 bytes, not characters
-            while cleaned.utf8.count > 255 {
-                cleaned = String(cleaned.dropLast())
+            // APFS/HFS+ limit is 255 UTF-8 bytes, not characters.
+            if cleaned.utf8.count > 255 {
+                var truncated = ""
+                for char in cleaned {
+                    let next = truncated + String(char)
+                    if next.utf8.count > 255 { break }
+                    truncated = next
+                }
+                cleaned = truncated
             }
             let sanitized = cleaned
             if sanitized != organizationName {
