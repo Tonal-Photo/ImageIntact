@@ -413,7 +413,10 @@ class BackupManager {
                 if index < self.destinationKeys.count {
                     UserDefaults.standard.removeObject(forKey: self.destinationKeys[index])
                 }
-                self.destinationItems[index] = DestinationItem(url: nil)
+                // Mutate in place to preserve UUID — replacing the struct
+                // orphans the driveInfo entry keyed by the old UUID.
+                // See: GH issue #91, finding #18.
+                self.destinationItems[index].url = nil
             }
             return
         }

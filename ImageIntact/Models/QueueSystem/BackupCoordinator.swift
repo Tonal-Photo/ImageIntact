@@ -196,28 +196,20 @@ class BackupCoordinator: ObservableObject {
         shouldCancel = true
         statusMessage = "Backup cancelled"
 
-        // Immediately clear all statuses to stop UI updates
-        for (name, _) in destinationStatuses {
-            destinationStatuses[name] = DestinationStatus(
-                name: name,
-                completed: 0,
-                total: 0,
-                speed: "Cancelled",
-                eta: nil,
-                isComplete: true, // Mark as complete to stop monitoring
-                hasFailed: false,
-                isVerifying: false,
-                verifiedCount: 0
-            )
-        }
+        // Don't mutate destinationStatuses here — the monitoring loop checks
+        // shouldCancel and will exit cleanly. Mutating statuses to "complete"
+        // before the loop exits causes UI flicker between "complete" and
+        // "cancelled". See: GH issue #91, finding #10.
 
+        ApplicationLogger.shared.debug("CANCELLING: Stopping all destination queues", category: .backup)
+
+        // Stop all queues. Use a Task because cancelBackup() is called
+        // synchronously from the UI. Don't clear data arrays — the UI may
+        // still need to display what succeeded/failed before cancellation.
+        // Data is cleaned up when startBackup() is called next.
         Task { [weak self] in
             guard let self = self else { return }
 
-            // Log cancellation
-            ApplicationLogger.shared.debug("CANCELLING: Stopping all destination queues immediately", category: .backup)
-
-            // Stop all queues in parallel for faster cancellation
             await withTaskGroup(of: Void.self) { group in
                 for queue in self.destinationQueues {
                     group.addTask {
@@ -227,15 +219,6 @@ class BackupCoordinator: ObservableObject {
             }
 
             ApplicationLogger.shared.debug("All queues stopped", category: .backup)
-
-            // Clear queues to release memory
-            self.destinationQueues.removeAll()
-            // Clear manifest to free memory
-            self.manifest.removeAll(keepingCapacity: false)
-            // Clear all tracking data
-            self.destinationStatuses.removeAll(keepingCapacity: false)
-            self.collectedFailures.removeAll(keepingCapacity: false)
-            // Only set isRunning to false after cleanup
             self.isRunning = false
         }
     }

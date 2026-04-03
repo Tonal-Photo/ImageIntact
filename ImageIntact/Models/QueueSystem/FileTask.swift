@@ -22,7 +22,7 @@ struct FileTask: Identifiable {
   let priority: TaskPriority
   let addedTime: Date = Date()
   var attemptCount: Int = 0
-  var lastError: Error?
+  var lastError: String?  // Sendable-safe error description (Error is not Sendable)
 
   // For priority queue ordering
   var score: Double {
