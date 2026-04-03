@@ -38,10 +38,6 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
     @Published var destinationTotalFiles: [String: Int] = [:] // destinationName -> total files for that destination
     @Published var destinationStates: [String: String] = [:] // destinationName -> "copying" | "verifying" | "complete"
 
-    // MARK: - Thread-safe state
-
-    private let progressState = BackupProgressState()
-
     // MARK: - Initialization
 
     init() {}
@@ -74,11 +70,6 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
         destinationProgress.removeAll()
         destinationTotalFiles.removeAll()
         destinationStates.removeAll()
-
-        // Reset actor state
-        Task { [weak progressState] in
-            await progressState?.resetAll()
-        }
     }
 
     /// Start tracking copy operation
@@ -125,10 +116,6 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
             updateETA()
         }
 
-        // Also update actor state asynchronously
-        Task { [weak progressState] in
-            _ = await progressState?.incrementFileCounter()
-        }
     }
 
     @Published var currentDestinationName = ""
@@ -144,10 +131,6 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
             destinationStates[name] = "pending"
         }
 
-        // Also update actor state
-        Task { [weak progressState] in
-            await progressState?.initializeDestinations(destNames)
-        }
     }
 
     /// Increment progress for a destination
@@ -156,37 +139,17 @@ class ProgressTracker: ObservableObject, ProgressTrackerProtocol {
         let newValue = currentValue + 1
         destinationProgress[destinationName] = newValue
 
-        // Also update actor state asynchronously
-        Task { [weak progressState] in
-            _ = await progressState?.incrementDestinationProgress(for: destinationName)
-        }
-
         return newValue
     }
 
     /// Set destination state
     func setDestinationState(_ state: String, for destination: String) {
         destinationStates[destination] = state
-
-        // Also update actor state asynchronously
-        Task { [weak progressState] in
-            await progressState?.setDestinationState(state, for: destination)
-        }
     }
 
     /// Set destination progress
     func setDestinationProgress(_ progress: Int, for destination: String) {
         destinationProgress[destination] = progress
-
-        // Explicitly trigger SwiftUI update
-        // The @Published property should do this automatically, but being explicit
-        // ensures the notification propagates correctly through the observation chain
-        objectWillChange.send()
-
-        // Also update actor state asynchronously
-        Task { [weak progressState] in
-            await progressState?.setDestinationProgress(progress, for: destination)
-        }
     }
 
     /// Set total files for a destination

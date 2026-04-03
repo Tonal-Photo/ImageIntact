@@ -150,9 +150,6 @@ class BackupManager {
         return progressTracker.overallProgress
     }
 
-    // Thread-safe progress state (still needed for actor isolation)
-    let progressState = BackupProgressState() // Made internal for extension access
-
     // Resource management
     let resourceManager = ResourceManager() // Made internal for extension access
 
@@ -1255,25 +1252,16 @@ class BackupManager {
     @MainActor
     func resetProgress() {
         progressTracker.resetAll()
-
-        // Reset actor state (still needed for legacy code)
-        Task {
-            await progressState.resetAll()
-        }
     }
 
     @MainActor
     func initializeDestinations(_ destinations: [URL]) async {
         progressTracker.initializeDestinations(destinations)
-        await progressState.initializeDestinations(destinations.map { $0.lastPathComponent })
     }
 
     @MainActor
     func incrementDestinationProgress(_ destinationName: String) {
-        Task {
-            _ = progressTracker.incrementDestinationProgress(destinationName)
-            _ = await progressState.incrementDestinationProgress(for: destinationName)
-        }
+        _ = progressTracker.incrementDestinationProgress(destinationName)
     }
 
     // MARK: - File Scanning Methods
