@@ -47,11 +47,20 @@ final class OrganizationNameSanitizationTests: XCTestCase {
                        "Trailing dots should be stripped")
     }
 
-    func testLengthLimitedTo255() {
+    func testLengthLimitedTo255Bytes() {
         let longName = String(repeating: "a", count: 300)
         backupManager.organizationName = longName
-        XCTAssertEqual(backupManager.organizationName.count, 255,
-                       "Name should be truncated to 255 characters (APFS/HFS+ limit)")
+        XCTAssertLessThanOrEqual(backupManager.organizationName.utf8.count, 255,
+                                 "Name should be truncated to 255 UTF-8 bytes (APFS/HFS+ limit)")
+    }
+
+    func testMultiByteCharactersRespectByteLimit() {
+        // Each emoji is 4 UTF-8 bytes, so 64 emojis = 256 bytes (over limit)
+        let emojiName = String(repeating: "📷", count: 64)
+        backupManager.organizationName = emojiName
+        XCTAssertLessThanOrEqual(backupManager.organizationName.utf8.count, 255,
+                                 "Multi-byte characters must respect 255 byte limit, not character limit")
+        XCTAssertGreaterThan(backupManager.organizationName.count, 0, "Should not be empty")
     }
 
     func testNormalNameUnchanged() {

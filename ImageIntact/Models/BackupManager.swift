@@ -180,15 +180,17 @@ class BackupManager {
     // See: GH issue #91, finding #8.
     var organizationName: String = "" {
         didSet {
-            let sanitized = String(
-                organizationName
-                    .replacingOccurrences(of: "/", with: "_")
-                    .replacingOccurrences(of: "\\", with: "_")
-                    .replacingOccurrences(of: ":", with: "_")  // macOS Finder path separator
-                    .replacingOccurrences(of: "\0", with: "")  // null bytes
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-                    .prefix(255)
-            )
+            var cleaned = organizationName
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "\\", with: "_")
+                .replacingOccurrences(of: ":", with: "_")  // macOS Finder path separator
+                .replacingOccurrences(of: "\0", with: "")  // null bytes
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+            // APFS/HFS+ limit is 255 UTF-8 bytes, not characters
+            while cleaned.utf8.count > 255 {
+                cleaned = String(cleaned.dropLast())
+            }
+            let sanitized = cleaned
             if sanitized != organizationName {
                 organizationName = sanitized
             }
@@ -1127,6 +1129,11 @@ class BackupManager {
             let accessing = url.startAccessingSecurityScopedResource()
             defer {
                 if accessing { url.stopAccessingSecurityScopedResource() }
+            }
+
+            guard accessing else {
+                ApplicationLogger.shared.debug("Cannot refresh stale bookmark for \(key): access denied", category: .fileSystem)
+                return url // Still return the URL — it resolved, just can't refresh
             }
 
             if let refreshed = try? url.bookmarkData(
