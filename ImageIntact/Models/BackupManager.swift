@@ -38,8 +38,7 @@ class BackupManager {
 
     // MARK: - Dependencies (for testing)
 
-    let fileSystem: FileSystemProtocol
-    let hasher: HashingProtocol
+    let fileOperations: FileOperationsProtocol
     let notificationService: NotificationProtocol
     let driveAnalyzer: DriveAnalyzerProtocol
     let diskSpaceChecker: DiskSpaceProtocol
@@ -261,16 +260,14 @@ class BackupManager {
     // MARK: - Initialization
 
     init(
-        fileSystem: FileSystemProtocol? = nil,
-        hasher: HashingProtocol? = nil,
+        fileOperations: FileOperationsProtocol? = nil,
         notificationService: NotificationProtocol? = nil,
         driveAnalyzer: DriveAnalyzerProtocol? = nil,
         diskSpaceChecker: DiskSpaceProtocol? = nil,
         duplicateDetector: DuplicateDetectorProtocol? = nil
     ) {
         // Use provided dependencies or create real implementations
-        self.fileSystem = fileSystem ?? RealFileSystem()
-        self.hasher = hasher ?? RealHasher()
+        self.fileOperations = fileOperations ?? DefaultFileOperations()
         self.notificationService = notificationService ?? RealNotificationService()
         self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
         self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
@@ -421,7 +418,7 @@ class BackupManager {
             return
         }
 
-        let isAccessible = fileSystem.fileExists(at: url)
+        let isAccessible = fileOperations.fileExists(at: url)
         if isAccessible {
             if let driveInfo = driveAnalyzer.analyzeDrive(at: url) {
                 await MainActor.run { [weak self] in
@@ -645,7 +642,7 @@ class BackupManager {
                 }
             }
 
-            let isAccessible = self.fileSystem.fileExists(at: url)
+            let isAccessible = self.fileOperations.fileExists(at: url)
 
             // Do an immediate space check if we know the backup size
             if totalBytesToCopy > 0 {
@@ -1200,8 +1197,8 @@ class BackupManager {
         }
         """
 
-        let success = fileSystem.createFile(
-            atPath: tagFile.path,
+        let success = fileOperations.createFile(
+            at: tagFile,
             contents: Data(tagContent.utf8),
             attributes: [.extensionHidden: true]
         )
@@ -1212,13 +1209,13 @@ class BackupManager {
 
     func checkForSourceTag(at url: URL) -> Bool {
         let tagFile = url.appendingPathComponent(".imageintact_source")
-        return fileSystem.fileExists(at: tagFile)
+        return fileOperations.fileExists(at: tagFile)
     }
 
     private func removeSourceTag(at url: URL) {
         let tagFile = url.appendingPathComponent(".imageintact_source")
         do {
-            try fileSystem.removeItem(at: tagFile)
+            try fileOperations.removeItem(at: tagFile)
             logInfo("Removed source tag from: \(url.path)")
         } catch {
             logError("Failed to remove source tag: \(error)")

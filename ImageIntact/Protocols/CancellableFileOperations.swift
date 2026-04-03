@@ -405,4 +405,20 @@ class CancellableFileOperations: FileOperationsProtocol {
   func stopAccessingSecurityScopedResource(for url: URL) {
     url.stopAccessingSecurityScopedResource()
   }
+
+  func moveItem(at source: URL, to destination: URL) throws {
+    try FileManager.default.moveItem(at: source, to: destination)
+  }
+
+  func setAttributes(_ attributes: [FileAttributeKey: Any], at url: URL) throws {
+    try FileManager.default.setAttributes(attributes, ofItemAtPath: url.path)
+  }
+
+  func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?) throws -> [URL] {
+    try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys)
+  }
+
+  func createFile(at url: URL, contents data: Data?, attributes: [FileAttributeKey: Any]?) -> Bool {
+    FileManager.default.createFile(atPath: url.path, contents: data, attributes: attributes)
+  }
 }

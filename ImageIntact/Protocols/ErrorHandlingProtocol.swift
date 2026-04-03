@@ -46,7 +46,7 @@ protocol RetryHandlerProtocol: Actor {
     source: URL,
     destination: URL,
     expectedChecksum: String,
-    hasher: HashingProtocol
+    fileOperations: FileOperationsProtocol
   ) async throws -> Bool
 
   /// Get current retry statistics
@@ -153,7 +153,7 @@ actor MockRetryHandler: RetryHandlerProtocol {
     source: URL,
     destination: URL,
     expectedChecksum: String,
-    hasher: HashingProtocol
+    fileOperations: FileOperationsProtocol
   ) async throws -> Bool {
     verifyCallCount += 1
 

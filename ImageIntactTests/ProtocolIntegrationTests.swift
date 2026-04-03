@@ -136,27 +136,24 @@ class ProtocolIntegrationTests: XCTestCase {
     
     func testBackupManagerWithAllMockProtocols() async {
         // Given
-        let mockFileSystem = MockFileSystem()
-        let mockHasher = MockHasher()
+        let mockFileOps = MockFileOperations()
         let mockNotification = MockNotificationService()
         let mockDriveAnalyzer = MockDriveAnalyzer()
         let mockDiskSpace = MockDiskSpaceChecker()
         let mockDuplicateDetector = MockDuplicateDetector()
-        
+
         // When
         let backupManager = BackupManager(
-            fileSystem: mockFileSystem,
-            hasher: mockHasher,
+            fileOperations: mockFileOps,
             notificationService: mockNotification,
             driveAnalyzer: mockDriveAnalyzer,
             diskSpaceChecker: mockDiskSpace,
             duplicateDetector: mockDuplicateDetector
         )
-        
+
         // Then
         XCTAssertNotNil(backupManager)
-        XCTAssertTrue(backupManager.fileSystem is MockFileSystem)
-        XCTAssertTrue(backupManager.hasher is MockHasher)
+        XCTAssertTrue(backupManager.fileOperations is MockFileOperations)
         XCTAssertTrue(backupManager.notificationService is MockNotificationService)
         XCTAssertTrue(backupManager.driveAnalyzer is MockDriveAnalyzer)
         XCTAssertTrue(backupManager.diskSpaceChecker is MockDiskSpaceChecker)
