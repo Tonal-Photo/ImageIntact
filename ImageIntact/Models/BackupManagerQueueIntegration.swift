@@ -320,12 +320,6 @@ extension BackupManager {
         if state == "verifying" {
             verifyingDestinations.append(name)
         }
-
-        // Update actor state for consistency
-        Task {
-            await progressState.setDestinationProgress(progress, for: name)
-            await progressState.setDestinationState(state, for: name)
-        }
     }
 
     /// Determine progress and state for a destination

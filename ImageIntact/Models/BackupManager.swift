@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import CryptoKit
 import Darwin
 import SwiftUI
@@ -78,10 +77,6 @@ class BackupManager {
     // Statistics tracking for completion report
     let statistics = BackupStatistics()
 
-    // Combine subscriptions for bridging ProgressTracker changes
-    private var cancellables = Set<AnyCancellable>()
-    private var progressUpdateTrigger = 0 // Trigger to force @Observable updates
-
     // Expose progress properties for compatibility
     var totalFiles: Int {
         get { progressTracker.totalFiles }
@@ -130,28 +125,21 @@ class BackupManager {
 
     var estimatedSecondsRemaining: TimeInterval? { progressTracker.estimatedSecondsRemaining }
     var destinationProgress: [String: Int] {
-        _ = progressUpdateTrigger // Force @Observable to track this
         return progressTracker.destinationProgress
     }
 
     var destinationStates: [String: String] {
-        _ = progressUpdateTrigger // Force @Observable to track this
         return progressTracker.destinationStates
     }
 
     var currentPhase: BackupPhase = .idle
     var phaseProgress: Double {
-        _ = progressUpdateTrigger // Force @Observable to track this
         return progressTracker.phaseProgress
     }
 
     var overallProgress: Double {
-        _ = progressUpdateTrigger // Force @Observable to track this
         return progressTracker.overallProgress
     }
-
-    // Thread-safe progress state (still needed for actor isolation)
-    let progressState = BackupProgressState() // Made internal for extension access
 
     // Resource management
     let resourceManager = ResourceManager() // Made internal for extension access
@@ -273,9 +261,6 @@ class BackupManager {
         self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
 
-        // Set up Observable bridge
-        setupProgressTrackerBridge()
-
         // Initialize subdirectory setting from preference
         includeSubdirectories = PreferencesManager.shared.includeSubdirectories
 
@@ -308,17 +293,6 @@ class BackupManager {
     }
 
     // MARK: - Initialization Helpers
-
-    /// Set up the bridge between ProgressTracker (ObservableObject) and @Observable
-    private func setupProgressTrackerBridge() {
-        progressTracker.objectWillChange.sink { [weak self] _ in
-            guard let self = self else { return }
-            guard self.isProcessing else { return }
-            Task { @MainActor in
-                self.progressUpdateTrigger += 1
-            }
-        }.store(in: &cancellables)
-    }
 
     /// Initialize the file type filter from user preferences
     private func initializeFileTypeFilter() {
@@ -1255,25 +1229,16 @@ class BackupManager {
     @MainActor
     func resetProgress() {
         progressTracker.resetAll()
-
-        // Reset actor state (still needed for legacy code)
-        Task {
-            await progressState.resetAll()
-        }
     }
 
     @MainActor
     func initializeDestinations(_ destinations: [URL]) async {
         progressTracker.initializeDestinations(destinations)
-        await progressState.initializeDestinations(destinations.map { $0.lastPathComponent })
     }
 
     @MainActor
     func incrementDestinationProgress(_ destinationName: String) {
-        Task {
-            _ = progressTracker.incrementDestinationProgress(destinationName)
-            _ = await progressState.incrementDestinationProgress(for: destinationName)
-        }
+        _ = progressTracker.incrementDestinationProgress(destinationName)
     }
 
     // MARK: - File Scanning Methods
