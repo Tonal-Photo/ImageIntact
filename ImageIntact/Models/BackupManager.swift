@@ -224,10 +224,7 @@ class BackupManager {
         let estimatedTimePerDestination: String
     }
 
-    // MARK: - Constants
-
-    let sourceKey = "sourceBookmark"
-    let destinationKeys = ["dest1Bookmark", "dest2Bookmark", "dest3Bookmark", "dest4Bookmark"]
+    // MARK: - Constants (bookmark keys live in BookmarkManager)
 
     struct LogEntry {
         let timestamp: Date
@@ -311,7 +308,7 @@ class BackupManager {
 
     /// Load destinations from saved session and analyze drives
     private func loadDestinationsFromSession() {
-        let loadedURLs = BackupManager.loadDestinationBookmarks()
+        let loadedURLs = BookmarkManager.loadDestinationBookmarks()
         destinationURLs = loadedURLs
         destinationItems = loadedURLs.map { DestinationItem(url: $0) }
 
@@ -334,7 +331,7 @@ class BackupManager {
 
     /// Load source URL from saved bookmark and trigger scan
     private func loadSourceFromSession() {
-        guard let savedSourceURL = BackupManager.loadBookmark(forKey: sourceKey) else { return }
+        guard let savedSourceURL = BookmarkManager.loadBookmark(forKey: BookmarkManager.sourceKey) else { return }
 
         let canAccess = savedSourceURL.startAccessingSecurityScopedResource()
         if canAccess {
@@ -349,7 +346,7 @@ class BackupManager {
             }
         } else {
             logWarning("Saved source bookmark is invalid, clearing...")
-            UserDefaults.standard.removeObject(forKey: sourceKey)
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         }
     }
 
@@ -381,8 +378,8 @@ class BackupManager {
                 if index < self.destinationURLs.count {
                     self.destinationURLs[index] = nil
                 }
-                if index < self.destinationKeys.count {
-                    UserDefaults.standard.removeObject(forKey: self.destinationKeys[index])
+                if index < BookmarkManager.destinationKeys.count {
+                    UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[index])
                 }
                 // Mutate in place to preserve UUID — replacing the struct
                 // orphans the driveInfo entry keyed by the old UUID.
@@ -432,11 +429,11 @@ class BackupManager {
 
     func clearAllSelections() {
         sourceURL = nil
-        UserDefaults.standard.removeObject(forKey: sourceKey)
+        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         for (i, _) in destinationURLs.enumerated() {
             destinationURLs[i] = nil
-            if i < destinationKeys.count {
-                UserDefaults.standard.removeObject(forKey: destinationKeys[i])
+            if i < BookmarkManager.destinationKeys.count {
+                UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
             }
         }
         // Clear all drive info
@@ -465,7 +462,7 @@ class BackupManager {
             sourceURL = nil
             sourceFileTypes = [:]
             scanProgress = ""
-            UserDefaults.standard.removeObject(forKey: sourceKey)
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         } catch {
             logWarning("Failed to move source to Trash: \(error.localizedDescription)")
             trashSourceResult = "Failed to move to Trash: \(error.localizedDescription)"
@@ -482,7 +479,7 @@ class BackupManager {
 
     func setSource(_ url: URL) {
         sourceURL = url
-        saveBookmark(url: url, key: sourceKey)
+        BookmarkManager.saveBookmark(url: url, key: BookmarkManager.sourceKey)
         tagSourceFolder(at: url)
 
         // Clear previous scan results
@@ -598,8 +595,8 @@ class BackupManager {
 
         destinationItems[index].url = url
         destinationURLs[index] = url
-        if index < destinationKeys.count {
-            saveBookmark(url: url, key: destinationKeys[index])
+        if index < BookmarkManager.destinationKeys.count {
+            BookmarkManager.saveBookmark(url: url, key: BookmarkManager.destinationKeys[index])
         }
 
         // Clear old drive info immediately when destination changes
@@ -683,8 +680,8 @@ class BackupManager {
         destinationDriveInfo.removeValue(forKey: itemID)
 
         destinationURLs[index] = nil
-        if index < destinationKeys.count {
-            UserDefaults.standard.removeObject(forKey: destinationKeys[index])
+        if index < BookmarkManager.destinationKeys.count {
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[index])
         }
     }
 
@@ -699,7 +696,7 @@ class BackupManager {
             destinationItems[0].url = nil
             destinationURLs = [nil]
             destinationDriveInfo.removeValue(forKey: itemID)
-            UserDefaults.standard.removeObject(forKey: destinationKeys[0])
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[0])
             return
         }
 
@@ -716,18 +713,18 @@ class BackupManager {
             newURLs.append(item.url)
 
             // Update UserDefaults - shift all bookmarks down
-            if i < destinationKeys.count {
+            if i < BookmarkManager.destinationKeys.count {
                 if let url = item.url {
-                    saveBookmark(url: url, key: destinationKeys[i])
+                    BookmarkManager.saveBookmark(url: url, key: BookmarkManager.destinationKeys[i])
                 } else {
-                    UserDefaults.standard.removeObject(forKey: destinationKeys[i])
+                    UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
                 }
             }
         }
 
         // Clear any remaining keys
-        for i in destinationItems.count ..< destinationKeys.count {
-            UserDefaults.standard.removeObject(forKey: destinationKeys[i])
+        for i in destinationItems.count ..< BookmarkManager.destinationKeys.count {
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
         }
 
         // Update the URLs array
@@ -1067,100 +1064,6 @@ class BackupManager {
 
     // MARK: - Private Methods
 
-    private func saveBookmark(url: URL, key: String) {
-        do {
-            // Start accessing the security-scoped resource before creating bookmark
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessing {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            let bookmark = try url.bookmarkData(
-                options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil
-            )
-            UserDefaults.standard.set(bookmark, forKey: key)
-            // UserDefaults auto-saves; synchronize() is a deprecated no-op
-            logInfo("Successfully saved bookmark for \(key): \(url.lastPathComponent)")
-        } catch {
-            logError("Failed to save bookmark for \(key): \(error)")
-        }
-    }
-
-    static func loadBookmark(forKey key: String) -> URL? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return loadBookmark(from: data, forKey: key)
-    }
-
-    static func loadBookmark(from data: Data, forKey key: String? = nil) -> URL? {
-        var isStale = false
-        guard let url = try? URL(
-            resolvingBookmarkData: data, options: [.withoutUI, .withSecurityScope], relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ) else { return nil }
-
-        // Re-create stale bookmarks while we still have access.
-        // Without this, bookmarks degrade silently after system updates or
-        // volume renames until they stop resolving entirely.
-        // See: GH issue #91, finding #5.
-        if isStale, let key = key {
-            // Must access the security-scoped resource before creating new bookmark data
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessing { url.stopAccessingSecurityScopedResource() }
-            }
-
-            guard accessing else {
-                ApplicationLogger.shared.debug("Cannot refresh stale bookmark for \(key): access denied", category: .fileSystem)
-                return url // Still return the URL — it resolved, just can't refresh
-            }
-
-            if let refreshed = try? url.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            ) {
-                UserDefaults.standard.set(refreshed, forKey: key)
-                ApplicationLogger.shared.debug("Refreshed stale bookmark for \(key)", category: .fileSystem)
-            }
-        }
-
-        return url
-    }
-
-    static func createBookmark(for url: URL) -> Data? {
-        return try? url.bookmarkData(
-            options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
-            includingResourceValuesForKeys: nil, relativeTo: nil
-        )
-    }
-
-    static func loadDestinationBookmarks() -> [URL?] {
-        let keys = ["dest1Bookmark", "dest2Bookmark", "dest3Bookmark", "dest4Bookmark"]
-        var urls: [URL?] = []
-
-        // Load bookmarks sequentially until we hit a gap
-        for key in keys {
-            if let url = loadBookmark(forKey: key) {
-                logInfo("Loaded destination from \(key): \(url.lastPathComponent)")
-                urls.append(url)
-            } else {
-                logInfo("No bookmark found for \(key)")
-                // Stop at first missing bookmark to avoid gaps
-                break
-            }
-        }
-
-        // Always show at least one slot
-        if urls.isEmpty {
-            urls = [nil]
-        }
-
-        logInfo("Total destinations loaded: \(urls.count)")
-        return urls
-    }
-
     private func tagSourceFolder(at url: URL) {
         let tagFile = url.appendingPathComponent(".imageintact_source")
         let tagContent = """
@@ -1267,7 +1170,7 @@ class BackupManager {
             // Clear the invalid bookmark
             if sourceURL == url {
                 sourceURL = nil
-                UserDefaults.standard.removeObject(forKey: sourceKey)
+                UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
             }
             return
         }

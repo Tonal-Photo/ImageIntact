@@ -86,7 +86,7 @@ class ImageIntactTests: XCTestCase {
     // MARK: - Bookmark Tests
     
     func testLoadBookmarkWithNoSavedData() {
-        let bookmark = BackupManager.loadBookmark(forKey: "nonexistent")
+        let bookmark = BookmarkManager.loadBookmark(forKey: "nonexistent")
         XCTAssertNil(bookmark, "Should return nil for non-existent bookmark")
     }
     
@@ -102,14 +102,14 @@ class ImageIntactTests: XCTestCase {
         UserDefaults.standard.set(bookmarkData, forKey: "testBookmark")
         
         // Load bookmark
-        let loadedURL = BackupManager.loadBookmark(forKey: "testBookmark")
+        let loadedURL = BookmarkManager.loadBookmark(forKey: "testBookmark")
         XCTAssertNotNil(loadedURL, "Should successfully load saved bookmark")
         // Check that the loaded path contains "TestBookmark" (not exact match due to unique naming)
         XCTAssertTrue(loadedURL?.lastPathComponent.contains("TestBookmark") ?? false, "Loaded URL should contain TestBookmark")
     }
     
     func testLoadDestinationBookmarksEmpty() {
-        let destinations = BackupManager.loadDestinationBookmarks()
+        let destinations = BookmarkManager.loadDestinationBookmarks()
         XCTAssertEqual(destinations.count, 1, "Should return array with one nil element when no bookmarks exist")
         XCTAssertNil(destinations[0], "First element should be nil")
     }
@@ -126,7 +126,7 @@ class ImageIntactTests: XCTestCase {
         UserDefaults.standard.set(bookmark2, forKey: "dest2Bookmark")
         
         // Load destinations
-        let destinations = BackupManager.loadDestinationBookmarks()
+        let destinations = BookmarkManager.loadDestinationBookmarks()
         XCTAssertEqual(destinations.count, 2, "Should load exactly the saved destinations")
         // Check that URLs contain the expected names
         XCTAssertTrue(destinations[0]?.lastPathComponent.contains("Dest1") ?? false, "First destination should contain Dest1")
@@ -145,7 +145,7 @@ class ImageIntactTests: XCTestCase {
         UserDefaults.standard.set(bookmark3, forKey: "dest3Bookmark")
         
         // Load destinations - should only load first one
-        let destinations = BackupManager.loadDestinationBookmarks()
+        let destinations = BookmarkManager.loadDestinationBookmarks()
         XCTAssertEqual(destinations.count, 1, "Should stop loading at first missing bookmark")
         // Check that the URL contains "Dest1"
         XCTAssertTrue(destinations[0]?.lastPathComponent.contains("Dest1") ?? false, "First destination should contain Dest1")
