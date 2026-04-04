@@ -140,10 +140,19 @@ class BackupManager {
 
     // Source-related properties are now on sourceManager
     // Convenience accessors for code that still reads these directly
-    var sourceURL: URL? { sourceManager.sourceURL }
-    var sourceFileTypes: [ImageFileType: Int] { sourceManager.sourceFileTypes }
+    var sourceURL: URL? {
+        get { sourceManager.sourceURL }
+        set { sourceManager.sourceURL = newValue }
+    }
+    var sourceFileTypes: [ImageFileType: Int] {
+        get { sourceManager.sourceFileTypes }
+        set { sourceManager.sourceFileTypes = newValue }
+    }
     var isScanning: Bool { sourceManager.isScanning }
-    var scanProgress: String { sourceManager.scanProgress }
+    var scanProgress: String {
+        get { sourceManager.scanProgress }
+        set { sourceManager.scanProgress = newValue }
+    }
     var sourceTotalBytes: Int64 { sourceManager.sourceTotalBytes }
     var fileTypeFilter: FileTypeFilter {
         get { sourceManager.fileTypeFilter }
