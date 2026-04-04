@@ -331,7 +331,7 @@ class BackupPresetManager: ObservableObject {
   func applyPreset(_ preset: BackupPreset, to backupManager: BackupManager) {
     // Apply source bookmark if available (for custom presets)
     if let sourceBookmark = preset.sourceBookmark {
-      if let url = BackupManager.loadBookmark(from: sourceBookmark) {
+      if let url = BookmarkManager.loadBookmark(from: sourceBookmark) {
         backupManager.setSource(url)
         ApplicationLogger.shared.info(
           "Restored source from preset: \(url.lastPathComponent)", category: .app)
@@ -345,7 +345,7 @@ class BackupPresetManager: ObservableObject {
     if !preset.destinationBookmarks.isEmpty {
       for (index, bookmarkData) in preset.destinationBookmarks.enumerated() {
         if let data = bookmarkData,
-          let url = BackupManager.loadBookmark(from: data)
+          let url = BookmarkManager.loadBookmark(from: data)
         {
           if index == 0 {
             // First destination - update the existing one
@@ -417,7 +417,7 @@ class BackupPresetManager: ObservableObject {
 
       // Check source bookmark
       if let sourceBookmark = preset.sourceBookmark,
-        let savedURL = BackupManager.loadBookmark(from: sourceBookmark),
+        let savedURL = BookmarkManager.loadBookmark(from: sourceBookmark),
         let currentURL = backupManager.sourceURL
       {
         if savedURL.path != currentURL.path {
@@ -433,7 +433,7 @@ class BackupPresetManager: ObservableObject {
       for (index, item) in activeDestinations.enumerated() {
         if index < preset.destinationBookmarks.count {
           if let bookmarkData = preset.destinationBookmarks[index],
-            let savedURL = BackupManager.loadBookmark(from: bookmarkData),
+            let savedURL = BookmarkManager.loadBookmark(from: bookmarkData),
             let currentURL = item.url
           {
             if savedURL.path != currentURL.path {
@@ -461,13 +461,13 @@ class BackupPresetManager: ObservableObject {
     // Create bookmarks for source and destinations
     var sourceBookmark: Data? = nil
     if let sourceURL = backupManager.sourceURL {
-      sourceBookmark = BackupManager.createBookmark(for: sourceURL)
+      sourceBookmark = BookmarkManager.createBookmark(for: sourceURL)
     }
 
     var destinationBookmarks: [Data?] = []
     for item in backupManager.destinationItems {
       if let url = item.url {
-        destinationBookmarks.append(BackupManager.createBookmark(for: url))
+        destinationBookmarks.append(BookmarkManager.createBookmark(for: url))
       } else {
         destinationBookmarks.append(nil)
       }
