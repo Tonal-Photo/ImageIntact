@@ -464,14 +464,14 @@ extension BackupManager {
 
         // Debug logging to diagnose the issue
         ApplicationLogger.shared.debug(
-            "Statistics Debug - sourceTotalBytes: \(progressTracker.sourceTotalBytes), totalBytesCopied: \(progressTracker.totalBytesCopied), totalBytesToCopy: \(progressTracker.totalBytesToCopy), copySpeed: \(progressTracker.copySpeed)",
+            "Statistics Debug - sourceTotalBytes: \(sourceManager.sourceTotalBytes), totalBytesCopied: \(progressTracker.totalBytesCopied), totalBytesToCopy: \(progressTracker.totalBytesToCopy), copySpeed: \(progressTracker.copySpeed)",
             category: .backup
         )
 
         // Fix: Use the actual total bytes from source, not the copied bytes which may be 0
         statistics.totalBytesProcessed =
-            progressTracker.sourceTotalBytes > 0
-                ? progressTracker.sourceTotalBytes : progressTracker.totalBytesCopied
+            sourceManager.sourceTotalBytes > 0
+                ? sourceManager.sourceTotalBytes : progressTracker.totalBytesCopied
 
         ApplicationLogger.shared.debug(
             "Statistics - totalBytesProcessed: \(statistics.totalBytesProcessed), duration: \(statistics.duration ?? 0), averageThroughput: \(statistics.averageThroughput)",
@@ -493,8 +493,8 @@ extension BackupManager {
             let destFailures = failures.filter { $0.destination.contains(destName) }.count
             // Calculate actual bytes written per destination (divide by number of destinations)
             let bytesPerDest =
-                progressTracker.sourceTotalBytes > 0
-                    ? progressTracker.sourceTotalBytes
+                sourceManager.sourceTotalBytes > 0
+                    ? sourceManager.sourceTotalBytes
                     : (progressTracker.totalBytesCopied / Int64(max(1, destinationItems.count)))
             statistics.destinationStats[destName] = DestinationStatistics(
                 destinationName: destName,

@@ -42,23 +42,11 @@ class BackupManager {
     let driveAnalyzer: DriveAnalyzerProtocol
     let diskSpaceChecker: DiskSpaceProtocol
 
-    // MARK: - Published Properties
+    // MARK: - Source Management (delegated)
 
-    var sourceURL: URL?
-    var includeSubdirectories: Bool = true {
-        didSet {
-            // Persist the preference
-            PreferencesManager.shared.includeSubdirectories = includeSubdirectories
-            // Trigger rescan if source is set
-            if let source = sourceURL, oldValue != includeSubdirectories {
-                if !BackupManager.isRunningTests {
-                    Task { [weak self] in
-                        await self?.scanSourceFolder(source)
-                    }
-                }
-            }
-        }
-    }
+    let sourceManager: SourceManager
+
+    // MARK: - Published Properties
 
     var destinationURLs: [URL?] = []
     var destinationItems: [DestinationItem] = []
@@ -150,16 +138,25 @@ class BackupManager {
     // Destination drive analysis
     var destinationDriveInfo: [UUID: DriveAnalyzer.DriveInfo] = [:] // Use UUID instead of index to avoid mismatch
 
-    // File type scanning
-    var sourceFileTypes: [ImageFileType: Int] = [:]
-    var isScanning = false
-    var scanProgress: String = ""
-    var sourceTotalBytes: Int64 { progressTracker.sourceTotalBytes } // Total bytes from scan
-    private let fileScanner = ImageFileScanner()
-
-    // Backup options
-    var excludeCacheFiles = true // Default to excluding cache files
-    var fileTypeFilter = FileTypeFilter() // Default to no filtering (all files)
+    // Source-related properties are now on sourceManager
+    // Convenience accessors for code that still reads these directly
+    var sourceURL: URL? { sourceManager.sourceURL }
+    var sourceFileTypes: [ImageFileType: Int] { sourceManager.sourceFileTypes }
+    var isScanning: Bool { sourceManager.isScanning }
+    var scanProgress: String { sourceManager.scanProgress }
+    var sourceTotalBytes: Int64 { sourceManager.sourceTotalBytes }
+    var fileTypeFilter: FileTypeFilter {
+        get { sourceManager.fileTypeFilter }
+        set { sourceManager.fileTypeFilter = newValue }
+    }
+    var includeSubdirectories: Bool {
+        get { sourceManager.includeSubdirectories }
+        set { sourceManager.includeSubdirectories = newValue }
+    }
+    var excludeCacheFiles: Bool {
+        get { sourceManager.excludeCacheFiles }
+        set { sourceManager.excludeCacheFiles = newValue }
+    }
 
     // Backup organization
     // Custom folder name for organizing backups.
@@ -252,14 +249,15 @@ class BackupManager {
         duplicateDetector: DuplicateDetectorProtocol? = nil
     ) {
         // Use provided dependencies or create real implementations
-        self.fileOperations = fileOperations ?? DefaultFileOperations()
+        let resolvedFileOps = fileOperations ?? DefaultFileOperations()
+        self.fileOperations = resolvedFileOps
         self.notificationService = notificationService ?? RealNotificationService()
         self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
         self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
 
-        // Initialize subdirectory setting from preference
-        includeSubdirectories = PreferencesManager.shared.includeSubdirectories
+        // Create source manager with shared file operations
+        self.sourceManager = SourceManager(fileOperations: resolvedFileOps)
 
         // Initialize organization name from last used (if user previously customized)
         if let lastUsedName = PreferencesManager.shared.lastUsedOrganizationFolderName {
@@ -272,7 +270,7 @@ class BackupManager {
             return
         }
 
-        // Initialize file type filter
+        // Initialize file type filter on source manager
         initializeFileTypeFilter()
 
         // Restore last session if enabled
@@ -296,13 +294,13 @@ class BackupManager {
         let filterPref = PreferencesManager.shared.defaultFileTypeFilter
         switch filterPref {
         case "photos":
-            fileTypeFilter = .photosOnly
+            sourceManager.fileTypeFilter = .photosOnly
         case "raw":
-            fileTypeFilter = .rawOnly
+            sourceManager.fileTypeFilter = .rawOnly
         case "videos":
-            fileTypeFilter = .videosOnly
+            sourceManager.fileTypeFilter = .videosOnly
         default:
-            fileTypeFilter = FileTypeFilter()
+            sourceManager.fileTypeFilter = FileTypeFilter()
         }
     }
 
@@ -336,12 +334,12 @@ class BackupManager {
         let canAccess = savedSourceURL.startAccessingSecurityScopedResource()
         if canAccess {
             savedSourceURL.stopAccessingSecurityScopedResource()
-            sourceURL = savedSourceURL
+            sourceManager.sourceURL = savedSourceURL
             logInfo("Loaded source: \(savedSourceURL.lastPathComponent)")
             // Skip async scan in tests to avoid race conditions with tearDown
             if !BackupManager.isRunningTests {
                 Task {
-                    await scanSourceFolder(savedSourceURL)
+                    await sourceManager.scanSourceFolder(savedSourceURL)
                 }
             }
         } else {
@@ -428,7 +426,9 @@ class BackupManager {
     // MARK: - Public Methods
 
     func clearAllSelections() {
-        sourceURL = nil
+        sourceManager.sourceURL = nil
+        sourceManager.sourceFileTypes = [:]
+        sourceManager.scanProgress = ""
         UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         for (i, _) in destinationURLs.enumerated() {
             destinationURLs[i] = nil
@@ -459,9 +459,9 @@ class BackupManager {
             trashSourceResult = "Moved \"\(name)\" to Trash"
 
             // Clear the source selection since the folder no longer exists
-            sourceURL = nil
-            sourceFileTypes = [:]
-            scanProgress = ""
+            sourceManager.sourceURL = nil
+            sourceManager.sourceFileTypes = [:]
+            sourceManager.scanProgress = ""
             UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         } catch {
             logWarning("Failed to move source to Trash: \(error.localizedDescription)")
@@ -478,22 +478,22 @@ class BackupManager {
     }
 
     func setSource(_ url: URL) {
-        sourceURL = url
+        sourceManager.sourceURL = url
         BookmarkManager.saveBookmark(url: url, key: BookmarkManager.sourceKey)
-        tagSourceFolder(at: url)
+        sourceManager.tagSourceFolder(at: url)
 
         // Clear previous scan results
-        sourceFileTypes = [:]
-        scanProgress = ""
-        progressTracker.sourceTotalBytes = 0
+        sourceManager.sourceFileTypes = [:]
+        sourceManager.scanProgress = ""
+        sourceManager.sourceTotalBytes = 0
 
-        // Auto-generate organization name from source path
+        // Auto-generate organization name from source path (stays on BackupManager - cross-concern)
         organizationName = extractSmartFolderName(from: url)
 
         // Start background scan for image files (skip in tests to avoid race conditions)
         if !BackupManager.isRunningTests {
             Task { [weak self] in
-                await self?.scanSourceFolder(url)
+                await self?.sourceManager.scanSourceFolder(url)
             }
         }
     }
@@ -571,7 +571,7 @@ class BackupManager {
         }
 
         // Check if this is a source folder
-        if checkForSourceTag(at: url) {
+        if sourceManager.checkForSourceTag(at: url) {
             if !BackupManager.isRunningTests {
                 // Show choice dialog
                 let alert = NSAlert()
@@ -590,7 +590,7 @@ class BackupManager {
             }
 
             // Remove source tag and proceed (in tests, always proceed)
-            removeSourceTag(at: url)
+            sourceManager.removeSourceTag(at: url)
         }
 
         destinationItems[index].url = url
@@ -741,7 +741,7 @@ class BackupManager {
         // Load test source path
         if let testSourcePath = UserDefaults.standard.string(forKey: "TestSourcePath") {
             let sourceURL = URL(fileURLWithPath: testSourcePath)
-            self.sourceURL = sourceURL
+            self.sourceManager.sourceURL = sourceURL
             organizationName = extractSmartFolderName(from: sourceURL)
             logInfo("UI Test: Set source to \(testSourcePath)")
         }
@@ -1062,41 +1062,10 @@ class BackupManager {
         logInfo("Debug log: \(failedFiles.count) failed files")
     }
 
-    // MARK: - Private Methods
-
-    private func tagSourceFolder(at url: URL) {
-        let tagFile = url.appendingPathComponent(".imageintact_source")
-        let tagContent = """
-        {
-            "source_id": "\(UUID().uuidString)",
-            "tagged_date": "\(Date().ISO8601Format())",
-            "app_version": "1.1.0"
-        }
-        """
-
-        let success = fileOperations.createFile(
-            at: tagFile,
-            contents: Data(tagContent.utf8),
-            attributes: [.extensionHidden: true]
-        )
-        if !success {
-            logError("Failed to tag source folder")
-        }
-    }
+    // MARK: - Source Tag Delegation
 
     func checkForSourceTag(at url: URL) -> Bool {
-        let tagFile = url.appendingPathComponent(".imageintact_source")
-        return fileOperations.fileExists(at: tagFile)
-    }
-
-    private func removeSourceTag(at url: URL) {
-        let tagFile = url.appendingPathComponent(".imageintact_source")
-        do {
-            try fileOperations.removeItem(at: tagFile)
-            logInfo("Removed source tag from: \(url.path)")
-        } catch {
-            logError("Failed to remove source tag: \(error)")
-        }
+        sourceManager.checkForSourceTag(at: url)
     }
 
     // MARK: - Simple Progress Updates
@@ -1144,105 +1113,14 @@ class BackupManager {
         _ = progressTracker.incrementDestinationProgress(destinationName)
     }
 
-    // MARK: - File Scanning Methods
-
-    @MainActor
-    func scanSourceFolder(_ url: URL) async {
-        isScanning = true
-        scanProgress = "Scanning for image files..."
-        sourceFileTypes = [:]
-        progressTracker.sourceTotalBytes = 0
-
-        // Access the security-scoped resource
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessing {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        // Check if we actually got access
-        if !accessing {
-            scanProgress = "⚠️ Cannot access folder - permission denied"
-            isScanning = false
-            logWarning("Failed to access security-scoped resource for: \(url.lastPathComponent)")
-
-            // Clear the invalid bookmark
-            if sourceURL == url {
-                sourceURL = nil
-                UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-            }
-            return
-        }
-
-        do {
-            let (results, totalBytes) = try await fileScanner.scanWithSize(directory: url) { progress in
-                Task { @MainActor in
-                    if progress.scanned % 100 == 0 {
-                        self.scanProgress = "Scanned \(progress.scanned) files..."
-                    }
-                }
-            }
-
-            await MainActor.run {
-                self.sourceFileTypes = results
-                self.progressTracker.sourceTotalBytes = totalBytes
-                self.scanProgress = ImageFileScanner.formatScanResults(results, groupRaw: false)
-                self.isScanning = false
-            }
-        } catch {
-            await MainActor.run {
-                self.scanProgress = "Scan failed: \(error.localizedDescription)"
-                self.isScanning = false
-            }
-        }
-    }
+    // MARK: - File Scanning (delegated to SourceManager)
 
     func getFormattedFileTypeSummary(groupRaw: Bool = false) -> String {
-        if sourceFileTypes.isEmpty {
-            return isScanning ? scanProgress : ""
-        }
-
-        var result = ImageFileScanner.formatScanResults(sourceFileTypes, groupRaw: groupRaw)
-
-        // Add total size if we have it from the scan
-        if sourceTotalBytes > 0 {
-            // Use 1000^3 to match macOS Finder display (metric GB)
-            let gb = Double(sourceTotalBytes) / (1000 * 1000 * 1000)
-            result += String(format: " • %.1f GB", gb)
-        }
-
-        return result
+        sourceManager.getFormattedFileTypeSummary(groupRaw: groupRaw)
     }
 
-    /// Get a summary of what files will be copied with the current filter
     func getFilteredFilesSummary() -> (summary: String, willCopy: Int, total: Int)? {
-        guard !sourceFileTypes.isEmpty else { return nil }
-
-        var filteredTypes: [ImageFileType: Int] = [:]
-        var totalFiltered = 0
-        var totalFiles = 0
-
-        // Calculate totals
-        for (type, count) in sourceFileTypes {
-            totalFiles += count
-
-            // Check if this type will be included with current filter
-            if fileTypeFilter.shouldInclude(fileType: type) {
-                filteredTypes[type] = count
-                totalFiltered += count
-            }
-        }
-
-        // If no filter is active, all files will be copied
-        if fileTypeFilter.includedExtensions.isEmpty {
-            return (getFormattedFileTypeSummary(), totalFiles, totalFiles)
-        }
-
-        // Format the filtered summary
-        let filteredSummary = ImageFileScanner.formatScanResults(filteredTypes, groupRaw: false)
-
-        return (filteredSummary, totalFiltered, totalFiles)
+        sourceManager.getFilteredFilesSummary()
     }
 
     func getDestinationEstimate(at index: Int) -> String? {
