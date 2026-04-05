@@ -171,21 +171,22 @@ class DestinationManager {
             BookmarkManager.saveBookmark(url: url, key: BookmarkManager.destinationKeys[index])
         }
 
-        // Async drive analysis + disk space check
+        // Async drive analysis + disk space check (detached to avoid main thread I/O)
         let itemID = newItem.id
-        Task { [weak self] in
-            guard let self = self else { return }
-
+        let fileOps = fileOperations
+        let analyzer = driveAnalyzer
+        let checker = diskSpaceChecker
+        Task.detached { [weak self] in
             let accessing = url.startAccessingSecurityScopedResource()
             defer {
                 if accessing { url.stopAccessingSecurityScopedResource() }
             }
 
-            let isAccessible = self.fileOperations.fileExists(at: url)
+            let isAccessible = fileOps.fileExists(at: url)
 
             // Disk space check if we know the backup size
             if totalBytesToCopy > 0 {
-                let spaceCheck = self.diskSpaceChecker.checkDestinationSpace(
+                let spaceCheck = checker.checkDestinationSpace(
                     destination: url,
                     requiredBytes: totalBytesToCopy,
                     additionalBuffer: 100_000_000
@@ -202,10 +203,9 @@ class DestinationManager {
             }
 
             if isAccessible {
-                if let driveInfo = self.driveAnalyzer.analyzeDrive(at: url) {
+                if let driveInfo = analyzer.analyzeDrive(at: url) {
                     await MainActor.run { [weak self] in
                         guard let self = self else { return }
-                        // UUID lookup: only write if this item still exists
                         guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
                         self.destinationDriveInfo[itemID] = driveInfo
                         logInfo(
@@ -372,13 +372,13 @@ class DestinationManager {
         let loadedURLs = BookmarkManager.loadDestinationBookmarks()
         destinationItems = loadedURLs.map { DestinationItem(url: $0) }
 
-        // Analyze drives for loaded destinations
+        // Analyze drives for loaded destinations (detached to avoid main thread I/O)
+        let analyzer = driveAnalyzer
         for (index, url) in loadedURLs.enumerated() where url != nil {
             if let url = url, index < destinationItems.count {
                 let itemID = destinationItems[index].id
-                Task { [weak self] in
-                    guard let self = self else { return }
-                    if let driveInfo = self.driveAnalyzer.analyzeDrive(at: url) {
+                Task.detached { [weak self] in
+                    if let driveInfo = analyzer.analyzeDrive(at: url) {
                         await MainActor.run { [weak self] in
                             guard let self = self else { return }
                             guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
@@ -422,58 +422,53 @@ class DestinationManager {
 
     // MARK: - Validation
 
-    /// Validate and analyze all loaded destinations.
+    /// Validate and analyze all loaded destinations (detached to avoid main thread I/O).
     func validateAndAnalyzeDestinations() {
+        let fileOps = fileOperations
+        let analyzer = driveAnalyzer
         for (index, item) in destinationItems.enumerated() {
             guard let url = item.url else { continue }
             let itemID = item.id
-            Task { [weak self] in
-                guard let self = self else { return }
-                await self.validateAndAnalyzeDestination(url: url, itemID: itemID, index: index)
-            }
-        }
-    }
-
-    /// Validate a single destination asynchronously.
-    private func validateAndAnalyzeDestination(url: URL, itemID: UUID, index: Int) async {
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessing { url.stopAccessingSecurityScopedResource() }
-        }
-
-        if !accessing {
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                logWarning("Destination bookmark at index \(index) is invalid, clearing...")
-                // UUID lookup — index may have shifted
-                guard let currentIndex = self.destinationItems.firstIndex(where: { $0.id == itemID }) else { return }
-                self.destinationItems[currentIndex] = DestinationItem(url: nil)
-                if currentIndex < BookmarkManager.destinationKeys.count {
-                    UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[currentIndex])
+            Task.detached { [weak self] in
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer {
+                    if accessing { url.stopAccessingSecurityScopedResource() }
                 }
-            }
-            return
-        }
 
-        let isAccessible = fileOperations.fileExists(at: url)
-        if isAccessible {
-            if let driveInfo = driveAnalyzer.analyzeDrive(at: url) {
-                await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-                    guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
-                    self.destinationDriveInfo[itemID] = driveInfo
-                    logInfo(
-                        "Initial drive analysis: \(driveInfo.deviceName) - \(driveInfo.connectionType.displayName)",
-                        category: .performance
-                    )
+                if !accessing {
+                    await MainActor.run { [weak self] in
+                        guard let self = self else { return }
+                        logWarning("Destination bookmark at index \(index) is invalid, clearing...")
+                        guard let currentIndex = self.destinationItems.firstIndex(where: { $0.id == itemID }) else { return }
+                        self.destinationItems[currentIndex] = DestinationItem(url: nil)
+                        if currentIndex < BookmarkManager.destinationKeys.count {
+                            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[currentIndex])
+                        }
+                    }
+                    return
                 }
-            }
-        } else {
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
-                logInfo("Destination not accessible: \(url.lastPathComponent)")
-                self.destinationDriveInfo[itemID] = self.makeUnavailableDriveInfo(at: url)
+
+                let isAccessible = fileOps.fileExists(at: url)
+                if isAccessible {
+                    if let driveInfo = analyzer.analyzeDrive(at: url) {
+                        await MainActor.run { [weak self] in
+                            guard let self = self else { return }
+                            guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
+                            self.destinationDriveInfo[itemID] = driveInfo
+                            logInfo(
+                                "Initial drive analysis: \(driveInfo.deviceName) - \(driveInfo.connectionType.displayName)",
+                                category: .performance
+                            )
+                        }
+                    }
+                } else {
+                    await MainActor.run { [weak self] in
+                        guard let self = self else { return }
+                        guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
+                        logInfo("Destination not accessible: \(url.lastPathComponent)")
+                        self.destinationDriveInfo[itemID] = self.makeUnavailableDriveInfo(at: url)
+                    }
+                }
             }
         }
     }
