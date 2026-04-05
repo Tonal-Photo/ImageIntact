@@ -77,9 +77,10 @@ class DestinationManager {
 
     // MARK: - Private Helpers
 
-    /// Resolves a URL to a canonical path for comparison, handling trailing slashes.
+    /// Normalizes a URL to a canonical path for comparison, handling trailing slashes.
+    /// Uses standardizedFileURL only (no disk I/O) — resolves `.` and `..` but not symlinks.
     private func resolvedPath(_ url: URL) -> String {
-        var path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        var path = url.standardizedFileURL.path
         if path.hasSuffix("/"), path != "/" { path = String(path.dropLast()) }
         return path
     }
@@ -292,18 +293,11 @@ class DestinationManager {
 
         // Network drives: too many variables
         if driveInfo.connectionType == .network {
-            // Free space info for network drives
             var freeSpaceInfo = ""
-            if let url = destinationItems[index].url {
-                var stat = statfs()
-                if statfs(url.path, &stat) == 0 {
-                    let availableBytes = Int64(stat.f_bavail) * Int64(stat.f_bsize)
-                    if availableBytes > 0 {
-                        let formatter = ByteCountFormatter()
-                        formatter.countStyle = .file
-                        freeSpaceInfo = " \u{2022} \(formatter.string(fromByteCount: availableBytes)) free"
-                    }
-                }
+            if driveInfo.freeSpace > 0 {
+                let formatter = ByteCountFormatter()
+                formatter.countStyle = .file
+                freeSpaceInfo = " \u{2022} \(formatter.string(fromByteCount: driveInfo.freeSpace)) free"
             }
             return "Network Drive\(freeSpaceInfo) \u{2022} Too many variables to estimate time"
         }
@@ -337,28 +331,12 @@ class DestinationManager {
         let totalGB = Double(totalBytes) / (1000 * 1000 * 1000)
         let sizeStr = String(format: "%.2f GB", totalGB)
 
-        // Free space info for local drives
+        // Free space from pre-computed drive info (no synchronous disk I/O)
         var freeSpaceInfo = ""
-        if let url = destinationItems[index].url {
-            do {
-                let values = try url.resourceValues(forKeys: [
-                    .volumeAvailableCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
-                ])
-                let importantUsage = values.volumeAvailableCapacityForImportantUsage.map { Int64($0) }
-                let regularCapacity = values.volumeAvailableCapacity.map { Int64($0) }
-                let availableBytes = importantUsage ?? regularCapacity ?? Int64(0)
-                let formatter = ByteCountFormatter()
-                formatter.countStyle = .file
-                freeSpaceInfo = " \u{2022} \(formatter.string(fromByteCount: availableBytes)) free"
-            } catch {
-                if let spaceInfo = try? FileManager.default.attributesOfFileSystem(forPath: url.path),
-                   let freeBytes = spaceInfo[.systemFreeSize] as? Int64
-                {
-                    let formatter = ByteCountFormatter()
-                    formatter.countStyle = .file
-                    freeSpaceInfo = " \u{2022} \(formatter.string(fromByteCount: freeBytes)) free"
-                }
-            }
+        if driveInfo.freeSpace > 0 {
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            freeSpaceInfo = " \u{2022} \(formatter.string(fromByteCount: driveInfo.freeSpace)) free"
         }
 
         let driveType = driveInfo.isSSD ? "SSD" : "HDD"
