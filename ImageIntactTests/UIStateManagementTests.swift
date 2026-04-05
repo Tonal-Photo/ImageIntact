@@ -235,10 +235,12 @@ class UIStateManagementTests: XCTestCase {
     func testClearAllSelections() {
         // Set some values
         backupManager.sourceURL = URL(fileURLWithPath: "/source")
-        backupManager.destinationURLs = [
-            URL(fileURLWithPath: "/dest1"),
-            URL(fileURLWithPath: "/dest2"),
-        ]
+        backupManager.destinationManager.initializeEmpty()
+        try? backupManager.destinationManager.setDestination(
+            URL(fileURLWithPath: "/dest1"), at: 0, sourceURL: nil, hasSourceTag: false)
+        backupManager.destinationManager.addDestination()
+        try? backupManager.destinationManager.setDestination(
+            URL(fileURLWithPath: "/dest2"), at: 1, sourceURL: nil, hasSourceTag: false)
 
         // Clear all
         backupManager.clearAllSelections()

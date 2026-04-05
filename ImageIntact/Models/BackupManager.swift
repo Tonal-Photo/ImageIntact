@@ -19,13 +19,6 @@ enum BackupPhase: Int, Comparable {
     }
 }
 
-// MARK: - Destination Item
-
-struct DestinationItem: Identifiable {
-    let id = UUID()
-    var url: URL?
-}
-
 @Observable
 @MainActor
 class BackupManager {
@@ -42,14 +35,16 @@ class BackupManager {
     let driveAnalyzer: DriveAnalyzerProtocol
     let diskSpaceChecker: DiskSpaceProtocol
 
-    // MARK: - Source Management (delegated)
+    // MARK: - Delegated Managers
 
     let sourceManager: SourceManager
+    let destinationManager: DestinationManager
 
-    // MARK: - Published Properties
+    // MARK: - Destination Forwarding (read-only)
 
-    var destinationURLs: [URL?] = []
-    var destinationItems: [DestinationItem] = []
+    var destinationURLs: [URL?] { destinationManager.destinationURLs }
+    var destinationItems: [DestinationItem] { destinationManager.destinationItems }
+    var destinationDriveInfo: [UUID: DriveAnalyzer.DriveInfo] { destinationManager.destinationDriveInfo }
     var isProcessing = false
     var statusMessage = ""
     var failedFiles: [(file: String, destination: String, error: String)] = []
@@ -134,9 +129,6 @@ class BackupManager {
 
     // Other UI state
     var overallStatusText: String = "" // For showing mixed states like "1 copying, 1 verifying"
-
-    // Destination drive analysis
-    var destinationDriveInfo: [UUID: DriveAnalyzer.DriveInfo] = [:] // Use UUID instead of index to avoid mismatch
 
     // Source-related properties are now on sourceManager
     // Convenience accessors for code that still reads these directly
@@ -261,12 +253,19 @@ class BackupManager {
         let resolvedFileOps = fileOperations ?? DefaultFileOperations()
         self.fileOperations = resolvedFileOps
         self.notificationService = notificationService ?? RealNotificationService()
-        self.driveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
-        self.diskSpaceChecker = diskSpaceChecker ?? RealDiskSpaceChecker()
+        let resolvedDriveAnalyzer = driveAnalyzer ?? RealDriveAnalyzer()
+        let resolvedDiskSpace = diskSpaceChecker ?? RealDiskSpaceChecker()
+        self.driveAnalyzer = resolvedDriveAnalyzer
+        self.diskSpaceChecker = resolvedDiskSpace
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
 
-        // Create source manager with shared file operations
+        // Create delegated managers
         self.sourceManager = SourceManager(fileOperations: resolvedFileOps)
+        self.destinationManager = DestinationManager(
+            fileOperations: resolvedFileOps,
+            driveAnalyzer: resolvedDriveAnalyzer,
+            diskSpaceChecker: resolvedDiskSpace
+        )
 
         // Initialize organization name from last used (if user previously customized)
         if let lastUsedName = PreferencesManager.shared.lastUsedOrganizationFolderName {
@@ -284,16 +283,15 @@ class BackupManager {
 
         // Restore last session if enabled
         if PreferencesManager.shared.restoreLastSession {
-            loadDestinationsFromSession()
+            destinationManager.loadFromSession()
             loadSourceFromSession()
         } else {
-            destinationURLs = [nil]
-            destinationItems = [DestinationItem(url: nil)]
+            destinationManager.initializeEmpty()
             logInfo("Initialized with single empty destination slot")
         }
 
         // Validate and analyze loaded destinations
-        validateAndAnalyzeDestinations()
+        destinationManager.validateAndAnalyzeDestinations()
     }
 
     // MARK: - Initialization Helpers
@@ -310,29 +308,6 @@ class BackupManager {
             sourceManager.fileTypeFilter = .videosOnly
         default:
             sourceManager.fileTypeFilter = FileTypeFilter()
-        }
-    }
-
-    /// Load destinations from saved session and analyze drives
-    private func loadDestinationsFromSession() {
-        let loadedURLs = BookmarkManager.loadDestinationBookmarks()
-        destinationURLs = loadedURLs
-        destinationItems = loadedURLs.map { DestinationItem(url: $0) }
-
-        // Analyze drives for loaded destinations
-        for (index, url) in loadedURLs.enumerated() where url != nil {
-            if let url = url, index < self.destinationItems.count {
-                let itemID = self.destinationItems[index].id
-                Task { [weak self] in
-                    guard let self = self else { return }
-                    if let driveInfo = self.driveAnalyzer.analyzeDrive(at: url) {
-                        await MainActor.run { [weak self] in
-                            self?.destinationDriveInfo[itemID] = driveInfo
-                            logInfo("Drive analyzed on restore: \(driveInfo.deviceName)")
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -357,81 +332,6 @@ class BackupManager {
         }
     }
 
-    /// Validate and analyze loaded destinations
-    private func validateAndAnalyzeDestinations() {
-        for (index, item) in destinationItems.enumerated() {
-            guard let url = item.url else { continue }
-            let itemID = item.id
-            Task { [weak self] in
-                guard let self = self else { return }
-                await self.validateAndAnalyzeDestination(url: url, itemID: itemID, index: index)
-            }
-        }
-    }
-
-    /// Validate and analyze a single destination
-    private func validateAndAnalyzeDestination(url: URL, itemID: UUID, index: Int) async {
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessing {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        if !accessing {
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                logWarning("Destination bookmark at index \(index) is invalid, clearing...")
-                if index < self.destinationURLs.count {
-                    self.destinationURLs[index] = nil
-                }
-                if index < BookmarkManager.destinationKeys.count {
-                    UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[index])
-                }
-                // Mutate in place to preserve UUID — replacing the struct
-                // orphans the driveInfo entry keyed by the old UUID.
-                // See: GH issue #91, finding #18.
-                self.destinationItems[index].url = nil
-            }
-            return
-        }
-
-        let isAccessible = fileOperations.fileExists(at: url)
-        if isAccessible {
-            if let driveInfo = driveAnalyzer.analyzeDrive(at: url) {
-                await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-                    self.destinationDriveInfo[itemID] = driveInfo
-                    logInfo(
-                        "Initial drive analysis: \(driveInfo.deviceName) - \(driveInfo.connectionType.displayName)",
-                        category: .performance
-                    )
-                }
-            }
-        } else {
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                logInfo("Destination not accessible: \(url.lastPathComponent)")
-                let unavailableInfo = DriveAnalyzer.DriveInfo(
-                    mountPath: url,
-                    connectionType: .unknown,
-                    isSSD: false,
-                    deviceName: url.lastPathComponent,
-                    protocolDetails: "Not Connected",
-                    estimatedWriteSpeed: 0,
-                    estimatedReadSpeed: 0,
-                    volumeUUID: nil,
-                    hardwareSerial: nil,
-                    deviceModel: nil,
-                    totalCapacity: 0,
-                    freeSpace: 0,
-                    driveType: .generic
-                )
-                self.destinationDriveInfo[itemID] = unavailableInfo
-            }
-        }
-    }
-
     // MARK: - Public Methods
 
     func clearAllSelections() {
@@ -439,17 +339,7 @@ class BackupManager {
         sourceManager.sourceFileTypes = [:]
         sourceManager.scanProgress = ""
         UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        for (i, _) in destinationURLs.enumerated() {
-            destinationURLs[i] = nil
-            if i < BookmarkManager.destinationKeys.count {
-                UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
-            }
-        }
-        // Clear all drive info
-        destinationDriveInfo.removeAll()
-        // Reset to show at least one destination slot
-        destinationURLs = [nil]
-        destinationItems = [DestinationItem()]
+        destinationManager.clearAll()
     }
 
     /// Move the source folder to Trash after successful backup
@@ -479,11 +369,7 @@ class BackupManager {
     }
 
     func addDestination() {
-        if destinationItems.count < 4 {
-            let newItem = DestinationItem()
-            destinationItems.append(newItem)
-            destinationURLs.append(nil)
-        }
+        destinationManager.addDestination()
     }
 
     func setSource(_ url: URL) {
@@ -546,11 +432,15 @@ class BackupManager {
     }
 
     func setDestination(_ url: URL, at index: Int) {
-        guard index < destinationItems.count else { return }
-        guard index < destinationURLs.count else { return }
-
-        // Check if this is the same as the source
-        if let source = sourceURL, source == url {
+        let hasSourceTag = sourceManager.checkForSourceTag(at: url)
+        do {
+            try destinationManager.setDestination(
+                url, at: index,
+                sourceURL: sourceManager.sourceURL,
+                hasSourceTag: hasSourceTag,
+                totalBytesToCopy: totalBytesToCopy
+            )
+        } catch DestinationError.sameAsSource {
             if !BackupManager.isRunningTests {
                 let alert = NSAlert()
                 alert.messageText = "Invalid Destination"
@@ -559,30 +449,18 @@ class BackupManager {
                 alert.addButton(withTitle: "OK")
                 alert.runModal()
             }
-            return
-        }
-
-        // Check if this destination is already selected
-        for (i, existingURL) in destinationURLs.enumerated() {
-            if i != index, existingURL == url {
-                // Show alert that this destination is already selected
-                if !BackupManager.isRunningTests {
-                    let alert = NSAlert()
-                    alert.messageText = "Duplicate Destination"
-                    alert.informativeText =
-                        "This folder is already selected as destination #\(i + 1). Please choose a different folder."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    alert.runModal()
-                }
-                return
-            }
-        }
-
-        // Check if this is a source folder
-        if sourceManager.checkForSourceTag(at: url) {
+        } catch DestinationError.duplicateDestination(let idx) {
             if !BackupManager.isRunningTests {
-                // Show choice dialog
+                let alert = NSAlert()
+                alert.messageText = "Duplicate Destination"
+                alert.informativeText =
+                    "This folder is already selected as destination #\(idx + 1). Please choose a different folder."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+        } catch DestinationError.sourceTagConflict(let tagURL) {
+            if !BackupManager.isRunningTests {
                 let alert = NSAlert()
                 alert.messageText = "Source Folder Selected"
                 alert.informativeText =
@@ -590,156 +468,33 @@ class BackupManager {
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: "Use This Folder")
                 alert.addButton(withTitle: "Cancel")
-
                 let response = alert.runModal()
-                if response == .alertSecondButtonReturn {
-                    // User clicked "Cancel" - don't set destination
-                    return
-                }
+                if response == .alertSecondButtonReturn { return }
             }
-
-            // Remove source tag and proceed (in tests, always proceed)
-            sourceManager.removeSourceTag(at: url)
-        }
-
-        destinationItems[index].url = url
-        destinationURLs[index] = url
-        if index < BookmarkManager.destinationKeys.count {
-            BookmarkManager.saveBookmark(url: url, key: BookmarkManager.destinationKeys[index])
-        }
-
-        // Clear old drive info immediately when destination changes
-        let itemID = destinationItems[index].id
-        destinationDriveInfo.removeValue(forKey: itemID)
-
-        // Analyze drive for performance estimates
-        Task {
-            // Check if the destination is accessible
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessing {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            let isAccessible = self.fileOperations.fileExists(at: url)
-
-            // Do an immediate space check if we know the backup size
-            if totalBytesToCopy > 0 {
-                let spaceCheck = diskSpaceChecker.checkDestinationSpace(
-                    destination: url,
-                    requiredBytes: totalBytesToCopy,
-                    additionalBuffer: 100_000_000
+            sourceManager.removeSourceTag(at: tagURL)
+            do {
+                try destinationManager.setDestination(
+                    url, at: index,
+                    sourceURL: sourceManager.sourceURL,
+                    hasSourceTag: false,
+                    totalBytesToCopy: totalBytesToCopy
                 )
-
-                if let error = spaceCheck.error {
-                    await MainActor.run {
-                        logError("Destination space issue: \(error)")
-                        // We'll show the warning but still allow selection
-                        // The actual backup will do a final check
-                    }
-                } else if let warning = spaceCheck.warning {
-                    await MainActor.run {
-                        logWarning("Destination space warning: \(warning)")
-                    }
-                }
+            } catch {
+                logWarning("Failed to set destination after source tag removal: \(error)")
             }
-
-            if isAccessible {
-                if let driveInfo = driveAnalyzer.analyzeDrive(at: url) {
-                    await MainActor.run {
-                        destinationDriveInfo[itemID] = driveInfo
-                        logInfo(
-                            "Drive analyzed: \(driveInfo.deviceName) - \(driveInfo.connectionType.displayName) - Write: \(driveInfo.estimatedWriteSpeed) MB/s",
-                            category: .performance
-                        )
-                    }
-                }
-            } else {
-                // Destination selected but not accessible
-                await MainActor.run {
-                    let unavailableInfo = DriveAnalyzer.DriveInfo(
-                        mountPath: url,
-                        connectionType: .unknown,
-                        isSSD: false,
-                        deviceName: url.lastPathComponent,
-                        protocolDetails: "Not Connected",
-                        estimatedWriteSpeed: 0,
-                        estimatedReadSpeed: 0,
-                        volumeUUID: nil,
-                        hardwareSerial: nil,
-                        deviceModel: nil,
-                        totalCapacity: 0,
-                        freeSpace: 0,
-                        driveType: .generic
-                    )
-                    destinationDriveInfo[itemID] = unavailableInfo
-                    logInfo("Destination not accessible: \(url.lastPathComponent)")
-                }
-            }
+        } catch DestinationError.indexOutOfRange {
+            logWarning("setDestination called with out-of-range index: \(index)")
+        } catch {
+            logWarning("Unexpected destination error: \(error)")
         }
     }
 
     func clearDestination(at index: Int) {
-        guard index < destinationURLs.count else { return }
-        guard index < destinationItems.count else { return }
-
-        // Clear drive info for this item
-        let itemID = destinationItems[index].id
-        destinationDriveInfo.removeValue(forKey: itemID)
-
-        destinationURLs[index] = nil
-        if index < BookmarkManager.destinationKeys.count {
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[index])
-        }
+        destinationManager.clearDestination(at: index)
     }
 
-    @MainActor
     func removeDestination(at index: Int) {
-        guard index < destinationItems.count else { return }
-
-        // Don't remove if it's the last destination
-        guard destinationItems.count > 1 else {
-            // Just clear the last one instead
-            let itemID = destinationItems[0].id
-            destinationItems[0].url = nil
-            destinationURLs = [nil]
-            destinationDriveInfo.removeValue(forKey: itemID)
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[0])
-            return
-        }
-
-        // Remove drive info for this item
-        let itemID = destinationItems[index].id
-        destinationDriveInfo.removeValue(forKey: itemID)
-
-        // Remove from items array
-        destinationItems.remove(at: index)
-
-        // Rebuild URLs array and update UserDefaults
-        var newURLs: [URL?] = []
-        for (i, item) in destinationItems.enumerated() {
-            newURLs.append(item.url)
-
-            // Update UserDefaults - shift all bookmarks down
-            if i < BookmarkManager.destinationKeys.count {
-                if let url = item.url {
-                    BookmarkManager.saveBookmark(url: url, key: BookmarkManager.destinationKeys[i])
-                } else {
-                    UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
-                }
-            }
-        }
-
-        // Clear any remaining keys
-        for i in destinationItems.count ..< BookmarkManager.destinationKeys.count {
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
-        }
-
-        // Update the URLs array
-        destinationURLs = newURLs
-
-        logInfo("Removed destination at index \(index), new count: \(destinationItems.count)")
+        destinationManager.removeDestination(at: index)
     }
 
     // MARK: - UI Test Support
@@ -755,28 +510,12 @@ class BackupManager {
             logInfo("UI Test: Set source to \(testSourcePath)")
         }
 
-        // Load test destination paths
-        var testDestinations: [URL?] = []
-
-        if let testDest1Path = UserDefaults.standard.string(forKey: "TestDest1Path") {
-            testDestinations.append(URL(fileURLWithPath: testDest1Path))
-            logInfo("UI Test: Added destination 1: \(testDest1Path)")
-        }
-
-        if let testDest2Path = UserDefaults.standard.string(forKey: "TestDest2Path") {
-            testDestinations.append(URL(fileURLWithPath: testDest2Path))
-            logInfo("UI Test: Added destination 2: \(testDest2Path)")
-        }
-
-        // If we have destinations, set them up
-        if !testDestinations.isEmpty {
-            destinationURLs = testDestinations
-            destinationItems = testDestinations.map { DestinationItem(url: $0) }
-        } else {
-            // Start with one empty destination slot even in test mode
-            destinationURLs = [nil]
-            destinationItems = [DestinationItem(url: nil)]
-        }
+        // Delegate destination loading to DestinationManager
+        #if DEBUG
+        destinationManager.loadUITestDestinations()
+        #else
+        destinationManager.initializeEmpty()
+        #endif
 
         // Load test organization name if provided
         if let testOrgName = UserDefaults.standard.string(forKey: "TestOrganizationName") {
@@ -784,10 +523,8 @@ class BackupManager {
             logInfo("UI Test: Set organization name to \(testOrgName)")
         }
 
-        // Clear test values from UserDefaults after loading
+        // Clear source test values (destination keys cleared by DestinationManager)
         UserDefaults.standard.removeObject(forKey: "TestSourcePath")
-        UserDefaults.standard.removeObject(forKey: "TestDest1Path")
-        UserDefaults.standard.removeObject(forKey: "TestDest2Path")
         UserDefaults.standard.removeObject(forKey: "TestOrganizationName")
     }
 
@@ -1133,113 +870,12 @@ class BackupManager {
     }
 
     func getDestinationEstimate(at index: Int) -> String? {
-        guard index < destinationItems.count else { return nil }
-        let itemID = destinationItems[index].id
-        guard let driveInfo = destinationDriveInfo[itemID] else { return nil }
-
-        // Check if destination is unavailable
-        if driveInfo.estimatedWriteSpeed == 0, driveInfo.protocolDetails == "Not Connected" {
-            return "⚠️ Destination not accessible (drive may be disconnected)"
-        }
-
-        // Get free space info if available
-        var freeSpaceInfo = ""
-        if let url = destinationItems[index].url {
-            // For network drives, try different approaches
-            if driveInfo.connectionType == .network {
-                // Try statfs for network volumes
-                var stat = statfs()
-                if statfs(url.path, &stat) == 0 {
-                    let availableBytes = Int64(stat.f_bavail) * Int64(stat.f_bsize)
-                    if availableBytes > 0 {
-                        let formatter = ByteCountFormatter()
-                        formatter.countStyle = .file
-                        freeSpaceInfo = " • \(formatter.string(fromByteCount: availableBytes)) free"
-                    } else {
-                        // Network volume might not report space correctly
-                        freeSpaceInfo = "" // Don't show misleading "Zero KB free"
-                    }
-                } else {
-                    // Can't determine space for network volume
-                    freeSpaceInfo = "" // Don't show misleading info
-                }
-            } else {
-                // For local drives, use the standard approach
-                do {
-                    let values = try url.resourceValues(forKeys: [
-                        .volumeAvailableCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
-                    ])
-                    // Use volumeAvailableCapacityForImportantUsage if available (more accurate for user data)
-                    // Falls back to volumeAvailableCapacity if not
-                    let importantUsage = values.volumeAvailableCapacityForImportantUsage.map { Int64($0) }
-                    let regularCapacity = values.volumeAvailableCapacity.map { Int64($0) }
-                    let availableBytes = importantUsage ?? regularCapacity ?? Int64(0)
-                    let formatter = ByteCountFormatter()
-                    formatter.countStyle = .file
-                    freeSpaceInfo = " • \(formatter.string(fromByteCount: availableBytes)) free"
-                } catch {
-                    // Fall back to the old method if resource values fail
-                    if let spaceInfo = try? FileManager.default.attributesOfFileSystem(forPath: url.path),
-                       let freeBytes = spaceInfo[.systemFreeSize] as? Int64
-                    {
-                        let formatter = ByteCountFormatter()
-                        formatter.countStyle = .file
-                        freeSpaceInfo = " • \(formatter.string(fromByteCount: freeBytes)) free"
-                    }
-                }
-            }
-        }
-
-        // For network drives, don't show estimates - too many variables
-        if driveInfo.connectionType == .network {
-            return "Network Drive\(freeSpaceInfo) • Too many variables to estimate time"
-        }
-
-        // Calculate total size
-        var totalBytes: Int64 = 0
-
-        // Use actual size from scan if available
-        if sourceTotalBytes > 0 {
-            totalBytes = sourceTotalBytes
-        } else if !sourceFileTypes.isEmpty {
-            // Use a conservative estimate based on file count if scan hasn't provided size yet
-            // Use 500KB average per file as a very conservative estimate
-            let totalFiles = sourceFileTypes.values.reduce(0, +)
-            totalBytes = Int64(totalFiles) * 500_000 // 500KB per file average
-        } else if isScanning {
-            // Currently scanning
-            return "Scanning files..."
-        } else if sourceURL != nil {
-            // Source selected but no scan data yet
-            return "Analyzing source..."
-        } else {
-            // No source selected
-            return nil
-        }
-
-        guard totalBytes > 0 else { return nil }
-
-        // Adjust estimate based on number of simultaneous destinations
-        // Multiple destinations slow things down due to disk contention
-        let activeDestinations = destinationItems.compactMap { $0.url }.count
-        var adjustedTotalBytes = totalBytes
-        if activeDestinations > 1 {
-            // Add overhead for multiple simultaneous writes (roughly 30% penalty per extra destination)
-            let overhead = 1.0 + (Double(activeDestinations - 1) * 0.3)
-            adjustedTotalBytes = Int64(Double(totalBytes) * overhead)
-        }
-
-        let estimate = driveInfo.formattedEstimate(totalBytes: adjustedTotalBytes)
-        // Use decimal GB to match Finder
-        let totalGB = Double(totalBytes) / (1000 * 1000 * 1000)
-        let sizeStr = String(format: "%.2f GB", totalGB)
-
-        // Show drive type properly - Network vs SSD vs HDD
-        let driveType =
-            driveInfo.connectionType == .network ? "Network" : (driveInfo.isSSD ? "SSD" : "HDD")
-
-        return
-            "\(driveInfo.connectionType.displayName) • \(driveType) • \(sizeStr)\(freeSpaceInfo) • \(estimate)"
+        destinationManager.getDestinationEstimate(at: index, sourceState: SourceEstimateState(
+            sourceURL: sourceManager.sourceURL,
+            sourceTotalBytes: sourceManager.sourceTotalBytes,
+            sourceFileTypes: sourceManager.sourceFileTypes,
+            isScanning: sourceManager.isScanning
+        ))
     }
 }
 

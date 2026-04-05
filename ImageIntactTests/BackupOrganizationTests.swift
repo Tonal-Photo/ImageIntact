@@ -114,9 +114,9 @@ class BackupOrganizationTests: XCTestCase {
         // Set up backup with organization (no file operations needed)
         backupManager.sourceURL = tempSource
         backupManager.organizationName = "TestOrganization"
-        backupManager.destinationItems = [
-            DestinationItem(url: tempDestination),
-        ]
+        backupManager.destinationManager.initializeEmpty()
+        try? backupManager.destinationManager.setDestination(
+            tempDestination, at: 0, sourceURL: nil, hasSourceTag: false)
 
         // Verify organization name is set correctly
         XCTAssertEqual(backupManager.organizationName, "TestOrganization")
@@ -142,9 +142,9 @@ class BackupOrganizationTests: XCTestCase {
     func testDestinationPathPreview() {
         backupManager.sourceURL = tempSource
         backupManager.organizationName = "MyBackup"
-        backupManager.destinationItems = [
-            DestinationItem(url: tempDestination),
-        ]
+        backupManager.destinationManager.initializeEmpty()
+        try? backupManager.destinationManager.setDestination(
+            tempDestination, at: 0, sourceURL: nil, hasSourceTag: false)
 
         // The UI should show: "DestinationName/MyBackup/"
         let expectedPreview = "\(tempDestination.lastPathComponent)/MyBackup/"
@@ -160,9 +160,9 @@ class BackupOrganizationTests: XCTestCase {
         // Test that backups work without organization (backwards compatible)
         backupManager.sourceURL = tempSource
         backupManager.organizationName = "" // No organization
-        backupManager.destinationItems = [
-            DestinationItem(url: tempDestination),
-        ]
+        backupManager.destinationManager.initializeEmpty()
+        try? backupManager.destinationManager.setDestination(
+            tempDestination, at: 0, sourceURL: nil, hasSourceTag: false)
 
         // Files should be copied directly to destination root
         XCTAssertTrue(backupManager.organizationName.isEmpty)
@@ -180,9 +180,9 @@ class BackupOrganizationTests: XCTestCase {
         // Configure backup
         backupManager.sourceURL = tempSource
         backupManager.organizationName = "TestBackup"
-        backupManager.destinationItems = [
-            DestinationItem(url: tempDestination),
-        ]
+        backupManager.destinationManager.initializeEmpty()
+        try? backupManager.destinationManager.setDestination(
+            tempDestination, at: 0, sourceURL: nil, hasSourceTag: false)
 
         // Run backup (simplified version for testing)
         // In real test, would need to wait for async backup to complete
