@@ -367,28 +367,11 @@ class DestinationManager {
 
     // MARK: - Session Persistence
 
-    /// Load destinations from saved bookmarks.
+    /// Load destinations from saved bookmarks. Does not analyze drives —
+    /// call `validateAndAnalyzeDestinations()` after to perform security-scoped analysis.
     func loadFromSession() {
         let loadedURLs = BookmarkManager.loadDestinationBookmarks()
         destinationItems = loadedURLs.map { DestinationItem(url: $0) }
-
-        // Analyze drives for loaded destinations (detached to avoid main thread I/O)
-        let analyzer = driveAnalyzer
-        for (index, url) in loadedURLs.enumerated() where url != nil {
-            if let url = url, index < destinationItems.count {
-                let itemID = destinationItems[index].id
-                Task.detached { [weak self] in
-                    if let driveInfo = analyzer.analyzeDrive(at: url) {
-                        await MainActor.run { [weak self] in
-                            guard let self = self else { return }
-                            guard self.destinationItems.contains(where: { $0.id == itemID }) else { return }
-                            self.destinationDriveInfo[itemID] = driveInfo
-                            logInfo("Drive analyzed on restore: \(driveInfo.deviceName)")
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // MARK: - UI Test Support
@@ -440,6 +423,7 @@ class DestinationManager {
                         guard let self = self else { return }
                         logWarning("Destination bookmark at index \(index) is invalid, clearing...")
                         guard let currentIndex = self.destinationItems.firstIndex(where: { $0.id == itemID }) else { return }
+                        self.destinationDriveInfo.removeValue(forKey: itemID)
                         self.destinationItems[currentIndex] = DestinationItem(url: nil)
                         if currentIndex < BookmarkManager.destinationKeys.count {
                             UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[currentIndex])
