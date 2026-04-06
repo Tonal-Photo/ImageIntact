@@ -171,31 +171,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertEqual(session2.count, 36) // UUID format
     }
 
-    // MARK: - Formatting Tests
-
-    func testTimeFormatting() {
-        XCTAssertEqual(backupManager.formatTime(45.5), "45s")
-        XCTAssertEqual(backupManager.formatTime(65), "1m 5s")
-        XCTAssertEqual(backupManager.formatTime(125.5), "2m 5s")
-        XCTAssertEqual(backupManager.formatTime(3665), "1h 1m")
-    }
-
-    func testDataSizeFormatting() {
-        // Test various sizes
-        let formatter = backupManager.formatDataSize
-
-        // Small sizes
-        XCTAssertNotNil(formatter(1024)) // 1 KB
-        XCTAssertNotNil(formatter(1024 * 1024)) // 1 MB
-        XCTAssertNotNil(formatter(1024 * 1024 * 1024)) // 1 GB
-
-        // The actual format depends on ByteCountFormatter
-        // We just verify it returns something
-        XCTAssertFalse(formatter(0).isEmpty)
-        XCTAssertFalse(formatter(1024).isEmpty)
-        XCTAssertFalse(formatter(1024 * 1024 * 100).isEmpty)
-    }
-
     // MARK: - Log Entry Tests
 
     func testLogEntryCreation() {

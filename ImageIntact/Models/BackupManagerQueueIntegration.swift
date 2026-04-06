@@ -713,7 +713,7 @@ extension BackupManager {
         // Calculate estimated time
         let estimatedSpeed = 50.0 // MB/s - conservative estimate
         let seconds = Double(totalBytes) / (estimatedSpeed * 1_000_000)
-        let timeString = formatTime(seconds)
+        let timeString = TimeFormatter.formatDuration(seconds)
 
         largeBackupInfo = LargeBackupInfo(
             fileCount: manifest.count,
