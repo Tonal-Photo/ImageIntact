@@ -3,9 +3,10 @@ import XCTest
 
 final class DataSizeFormatterTests: XCTestCase {
 
-    /// Normalize non-breaking and narrow no-break spaces to regular spaces
+    /// Normalize non-breaking spaces and locale-specific decimal separators for assertions
     private func normalized(_ s: String) -> String {
         s.replacingOccurrences(of: "[\\u{00A0}\\u{202F}]", with: " ", options: .regularExpression)
+         .replacingOccurrences(of: ",", with: ".")
     }
 
     func testExactBoundaries() {
