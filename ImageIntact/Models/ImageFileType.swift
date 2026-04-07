@@ -40,6 +40,7 @@ enum ImageFileType: String, CaseIterable {
     case cos = "COS" // Capture One settings
     case pp3 = "PP3" // RawTherapee
     case arp = "ARP" // Adobe Camera Raw
+    case phos = "PHOS" // Hasselblad Phocus sidecar
     case lrcat = "LR Catalog" // Lightroom catalog
     case lrdata = "LR Data" // Lightroom data
     case cocatalog = "C1 Catalog" // Capture One catalog
@@ -83,7 +84,8 @@ enum ImageFileType: String, CaseIterable {
     case rwl = "RWL"
 
     // Hasselblad
-    case fff = "FFF"
+    case threefr = "3FR" // Hasselblad newer RAW
+    case fff = "FFF" // Hasselblad older RAW
     case x3f = "X3F" // Also Sigma
 
     // Phase One
@@ -141,6 +143,8 @@ enum ImageFileType: String, CaseIterable {
             return ["pp3"]
         case .arp:
             return ["arp"]
+        case .phos:
+            return ["phos"]
         case .lrcat:
             return ["lrcat", "lrcat-data"]
         case .lrdata:
@@ -182,6 +186,8 @@ enum ImageFileType: String, CaseIterable {
             return ["pef"]
         case .rwl:
             return ["rwl"]
+        case .threefr:
+            return ["3fr"]
         case .fff:
             return ["fff"]
         case .x3f:
@@ -223,7 +229,7 @@ enum ImageFileType: String, CaseIterable {
         switch self {
         case .jpeg, .tiff, .png, .heic, .heif, .webp, .bmp, .gif,
              .mov, .mp4, .avi, .m4v, .mpg, .mts, .m2ts, .wmv, .flv, .webm, .mkv, .mpeg,
-             .xmp, .dop, .cos, .pp3, .arp, .aae, .thm, .lrcat, .lrdata, .cocatalog, .cocatalogdb:
+             .xmp, .dop, .cos, .pp3, .arp, .phos, .aae, .thm, .lrcat, .lrdata, .cocatalog, .cocatalogdb:
             return false
         default:
             return true
@@ -241,7 +247,7 @@ enum ImageFileType: String, CaseIterable {
 
     var isSidecar: Bool {
         switch self {
-        case .xmp, .dop, .cos, .pp3, .arp, .aae, .thm, .lrcat, .lrdata, .cocatalog, .cocatalogdb:
+        case .xmp, .dop, .cos, .pp3, .arp, .phos, .aae, .thm, .lrcat, .lrdata, .cocatalog, .cocatalogdb:
             return true
         default:
             return false
@@ -270,7 +276,7 @@ enum ImageFileType: String, CaseIterable {
         // RAW files are typically large
         case .dng, .cr2, .cr3, .nef, .arw, .orf, .rw2, .raf, .pef, .srw, .erf, .crw, .raw:
             return 25_000_000 // ~25 MB average for modern RAW files
-        case .nrw, .rwl, .iiq, .mos, .dcr, .mef, .mrw, .kdc, .srf, .sr2, .ptx, .fff, .x3f:
+        case .nrw, .rwl, .iiq, .mos, .dcr, .mef, .mrw, .kdc, .srf, .sr2, .ptx, .fff, .threefr, .x3f:
             return 20_000_000 // ~20 MB for these RAW formats
         // Standard images
         case .jpeg:
@@ -297,7 +303,7 @@ enum ImageFileType: String, CaseIterable {
         case .m4v, .wmv, .flv, .webm, .mkv:
             return 20_000_000 // ~20 MB
         // Sidecar files are small
-        case .xmp, .aae, .dop, .cos, .pp3, .arp:
+        case .xmp, .aae, .dop, .cos, .pp3, .arp, .phos:
             return 50000 // ~50 KB
         case .thm:
             return 100_000 // ~100 KB (thumbnail)
