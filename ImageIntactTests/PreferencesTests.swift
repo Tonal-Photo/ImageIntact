@@ -8,6 +8,7 @@
 import XCTest
 @testable import ImageIntact
 
+@MainActor
 final class PreferencesTests: XCTestCase {
     
     var preferencesManager: PreferencesManager!

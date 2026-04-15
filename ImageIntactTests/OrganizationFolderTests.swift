@@ -2,6 +2,7 @@ import XCTest
 
 @testable import ImageIntact
 
+@MainActor
 class OrganizationFolderTests: XCTestCase {
     override func setUp() {
         super.setUp()

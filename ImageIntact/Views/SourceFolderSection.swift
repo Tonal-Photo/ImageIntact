@@ -3,6 +3,7 @@ import SwiftUI
 struct SourceFolderSection: View {
     @Bindable var backupManager: BackupManager
     @FocusState.Binding var focusedField: ContentView.FocusField?
+    @Bindable var preferences: PreferencesManager = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -65,12 +66,7 @@ struct SourceFolderSection: View {
                     .help("When enabled, scans all nested folders. When disabled, only scans files in the selected folder.")
 
                     // Move source to Trash after backup
-                    Toggle(isOn: Binding(
-                        get: { PreferencesManager.shared.trashSourceAfterBackup },
-                        set: { newValue in
-                            PreferencesManager.shared.trashSourceAfterBackup = newValue
-                        }
-                    )) {
+                    Toggle(isOn: $preferences.trashSourceAfterBackup) {
                         HStack(spacing: 4) {
                             Image(systemName: "trash")
                                 .font(.caption)
