@@ -275,6 +275,20 @@ final class DriveAnalyzerTests: XCTestCase {
         XCTAssertEqual(cache.count, 1)
     }
 
+    // MARK: - Fresh Volume Attributes
+
+    func testWithFreshVolumeAttributes_updatesCapacityAndFreeSpace() {
+        let original = makeDriveInfo(connectionType: .thunderbolt4, isSSD: true, volumeUUID: "UUID-1")
+        let newURL = URL(fileURLWithPath: "/Volumes/Renamed")
+        let refreshed = original.withFreshVolumeAttributes(url: newURL, totalCapacity: 2_000_000_000_000, freeSpace: 100_000_000_000)
+
+        XCTAssertEqual(refreshed.totalCapacity, 2_000_000_000_000)
+        XCTAssertEqual(refreshed.freeSpace, 100_000_000_000)
+        XCTAssertEqual(refreshed.mountPath, newURL)
+        XCTAssertEqual(refreshed.connectionType, .thunderbolt4)
+        XCTAssertEqual(refreshed.deviceName, "Test Drive")
+    }
+
     // MARK: - Helpers
 
     private func makeDriveInfo(

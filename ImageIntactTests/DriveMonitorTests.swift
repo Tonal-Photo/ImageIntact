@@ -74,12 +74,8 @@ final class DriveMonitorTests: XCTestCase {
 
     // MARK: - Drive Identity Management
 
-    func testSetCustomName_persistsName() {
-        let uuid = "TEST-UUID-12345"
-        // Manually insert a known drive for testing
-        monitor.setCustomName(for: uuid, name: "My Backup SSD")
-        // Getting the name back requires the drive to exist in knownDrives
-        // This tests the path doesn't crash - full persistence test would need file I/O
+    func testSetCustomName_doesNotCrashForUnknownUUID() {
+        monitor.setCustomName(for: "NONEXISTENT-UUID", name: "My Backup SSD")
     }
 
     // MARK: - Mock Analyzer Reset
