@@ -123,6 +123,14 @@ class DriveAnalyzer {
 
         let driveType: DriveType
 
+        func withFreshVolumeAttributes(url: URL, totalCapacity: Int64, freeSpace: Int64) -> DriveInfo {
+            DriveInfo(mountPath: url, connectionType: connectionType, isSSD: isSSD, deviceName: deviceName,
+                      protocolDetails: protocolDetails, estimatedWriteSpeed: estimatedWriteSpeed,
+                      estimatedReadSpeed: estimatedReadSpeed, volumeUUID: volumeUUID,
+                      hardwareSerial: hardwareSerial, deviceModel: deviceModel,
+                      totalCapacity: totalCapacity, freeSpace: freeSpace, driveType: driveType)
+        }
+
         func estimateBackupTime(totalBytes: Int64) -> TimeInterval {
             let totalMB = Double(totalBytes) / (1000 * 1000)
             let realWorldFactor = 0.95
@@ -173,7 +181,9 @@ class DriveAnalyzer {
         let volumeAttributes = getVolumeAttributes(for: url)
 
         if let uuid = volumeAttributes.uuid, let cached = cache.get(volumeUUID: uuid) {
-            return cached
+            return cached.withFreshVolumeAttributes(
+                url: url, totalCapacity: volumeAttributes.totalCapacity, freeSpace: volumeAttributes.freeSpace
+            )
         }
 
         if isNetworkVolume(url: url) {

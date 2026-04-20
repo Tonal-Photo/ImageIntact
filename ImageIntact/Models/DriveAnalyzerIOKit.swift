@@ -82,21 +82,21 @@ extension DriveAnalyzer {
     // MARK: - Connection Type Detection
 
     static func findConnectionType(for service: io_object_t) -> ConnectionType {
-        var parent: io_object_t = 0
         var foundPCI = false
         var foundThunderbolt = false
+        var result: ConnectionType?
 
         var currentService = service
         IOObjectRetain(currentService)
 
+        var parent: io_object_t = 0
+
         while IORegistryEntryGetParentEntry(currentService, kIOServicePlane, &parent) == KERN_SUCCESS {
-            defer {
-                IOObjectRelease(currentService)
-                currentService = parent
-            }
+            IOObjectRelease(currentService)
+            currentService = parent
 
             var className = [CChar](repeating: 0, count: 128)
-            IOObjectGetClass(parent, &className)
+            IOObjectGetClass(currentService, &className)
             let classString = String(cString: className)
 
             ApplicationLogger.shared.debug("Checking class: \(classString)", category: .hardware)
@@ -107,7 +107,7 @@ extension DriveAnalyzer {
             }
 
             if let protocolChar = IORegistryEntryCreateCFProperty(
-                parent, "Protocol Characteristics" as CFString, kCFAllocatorDefault, 0
+                currentService, "Protocol Characteristics" as CFString, kCFAllocatorDefault, 0
             ) {
                 if let dict = protocolChar.takeRetainedValue() as? [String: Any] {
                     ApplicationLogger.shared.debug("Protocol Characteristics: \(dict)", category: .hardware)
@@ -119,34 +119,39 @@ extension DriveAnalyzer {
                             ApplicationLogger.shared.debug("Physical Location: \(location)", category: .hardware)
                             if location == "External" && physical.contains("PCI") {
                                 ApplicationLogger.shared.debug("External PCI-Express detected - this IS Thunderbolt", category: .hardware)
-                                return detectThunderboltVersion(for: parent)
+                                result = detectThunderboltVersion(for: currentService)
+                                break
                             }
                         }
 
                         if physical.contains("Thunderbolt") || physical.contains("Thunder") {
                             ApplicationLogger.shared.debug("Detected Thunderbolt via Protocol Characteristics", category: .hardware)
-                            return .thunderbolt3
+                            result = .thunderbolt3
+                            break
                         } else if physical.contains("USB") {
                             ApplicationLogger.shared.debug("Detected USB via Protocol Characteristics", category: .hardware)
-                            return detectUSBSpeed(for: parent)
+                            result = detectUSBSpeed(for: currentService)
+                            break
                         } else if physical.contains("PCI") {
                             if let location = dict["Physical Interconnect Location"] as? String,
                                location == "Internal"
                             {
                                 ApplicationLogger.shared.debug("Internal PCI-Express - Internal drive", category: .hardware)
-                                return .internalDrive
+                                result = .internalDrive
+                                break
                             }
                             foundPCI = true
                         } else if physical.contains("SATA") {
                             ApplicationLogger.shared.debug("Detected SATA - Internal drive", category: .hardware)
-                            return .internalDrive
+                            result = .internalDrive
+                            break
                         }
                     }
                 }
             }
 
             if let deviceType = IORegistryEntryCreateCFProperty(
-                parent, "Device Type" as CFString, kCFAllocatorDefault, 0
+                currentService, "Device Type" as CFString, kCFAllocatorDefault, 0
             ) {
                 if let typeString = deviceType.takeRetainedValue() as? String {
                     ApplicationLogger.shared.debug("Device Type: \(typeString)", category: .hardware)
@@ -154,23 +159,25 @@ extension DriveAnalyzer {
             }
 
             if let tbSpeed = IORegistryEntryCreateCFProperty(
-                parent, "Thunderbolt Speed" as CFString, kCFAllocatorDefault, 0
+                currentService, "Thunderbolt Speed" as CFString, kCFAllocatorDefault, 0
             ) {
                 ApplicationLogger.shared.debug("Found Thunderbolt Speed property: \(tbSpeed)", category: .hardware)
                 foundThunderbolt = true
             }
 
             if let linkSpeed = IORegistryEntryCreateCFProperty(
-                parent, "Link Speed" as CFString, kCFAllocatorDefault, 0
+                currentService, "Link Speed" as CFString, kCFAllocatorDefault, 0
             ) {
                 ApplicationLogger.shared.debug("Found Link Speed: \(linkSpeed)", category: .hardware)
                 if let speed = linkSpeed.takeRetainedValue() as? Int {
                     if speed >= 80000 {
                         ApplicationLogger.shared.debug("Detected Thunderbolt 5 (80+ Gbps)", category: .hardware)
-                        return .thunderbolt5
+                        result = .thunderbolt5
+                        break
                     } else if speed >= 40000 {
                         ApplicationLogger.shared.debug("Detected Thunderbolt 4 (40 Gbps)", category: .hardware)
-                        return .thunderbolt4
+                        result = .thunderbolt4
+                        break
                     } else if speed >= 20000 {
                         foundThunderbolt = true
                     }
@@ -179,18 +186,24 @@ extension DriveAnalyzer {
 
             if classString.contains("USB") {
                 ApplicationLogger.shared.debug("Detected USB via class name", category: .hardware)
-                return detectUSBSpeed(for: parent)
+                result = detectUSBSpeed(for: currentService)
+                break
             }
 
             if classString.contains("NVMe") {
                 if foundThunderbolt {
                     ApplicationLogger.shared.debug("NVMe over Thunderbolt", category: .hardware)
-                    return .thunderbolt3
+                    result = .thunderbolt3
+                    break
                 }
             }
         }
 
         IOObjectRelease(currentService)
+
+        if let result = result {
+            return result
+        }
 
         if foundThunderbolt {
             ApplicationLogger.shared.debug("Final decision: Thunderbolt", category: .hardware)
@@ -212,20 +225,19 @@ extension DriveAnalyzer {
             return .thunderbolt5
         }
 
-        var parent: io_object_t = 0
         var currentService = service
         IOObjectRetain(currentService)
 
         var foundJHL9580 = false
+        var result: ConnectionType?
+        var parent: io_object_t = 0
 
         while IORegistryEntryGetParentEntry(currentService, kIOServicePlane, &parent) == KERN_SUCCESS {
-            defer {
-                IOObjectRelease(currentService)
-                currentService = parent
-            }
+            IOObjectRelease(currentService)
+            currentService = parent
 
             var className = [CChar](repeating: 0, count: 128)
-            IOObjectGetClass(parent, &className)
+            IOObjectGetClass(currentService, &className)
             let classString = String(cString: className)
 
             if classString.contains("JHL9580") || classString.contains("JHL9480") {
@@ -234,67 +246,71 @@ extension DriveAnalyzer {
             }
 
             if let linkCap = IORegistryEntryCreateCFProperty(
-                parent, "IOPCIExpressLinkCapabilities" as CFString, kCFAllocatorDefault, 0
+                currentService, "IOPCIExpressLinkCapabilities" as CFString, kCFAllocatorDefault, 0
             ) {
                 if let cap = linkCap.takeRetainedValue() as? Int {
                     ApplicationLogger.shared.debug("Found PCIe Link Capabilities: \(cap)", category: .hardware)
                     let maxSpeed = cap & 0xF
                     if maxSpeed >= 5 {
                         ApplicationLogger.shared.debug("PCIe Gen 5+ detected - likely TB5", category: .hardware)
-                        IOObjectRelease(currentService)
-                        return .thunderbolt5
+                        result = .thunderbolt5
+                        break
                     }
                 }
             }
 
             if let linkSpeed = IORegistryEntryCreateCFProperty(
-                parent, "Link Speed" as CFString, kCFAllocatorDefault, 0
+                currentService, "Link Speed" as CFString, kCFAllocatorDefault, 0
             ) {
                 ApplicationLogger.shared.debug("Found Link Speed in TB detection: \(linkSpeed)", category: .hardware)
                 if let speed = linkSpeed.takeRetainedValue() as? Int {
                     if speed >= 80000 {
                         ApplicationLogger.shared.debug("Detected Thunderbolt 5 (80+ Gbps)", category: .hardware)
-                        IOObjectRelease(currentService)
-                        return .thunderbolt5
+                        result = .thunderbolt5
+                        break
                     } else if speed >= 40000 {
                         ApplicationLogger.shared.debug("Detected Thunderbolt 4 (40 Gbps)", category: .hardware)
-                        IOObjectRelease(currentService)
-                        return .thunderbolt4
+                        result = .thunderbolt4
+                        break
                     }
                 }
             }
 
             if let negotiatedSpeed = IORegistryEntryCreateCFProperty(
-                parent, "Negotiated Link Speed" as CFString, kCFAllocatorDefault, 0
+                currentService, "Negotiated Link Speed" as CFString, kCFAllocatorDefault, 0
             ) {
                 ApplicationLogger.shared.debug("Found Negotiated Link Speed: \(negotiatedSpeed)", category: .hardware)
                 if let speed = negotiatedSpeed.takeRetainedValue() as? Int {
                     if speed >= 80000 {
-                        IOObjectRelease(currentService)
-                        return .thunderbolt5
+                        result = .thunderbolt5
+                        break
                     } else if speed >= 40000 {
-                        IOObjectRelease(currentService)
-                        return .thunderbolt4
+                        result = .thunderbolt4
+                        break
                     }
                 }
             }
 
             if let tbGen = IORegistryEntryCreateCFProperty(
-                parent, "Thunderbolt Generation" as CFString, kCFAllocatorDefault, 0
+                currentService, "Thunderbolt Generation" as CFString, kCFAllocatorDefault, 0
             ) {
                 if let gen = tbGen.takeRetainedValue() as? Int {
                     ApplicationLogger.shared.debug("Found Thunderbolt Generation: \(gen)", category: .hardware)
-                    IOObjectRelease(currentService)
                     switch gen {
-                    case 5: return .thunderbolt5
-                    case 4: return .thunderbolt4
-                    default: return .thunderbolt3
+                    case 5: result = .thunderbolt5
+                    case 4: result = .thunderbolt4
+                    default: result = .thunderbolt3
                     }
+                    break
                 }
             }
         }
 
         IOObjectRelease(currentService)
+
+        if let result = result {
+            return result
+        }
 
         if foundJHL9580 {
             ApplicationLogger.shared.debug("Detected TB5 based on JHL9580 controller", category: .hardware)
@@ -314,7 +330,9 @@ extension DriveAnalyzer {
         guard result == KERN_SUCCESS else { return false }
         defer { IOObjectRelease(iterator) }
 
-        if IOIteratorNext(iterator) != 0 {
+        let service = IOIteratorNext(iterator)
+        if service != 0 {
+            IOObjectRelease(service)
             ApplicationLogger.shared.debug("Found IOThunderboltSwitchIntelJHL9580 (TB5) in system", category: .hardware)
             return true
         }
@@ -326,7 +344,9 @@ extension DriveAnalyzer {
         guard result2 == KERN_SUCCESS else { return false }
         defer { IOObjectRelease(iterator2) }
 
-        if IOIteratorNext(iterator2) != 0 {
+        let service2 = IOIteratorNext(iterator2)
+        if service2 != 0 {
+            IOObjectRelease(service2)
             ApplicationLogger.shared.debug("Found IOThunderboltSwitchIntelJHL9480 (TB5) in system", category: .hardware)
             return true
         }
