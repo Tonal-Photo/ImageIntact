@@ -388,6 +388,10 @@ private func driveDisappearedCallback(disk: DADisk?, context: UnsafeMutableRawPo
       monitor.recentlyDisconnected.append(driveInfo)
       monitor.driveDisconnected.send(driveInfo)
 
+      if let uuid = driveInfo.volumeUUID {
+        DriveAnalyzer.cache.invalidate(volumeUUID: uuid)
+      }
+
       logInfo("Drive disconnected: \(driveInfo.deviceName)")
 
       // Keep only last 5 disconnected drives
