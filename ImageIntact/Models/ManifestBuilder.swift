@@ -285,17 +285,12 @@ actor ManifestBuilder {
         // Process checksums in batches. Result-typed dict: every processed file
         // is keyed; per-file failures carry the underlying typed error. Files
         // omitted entirely from the dict were skipped due to cancellation between
-        // batches (caught by the shouldCancel guard below).
-        let checksums: [URL: Result<String, Error>]
-        do {
-            checksums = try await batchProcessor.batchCalculateChecksums(
-                filesToProcess.map { $0.url },
-                shouldCancel: shouldCancel
-            )
-        } catch {
-            ApplicationLogger.shared.debug("Batch checksum calculation failed: \(error)", category: .fileSystem)
-            return nil
-        }
+        // batches (caught by the shouldCancel guard below). The function does not
+        // throw — cancellation surfaces as missing keys, not as a thrown error.
+        let checksums = await batchProcessor.batchCalculateChecksums(
+            filesToProcess.map { $0.url },
+            shouldCancel: shouldCancel
+        )
 
         guard !shouldCancel() else { return nil }
 

@@ -95,29 +95,29 @@ actor BatchFileProcessor {
 
     /// Calculate checksums for multiple files in a batch.
     ///
-    /// Returns a dictionary keyed by every successfully *processed* input URL, with
-    /// the value being either the computed checksum (`.success`) or the typed error
-    /// raised while computing it (`.failure`). URLs that didn't get processed because
-    /// the operation was cancelled mid-batch are *absent* from the returned dict —
-    /// callers should compare keys against the input list (or check `shouldCancel()`)
-    /// to detect partial completion.
+    /// Returns a dictionary keyed by every input URL that was *processed*, with the
+    /// value being either the computed checksum (`.success`) or the typed error raised
+    /// while computing it (`.failure`). URLs that weren't processed because cancellation
+    /// fired mid-batch are *absent* from the returned dict — callers detect partial
+    /// completion either by comparing keys against the input list or by checking
+    /// `shouldCancel()` after the call returns. This is the existing pattern at the
+    /// only production caller (`ManifestBuilder.build`).
     ///
-    /// This Result-typed contract replaces a previous "successful results only, infer
-    /// failures from missing keys" shape (#108 item 7). Failure entries now carry the
-    /// specific error (e.g. `ChecksumServiceError.fileNotFound`,
-    /// `ChecksumServiceError.unreadable`) so callers can produce specific diagnostics
-    /// instead of a generic "Failed to calculate checksum" message.
+    /// The function does **not** throw. Per-file errors are surfaced as `.failure`
+    /// entries; cancellation halts the run and returns whatever was collected. This
+    /// is a deliberate departure from Swift's structured-concurrency cancellation
+    /// pattern (which would expect this function to rethrow `CancellationError`):
+    /// for a backup tool, the caller wants to know *what was hashed* before being
+    /// told that the rest didn't get done. Throwing would discard the partial
+    /// progress. The caller (ManifestBuilder) handles cancellation explicitly via
+    /// its own `shouldCancel()` guard.
     ///
-    /// Cancellation: if `shouldCancel()` returns `true` between files in a batch, or
-    /// the underlying hashing throws `ChecksumError.cancelled` or `CancellationError`,
-    /// the in-flight batch returns the results accumulated so far and the function
-    /// rethrows `CancellationError` to the caller. Any other error from the hashing
-    /// path is recorded as a `.failure` entry; the batch continues with the remaining
-    /// files (one bad file no longer aborts the entire batch — see PR #107).
+    /// This Result-typed contract replaces a previous "successful results only,
+    /// infer failures from missing keys" shape (#108 item 7).
     func batchCalculateChecksums(
         _ files: [URL],
         shouldCancel: @escaping () -> Bool
-    ) async throws -> [URL: Result<String, Error>] {
+    ) async -> [URL: Result<String, Error>] {
         var results = [URL: Result<String, Error>]()
 
         for batch in files.chunked(into: batchSize) {
@@ -128,8 +128,8 @@ actor BatchFileProcessor {
             //   2. Task.detached doesn't help: detached tasks still consume slots on
             //      the limited cooperative pool. GCD's global queues spawn extra
             //      threads for blocking work.
-            let batchResults: [URL: Result<String, Error>] = try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<[URL: Result<String, Error>], Error>) in
+            let batchResults: [URL: Result<String, Error>] = await withCheckedContinuation {
+                (continuation: CheckedContinuation<[URL: Result<String, Error>], Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
                     autoreleasepool {
                         var batchResults = [URL: Result<String, Error>]()
@@ -145,6 +145,8 @@ actor BatchFileProcessor {
                                 )
                                 batchResults[file] = .success(checksum)
                             } catch ChecksumError.cancelled {
+                                // Inner cancellation: stop processing this batch but
+                                // preserve whatever was hashed so far.
                                 continuation.resume(returning: batchResults)
                                 return
                             } catch is CancellationError {
@@ -164,10 +166,9 @@ actor BatchFileProcessor {
             // Merge batch results
             results.merge(batchResults) { _, new in new }
 
-            // Check cancellation between batches
-            guard !shouldCancel() else {
-                throw CancellationError()
-            }
+            // Cancellation between batches: stop iterating and return what we have.
+            // Caller distinguishes "cancelled" from "completed" via shouldCancel().
+            if shouldCancel() { return results }
         }
 
         return results

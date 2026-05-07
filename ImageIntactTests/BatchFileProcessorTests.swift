@@ -110,6 +110,43 @@ final class BatchFileProcessorTests: XCTestCase {
         }
     }
 
+    /// Cancellation contract: when `shouldCancel()` flips to true mid-batch, the
+    /// function returns the partial results collected so far rather than throwing.
+    /// Callers detect partial completion by checking the returned key set against
+    /// the input list (or by checking `shouldCancel()` themselves).
+    func testCancellationReturnsPartialResults() async throws {
+        // Make enough files that we're virtually guaranteed to cancel before all
+        // are hashed. The cancellation closure flips to true after the first 3
+        // files are processed (counter-driven).
+        let urls = try makeFiles(
+            (0..<20).map { "file\($0).bin" }, readable: true
+        )
+
+        // Counter is incremented each time shouldCancel is queried. Cancellation
+        // fires once it has been polled enough times that hashing a few files
+        // has occurred. Using a generous threshold (10) so the test isn't flaky
+        // on fast hardware where cancellation could fire before any work.
+        let counter = ThreadSafeCounter()
+        let cancelAfterPolls = 10
+
+        let result = await processor.batchCalculateChecksums(
+            urls, shouldCancel: { counter.increment() > cancelAfterPolls }
+        )
+
+        // Function must not throw; we already got past the await without `try`.
+        // Result count should be strictly less than the input count (cancellation
+        // happened before all files were processed) and at least 1 (some work
+        // happened before cancel).
+        XCTAssertLessThan(
+            result.count, urls.count,
+            "Cancellation should have stopped processing before all files were hashed"
+        )
+        // It's possible (though very unlikely) that cancellation fires before
+        // ANY file is hashed if the polling cadence is high. Don't make this a
+        // strict lower bound — the contract under test is "partial results, not
+        // thrown error", not "exactly N files processed".
+    }
+
     // MARK: - Helpers
 
     private func makeFiles(_ names: [String], readable: Bool) throws -> [URL] {
@@ -125,5 +162,19 @@ final class BatchFileProcessorTests: XCTestCase {
             urls.append(url)
         }
         return urls
+    }
+}
+
+/// Thread-safe counter for `@Sendable` test closures.
+private final class ThreadSafeCounter: @unchecked Sendable {
+    private var _value = 0
+    private let lock = NSLock()
+
+    /// Increments and returns the new value.
+    @discardableResult
+    func increment() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        _value += 1
+        return _value
     }
 }
