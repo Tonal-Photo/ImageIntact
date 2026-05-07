@@ -101,7 +101,7 @@ class BackupMigrationDetector {
                 ApplicationLogger.shared.debug("Checking \(fileName)...", category: .backup)
 
                 do {
-                    let destChecksum = try BackupManager.sha256ChecksumStatic(
+                    let destChecksum = try ChecksumService.sha256(
                         for: destFile,
                         shouldCancel: { false }
                     )
@@ -171,7 +171,7 @@ class BackupMigrationDetector {
             )
 
             // Verify the move with checksum
-            let movedChecksum = try BackupManager.sha256ChecksumStatic(
+            let movedChecksum = try ChecksumService.sha256(
                 for: newPath,
                 shouldCancel: { false }
             )

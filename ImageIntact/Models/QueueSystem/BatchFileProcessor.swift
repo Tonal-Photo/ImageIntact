@@ -101,28 +101,52 @@ actor BatchFileProcessor {
         var results = [URL: String]()
 
         for batch in files.chunked(into: batchSize) {
-            // Process batch with autoreleasepool
-            let batchResults = try await withCheckedThrowingContinuation {
+            // Bridge synchronous batch hashing to async via GCD. Two reasons it can't
+            // run inline on the actor's executor:
+            //   1. Hashing is synchronous CPU/IO — it would block every other actor
+            //      message (including cancellation) for the full batch duration.
+            //   2. Task.detached doesn't help: detached tasks still consume slots on
+            //      the limited cooperative pool. GCD's global queues spawn extra
+            //      threads for blocking work.
+            // Per-file errors are caught inside the loop so one unreadable file no
+            // longer aborts the whole batch — readable files still produce checksums,
+            // unreadable files are omitted from the result dict (callers like
+            // ManifestBuilder already handle missing entries via `onFileError`).
+            // ChecksumError.cancelled and CancellationError still abort the batch
+            // (with whatever has been hashed so far) to preserve cancellation semantics.
+            let batchResults: [URL: String] = try await withCheckedThrowingContinuation {
                 (continuation: CheckedContinuation<[URL: String], Error>) in
-                autoreleasepool {
-                    var batchChecksums = [URL: String]()
-
-                    do {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    autoreleasepool {
+                        var batchChecksums = [URL: String]()
                         for file in batch {
                             guard !shouldCancel() else {
                                 continuation.resume(returning: batchChecksums)
                                 return
                             }
-
-                            let checksum = try BackupManager.sha256ChecksumStatic(
-                                for: file,
-                                shouldCancel: shouldCancel
-                            )
-                            batchChecksums[file] = checksum
+                            do {
+                                let checksum = try ChecksumService.sha256(
+                                    for: file,
+                                    shouldCancel: shouldCancel
+                                )
+                                batchChecksums[file] = checksum
+                            } catch ChecksumError.cancelled {
+                                continuation.resume(returning: batchChecksums)
+                                return
+                            } catch is CancellationError {
+                                continuation.resume(returning: batchChecksums)
+                                return
+                            } catch {
+                                ApplicationLogger.shared.warning(
+                                    "Skipping \(file.lastPathComponent) — checksum failed: \(error.localizedDescription)",
+                                    category: .fileSystem
+                                )
+                                // Omit this file from results; caller's missing-checksum
+                                // path takes over.
+                                continue
+                            }
                         }
                         continuation.resume(returning: batchChecksums)
-                    } catch {
-                        continuation.resume(throwing: error)
                     }
                 }
             }

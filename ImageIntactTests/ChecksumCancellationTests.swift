@@ -38,7 +38,7 @@ final class ChecksumCancellationTests: XCTestCase {
     /// Verify that passing a closure that returns true immediately causes cancellation.
     func testImmediateCancellationThrows() throws {
         XCTAssertThrowsError(
-            try BackupManager.sha256ChecksumStatic(
+            try ChecksumService.sha256(
                 for: tempFile,
                 shouldCancel: { true }
             )
@@ -53,7 +53,7 @@ final class ChecksumCancellationTests: XCTestCase {
 
     /// Verify that a closure returning false allows the checksum to complete.
     func testNoCancellationCompletes() throws {
-        let checksum = try BackupManager.sha256ChecksumStatic(
+        let checksum = try ChecksumService.sha256(
             for: tempFile,
             shouldCancel: { false }
         )
@@ -68,7 +68,7 @@ final class ChecksumCancellationTests: XCTestCase {
         let cancelAfterChunks = 3
 
         XCTAssertThrowsError(
-            try BackupManager.sha256ChecksumStatic(
+            try ChecksumService.sha256(
                 for: tempFile,
                 shouldCancel: { counter.increment() > cancelAfterChunks }
             )
@@ -84,7 +84,7 @@ final class ChecksumCancellationTests: XCTestCase {
 
     /// Verify the default parameter (no cancellation) works.
     func testDefaultNoCancellation() throws {
-        let checksum = try BackupManager.sha256ChecksumStatic(
+        let checksum = try ChecksumService.sha256(
             for: tempFile,
             shouldCancel: { false }
         )

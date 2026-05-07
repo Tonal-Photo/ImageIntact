@@ -381,12 +381,23 @@ class CancellableFileOperations: FileOperationsProtocol {
   }
 
   func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
-    // Use the existing static method from BackupManager for consistency
-    // This uses SHA-256 which is what the rest of the app expects
-    // Pass network volume status for optimized reading
-    let isNetwork = isNetworkVolume(url: url)
-    return try BackupManager.sha256ChecksumStatic(
-      for: url, shouldCancel: shouldCancel, isNetworkVolume: isNetwork)
+    // Bridge synchronous, blocking checksum I/O to async via GCD. Task.detached would
+    // *not* solve thread-pool starvation — detached tasks still run on the cooperative
+    // pool (sized to active core count). GCD's global queues spawn additional threads
+    // for blocking work, keeping the cooperative pool free for other async tasks.
+    // See Apple's "Swift concurrency: Behind the scenes" (WWDC 2021).
+    // (ManifestBuilder.swift still uses Task.detached for this same call — out of scope here;
+    // tracking as a follow-up sweep.)
+    try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let result = try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
+          continuation.resume(returning: result)
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
   }
 
   func fileSize(at url: URL) -> Int64? {

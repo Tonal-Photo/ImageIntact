@@ -186,10 +186,9 @@ class MemoryOptimizationTests: XCTestCase {
         try Data(repeating: 0xFF, count: 1000).write(to: testFile)
 
         // Calculate checksum (should use autoreleasepool internally)
-        let checksum = try BackupManager.sha256ChecksumStatic(
+        let checksum = try ChecksumService.sha256(
             for: testFile,
-            shouldCancel: { false },
-            isNetworkVolume: false
+            shouldCancel: { false }
         )
 
         // Verify we got a checksum
@@ -204,10 +203,9 @@ class MemoryOptimizationTests: XCTestCase {
         try largeData.write(to: testFile)
 
         // Calculate checksum (should use streaming for large files)
-        let checksum = try BackupManager.sha256ChecksumStatic(
+        let checksum = try ChecksumService.sha256(
             for: testFile,
-            shouldCancel: { false },
-            isNetworkVolume: false
+            shouldCancel: { false }
         )
 
         // Verify we got a valid checksum
