@@ -102,6 +102,30 @@ final class ChecksumCancellationTests: XCTestCase {
         XCTAssertGreaterThan(counter.value, 1,
                              "shouldCancel closure should be called multiple times during checksumming")
     }
+
+    /// Async-bridge variant of testMidOperationCancellationIsRespected: confirms
+    /// cancellation propagates correctly across the GCD boundary inside
+    /// `ChecksumService.sha256Async`. The shouldCancel closure is captured by
+    /// reference (via the AtomicCounter), so flipping its underlying state mid-
+    /// operation reaches the work running on a GCD thread.
+    func testSha256AsyncRespectsClosureCancellation() async throws {
+        let counter = AtomicCounter()
+        let cancelAfterChunks = 3
+        let url = tempFile!
+
+        do {
+            _ = try await ChecksumService.sha256Async(
+                for: url,
+                shouldCancel: { counter.increment() > cancelAfterChunks }
+            )
+            XCTFail("sha256Async should have thrown a cancellation error")
+        } catch {
+            XCTAssertTrue(
+                "\(error)".lowercased().contains("cancel"),
+                "Error should indicate cancellation, got: \(error)"
+            )
+        }
+    }
 }
 
 // MARK: - Thread-safe counter for @Sendable test closures

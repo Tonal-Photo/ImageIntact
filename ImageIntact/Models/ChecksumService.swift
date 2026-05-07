@@ -83,4 +83,43 @@ enum ChecksumService {
         // size-based pseudo-checksum here would silently treat distinct files as
         // identical when reads fail under load — unacceptable for a backup tool.
     }
+
+    /// Async wrapper around `sha256(for:shouldCancel:)` that bridges the synchronous,
+    /// blocking SHA-256 read into an `async` context via GCD.
+    ///
+    /// `Task.detached` would *not* solve cooperative-pool starvation here — detached
+    /// tasks still run on the cooperative thread pool (sized to active core count).
+    /// GCD's global queues spawn additional threads for blocking work, keeping the
+    /// cooperative pool free for other async tasks. See Apple WWDC 2021 — "Swift
+    /// concurrency: Behind the scenes".
+    ///
+    /// Cancellation flows through the explicit `shouldCancel` closure (polled inside
+    /// `OptimizedChecksum`), not through Swift Task cancellation. `withTaskCancellationHandler`
+    /// is intentionally not used: the closure is opaque to this layer, so there is
+    /// nothing to flip on parent-task cancellation; the GCD work completes on its
+    /// own polling cadence and the continuation resumes.
+    ///
+    /// Concurrency note: `DispatchQueue.global` can spawn many threads under high
+    /// concurrent load. ImageIntact's backup pipeline bounds concurrent calls to
+    /// ≤ N destinations + 1 manifest builder (typically 2-5 concurrent), well under
+    /// any GCD thread-explosion threshold.
+    ///
+    /// Use this from any `async` caller. The synchronous `sha256(for:shouldCancel:)`
+    /// remains available for callers that already manage their own thread bridging
+    /// (e.g., `BatchFileProcessor`, which runs an entire batch inside a single
+    /// `autoreleasepool` to bound peak memory).
+    static func sha256Async(
+        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
+    ) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try ChecksumService.sha256(for: fileURL, shouldCancel: shouldCancel)
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
 }

@@ -327,11 +327,9 @@ actor ManifestBuilder {
     // MARK: - Private Methods
 
     /// Calculate SHA256 checksum for a file
-    private func calculateChecksum(for url: URL, shouldCancel: @escaping () -> Bool) async throws
+    private func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws
         -> String
     {
-        try await Task.detached(priority: .userInitiated) {
-            try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
-        }.value
+        try await ChecksumService.sha256Async(for: url, shouldCancel: shouldCancel)
     }
 }
