@@ -101,31 +101,26 @@ actor BatchFileProcessor {
         var results = [URL: String]()
 
         for batch in files.chunked(into: batchSize) {
-            // Process batch with autoreleasepool
-            let batchResults = try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<[URL: String], Error>) in
-                autoreleasepool {
+            // Detach: hashing is synchronous CPU/IO. Running it on the actor's serial
+            // executor blocks every other message (including cancellation) until the
+            // batch finishes. autoreleasepool is preserved inside the detached task to
+            // bound peak memory across large batches.
+            let batchResults: [URL: String] = try await Task.detached(priority: .userInitiated) {
+                try autoreleasepool {
                     var batchChecksums = [URL: String]()
-
-                    do {
-                        for file in batch {
-                            guard !shouldCancel() else {
-                                continuation.resume(returning: batchChecksums)
-                                return
-                            }
-
-                            let checksum = try ChecksumService.sha256(
-                                for: file,
-                                shouldCancel: shouldCancel
-                            )
-                            batchChecksums[file] = checksum
+                    for file in batch {
+                        guard !shouldCancel() else {
+                            return batchChecksums
                         }
-                        continuation.resume(returning: batchChecksums)
-                    } catch {
-                        continuation.resume(throwing: error)
+                        let checksum = try ChecksumService.sha256(
+                            for: file,
+                            shouldCancel: shouldCancel
+                        )
+                        batchChecksums[file] = checksum
                     }
+                    return batchChecksums
                 }
-            }
+            }.value
 
             // Merge batch results
             results.merge(batchResults) { _, new in new }

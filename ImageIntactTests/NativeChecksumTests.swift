@@ -101,6 +101,38 @@ final class NativeChecksumTests: XCTestCase {
         }
     }
 
+    /// Regression test for the size-fallback removal (PR #107, AMUX-17).
+    /// Previously, an unreadable file silently returned `"size:%016x"` from
+    /// the readability-failure path. Now it must throw — masking distinct
+    /// files with the same byte size as identical is a data-integrity risk.
+    func testSHA256ChecksumForUnreadableFileThrows() throws {
+        let testFile = testDirectory.appendingPathComponent("unreadable.txt")
+        try "secret".write(to: testFile, atomically: true, encoding: .utf8)
+        defer {
+            // Restore permissions so the test framework can clean up the temp dir.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644], ofItemAtPath: testFile.path
+            )
+        }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: testFile.path
+        )
+
+        // Skip the assertion if we're running with elevated privileges where
+        // 0o000 doesn't actually block reads (root bypasses POSIX permissions).
+        guard !FileManager.default.isReadableFile(atPath: testFile.path) else {
+            throw XCTSkip("Running as root or equivalent; 0o000 does not block reads")
+        }
+
+        XCTAssertThrowsError(
+            try ChecksumService.sha256(for: testFile, shouldCancel: { false })
+        ) { error in
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.domain, "ImageIntact", "Should be ImageIntact error")
+            XCTAssertEqual(nsError.code, 1, "Should be file-not-readable error")
+        }
+    }
+
     func testSHA256ChecksumForBinaryFile() throws {
         // Create binary file with various byte patterns
         let testFile = testDirectory.appendingPathComponent("binary.dat")

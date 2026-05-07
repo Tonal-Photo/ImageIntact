@@ -381,7 +381,11 @@ class CancellableFileOperations: FileOperationsProtocol {
   }
 
   func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
-    return try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
+    // Detach: ChecksumService.sha256 is synchronous CPU/IO. Calling it directly from
+    // an async context blocks the cooperative thread pool. Same pattern as ManifestBuilder.
+    try await Task.detached(priority: .userInitiated) {
+      try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
+    }.value
   }
 
   func fileSize(at url: URL) -> Int64? {
