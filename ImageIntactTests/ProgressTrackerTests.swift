@@ -63,4 +63,31 @@ final class ProgressTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.currentFileName, "test.jpg")
         XCTAssertEqual(tracker.currentDestinationName, "Backup")
     }
+
+    /// `updateFromCoordinator` is the production progress-update entry point used by
+    /// BackupManagerQueueIntegration when the BackupCoordinator publishes status.
+    /// This was previously uncovered.
+    func testUpdateFromCoordinatorWritesState() {
+        let tracker = ProgressTracker()
+        tracker.updateFromCoordinator(
+            overallProgress: 0.75,
+            totalBytes: 10_000_000,
+            copiedBytes: 7_500_000,
+            speed: 12.5
+        )
+        XCTAssertEqual(tracker.overallProgress, 0.75, accuracy: 0.0001)
+        XCTAssertEqual(tracker.totalBytesToCopy, 10_000_000)
+        XCTAssertEqual(tracker.totalBytesCopied, 7_500_000)
+        XCTAssertEqual(tracker.copySpeed, 12.5, accuracy: 0.0001)
+    }
+
+    /// `updateFromCoordinator` clamps `overallProgress` into [0, 1] so a stale or
+    /// out-of-range value from the coordinator can't push the UI past 100%.
+    func testUpdateFromCoordinatorClampsOverallProgress() {
+        let tracker = ProgressTracker()
+        tracker.updateFromCoordinator(overallProgress: 1.5, totalBytes: 100, copiedBytes: 100, speed: 1)
+        XCTAssertEqual(tracker.overallProgress, 1.0, accuracy: 0.0001, "Should clamp upper bound")
+        tracker.updateFromCoordinator(overallProgress: -0.5, totalBytes: 100, copiedBytes: 0, speed: 1)
+        XCTAssertEqual(tracker.overallProgress, 0.0, accuracy: 0.0001, "Should clamp lower bound")
+    }
 }

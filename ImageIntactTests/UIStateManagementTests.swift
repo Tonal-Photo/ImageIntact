@@ -38,9 +38,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertTrue(backupManager.destinationProgress.isEmpty)
     }
 
-    // testProgressReset moved to ProgressTrackerTests as testResetAllClearsState
-    // (#103 / AMUX-16). The BackupManager.resetProgress() wrapper was dead in
-    // production; rewriting against ProgressTracker directly is the same coverage.
 
     func testDestinationProgressInitialization() async {
         let destinations = [
@@ -130,9 +127,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertEqual(backupManager.statusMessage, "Backup complete!")
     }
 
-    // testCopySpeedCalculation moved to ProgressTrackerTests as
-    // testUpdateFileProgressComputesNonZeroCopySpeed (#103 / AMUX-16). The
-    // BackupManager.updateCopySpeed wrapper was dead in production.
 
     // MARK: - Session ID Tests
 
@@ -199,11 +193,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertEqual(backupManager.destinationURLs, [nil])
     }
 
-    // testAsyncProgressUpdate moved to ProgressTrackerTests as
-    // testUpdateFileProgressUpdatesFields (#103 / AMUX-16). The
-    // BackupManager.updateProgress wrapper was dead in production; the new
-    // test calls ProgressTracker directly (no Task indirection needed since
-    // ProgressTracker is @MainActor).
 
     // MARK: - Error State Tests
 
