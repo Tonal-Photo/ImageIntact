@@ -3,23 +3,61 @@
 //  ImageIntact
 //
 //  Stateless checksum computation extracted from BackupManager (#103, AMUX-17).
-//  Wraps OptimizedChecksum.sha256 with iCloud-not-downloaded detection
-//  and readability checks, throwing on all failure paths.
+//  Wraps OptimizedChecksum.sha256 with iCloud-not-downloaded detection and
+//  typed error mapping. Pre-existing TOCTOU `fileExists`/`isReadableFile`
+//  pre-checks were dropped (#108 items 1+4): the underlying read either
+//  succeeds or throws a Cocoa error, which we map to a typed
+//  `ChecksumServiceError`. No logging — callers have job context and decide
+//  what to log (#108 items 5+6).
 //
 
 import Foundation
 
+/// Strongly-typed errors thrown by `ChecksumService`. Replaces the pre-existing
+/// `NSError(domain: "ImageIntact", code: 1/7, ...)` pattern from `BackupManager`.
+///
+/// The associated `URL` lets callers report which file failed without having to
+/// preserve it from the call site. `LocalizedError` conformance keeps existing
+/// `error.localizedDescription` consumers working.
+enum ChecksumServiceError: Error, LocalizedError, Equatable {
+    case fileNotFound(URL)
+    case iCloudNotDownloaded(URL)
+    case unreadable(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .fileNotFound(let url):
+            return "File does not exist: \(url.lastPathComponent)"
+        case .iCloudNotDownloaded(let url):
+            return "File is in iCloud but not downloaded: \(url.lastPathComponent)"
+        case .unreadable(let url):
+            return "File is not readable: \(url.lastPathComponent)"
+        }
+    }
+}
+
 enum ChecksumService {
     /// SHA-256 checksum of `fileURL` using the project's optimized native implementation.
     ///
-    /// Behavior:
-    /// - Throws `NSError` (domain `"ImageIntact"`, code `1`) if the file does not exist.
-    /// - Throws `NSError` (domain `"ImageIntact"`, code `7`) if the file is in iCloud and not yet downloaded.
-    /// - Throws `NSError` (domain `"ImageIntact"`, code `1`) if the file is unreadable.
-    /// - Rethrows `ChecksumError` (including `.cancelled`), `CancellationError`, and any
-    ///   underlying read failure. The previous size-based fallback was removed — for a
-    ///   verification tool, masking a read failure with `"size:%016x"` is a data-integrity
-    ///   risk (two different files with the same byte size produce the same fake checksum).
+    /// Throws:
+    /// - `ChecksumServiceError.iCloudNotDownloaded(url)` — file is in iCloud but not yet
+    ///   downloaded locally. Detected up front via `ubiquitousItemDownloadingStatus`
+    ///   resource value (semantic check, not TOCTOU; the underlying read would either
+    ///   silently trigger a download or fail with a confusing native error).
+    /// - `ChecksumServiceError.fileNotFound(url)` — mapped from
+    ///   `NSCocoaErrorDomain` + `NSFileReadNoSuchFileError` raised by the read.
+    /// - `ChecksumServiceError.unreadable(url)` — mapped from
+    ///   `NSCocoaErrorDomain` + `NSFileReadNoPermissionError` raised by the read.
+    /// - `ChecksumError.cancelled` — propagated from `OptimizedChecksum` when the
+    ///   `shouldCancel` closure returns true, or when a `CancellationError` is caught
+    ///   from the surrounding `Task`.
+    /// - Any other `NSError` from the read is rethrown as-is (e.g., I/O errors,
+    ///   filesystem corruption).
+    ///
+    /// The previous size-based fallback (`"size:%016x"`) was removed in PR #107 —
+    /// for a verification tool, masking a read failure with a fake hash is a
+    /// data-integrity risk (two different files of the same byte size produce the
+    /// same fake checksum).
     ///
     /// - Parameters:
     ///   - fileURL: file to hash
@@ -27,46 +65,20 @@ enum ChecksumService {
     static func sha256(
         for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
     ) throws -> String {
-        // First check if file exists
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            throw NSError(
-                domain: "ImageIntact", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "File does not exist: \(fileURL.lastPathComponent)"]
-            )
+        // iCloud-not-downloaded check (semantic, not TOCTOU — the resource value isn't
+        // surfaced from a CryptoKit read in any reliable way).
+        if let status = try? fileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            .ubiquitousItemDownloadingStatus,
+            status == .notDownloaded
+        {
+            throw ChecksumServiceError.iCloudNotDownloaded(fileURL)
         }
 
-        // Special handling for files that might be in iCloud and not downloaded
-        let resourceValues = try? fileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-        if let status = resourceValues?.ubiquitousItemDownloadingStatus {
-            // Status can be: .current, .downloaded, .notDownloaded
-            if status == .notDownloaded {
-                ApplicationLogger.shared.warning(
-                    "File is in iCloud but not downloaded locally: \(fileURL.lastPathComponent)",
-                    category: .app
-                )
-                throw NSError(
-                    domain: "ImageIntact", code: 7,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "File is in iCloud but not downloaded: \(fileURL.lastPathComponent)",
-                    ]
-                )
-            }
-        }
-
-        // Check if file is readable
-        guard FileManager.default.isReadableFile(atPath: fileURL.path) else {
-            throw NSError(
-                domain: "ImageIntact", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "File is not readable: \(fileURL.lastPathComponent)"]
-            )
-        }
-
-        // Use native Swift checksum as primary method for reliability
         return try calculateNative(for: fileURL, shouldCancel: shouldCancel)
     }
 
-    // Native Swift checksum using CryptoKit - delegates to the optimized implementation
+    /// Native Swift checksum via `OptimizedChecksum`. Maps Cocoa file errors to
+    /// `ChecksumServiceError`; rethrows cancellation as `ChecksumError.cancelled`.
     private static func calculateNative(
         for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
     ) throws -> String {
@@ -78,10 +90,19 @@ enum ChecksumService {
         } catch is CancellationError {
             // Never swallow Swift Task cancellation either
             throw ChecksumError.cancelled
+        } catch let nsError as NSError where nsError.domain == NSCocoaErrorDomain {
+            switch nsError.code {
+            case NSFileReadNoSuchFileError, NSFileNoSuchFileError:
+                throw ChecksumServiceError.fileNotFound(fileURL)
+            case NSFileReadNoPermissionError:
+                throw ChecksumServiceError.unreadable(fileURL)
+            default:
+                throw nsError
+            }
         }
-        // All other read failures bubble up to the caller as-is. Returning a
-        // size-based pseudo-checksum here would silently treat distinct files as
-        // identical when reads fail under load — unacceptable for a backup tool.
+        // Any non-Cocoa error bubbles up to the caller as-is. Returning a size-based
+        // pseudo-checksum here would silently treat distinct files as identical when
+        // reads fail under load — unacceptable for a backup tool.
     }
 
     /// Async wrapper around `sha256(for:shouldCancel:)` that bridges the synchronous,

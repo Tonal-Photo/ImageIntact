@@ -95,9 +95,13 @@ final class NativeChecksumTests: XCTestCase {
         let nonExistent = testDirectory.appendingPathComponent("does-not-exist.txt")
 
         XCTAssertThrowsError(try ChecksumService.sha256(for: nonExistent, shouldCancel: { false })) { error in
-            let nsError = error as NSError
-            XCTAssertEqual(nsError.domain, "ImageIntact", "Should be ImageIntact error")
-            XCTAssertEqual(nsError.code, 1, "Should be file not exist error")
+            guard let serviceError = error as? ChecksumServiceError,
+                  case .fileNotFound(let url) = serviceError
+            else {
+                XCTFail("Expected ChecksumServiceError.fileNotFound, got: \(error)")
+                return
+            }
+            XCTAssertEqual(url, nonExistent, "Error should carry the offending URL")
         }
     }
 
@@ -127,9 +131,13 @@ final class NativeChecksumTests: XCTestCase {
         XCTAssertThrowsError(
             try ChecksumService.sha256(for: testFile, shouldCancel: { false })
         ) { error in
-            let nsError = error as NSError
-            XCTAssertEqual(nsError.domain, "ImageIntact", "Should be ImageIntact error")
-            XCTAssertEqual(nsError.code, 1, "Should be file-not-readable error")
+            guard let serviceError = error as? ChecksumServiceError,
+                  case .unreadable(let url) = serviceError
+            else {
+                XCTFail("Expected ChecksumServiceError.unreadable, got: \(error)")
+                return
+            }
+            XCTAssertEqual(url, testFile, "Error should carry the offending URL")
         }
     }
 
