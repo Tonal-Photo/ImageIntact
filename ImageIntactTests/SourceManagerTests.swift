@@ -64,40 +64,45 @@ final class SourceManagerTests: XCTestCase {
         XCTAssertEqual(result, "No source folder to move")
     }
 
-    /// `trashCurrentSource` with a real temp folder: trashes the folder,
-    /// clears the source URL/state, and returns the user-facing success
-    /// message. Cleans up the trashed item to avoid littering the user's
-    /// Trash. (Pattern mirrored from the pre-existing `TrashSourceTests`.)
-    func testTrashCurrentSourceClearsStateOnSuccess() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SourceManagerTrashTest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-        let manager = SourceManager(fileOperations: DefaultFileOperations())
-        manager.sourceURL = tempDir
+    /// `trashCurrentSource` success path: dispatches through the injected
+    /// `fileOperations.trashItem`, clears state, and returns the user-facing
+    /// message. Uses a mock so the user's real Trash is untouched.
+    func testTrashCurrentSourceClearsStateOnSuccess() {
+        let mock = MockFileOperations()
+        let manager = SourceManager(fileOperations: mock)
+        let url = URL(fileURLWithPath: "/Volumes/Card01/DCIM")
+        manager.sourceURL = url
         manager.sourceFileTypes = [.jpeg: 1]
         manager.scanProgress = "stale"
 
         let result = manager.trashCurrentSource()
 
-        XCTAssertTrue(result.hasPrefix("Moved \""), "Should be a success message; got \(result)")
+        XCTAssertEqual(result, "Moved \"DCIM\" to Trash")
+        XCTAssertEqual(mock.trashedItems, [url], "fileOperations.trashItem should have been called once with the source URL")
         XCTAssertNil(manager.sourceURL, "Source URL should be cleared after trash")
         XCTAssertTrue(manager.sourceFileTypes.isEmpty, "File types should be cleared")
-        XCTAssertEqual(manager.scanProgress, "", "Scan progress should be cleared")
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: tempDir.path),
-            "Temp dir should no longer exist at original path"
-        )
+        XCTAssertEqual(manager.scanProgress, "")
+    }
 
-        // Best-effort cleanup of the trashed item to avoid littering ~/.Trash.
-        // Walk the user's Trash and remove any matching folder.
-        let trashURL = (try? FileManager.default.url(
-            for: .trashDirectory, in: .userDomainMask, appropriateFor: nil, create: false
-        )) ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
-        if let entries = try? FileManager.default.contentsOfDirectory(atPath: trashURL.path) {
-            for entry in entries where entry.contains("SourceManagerTrashTest-") {
-                try? FileManager.default.removeItem(at: trashURL.appendingPathComponent(entry))
-            }
-        }
+    /// `trashCurrentSource` error path: when `fileOperations.trashItem` throws
+    /// (e.g., permission denied, missing file, locked file), the source state
+    /// stays intact and the returned message includes the underlying error
+    /// description.
+    func testTrashCurrentSourceErrorPathPreservesState() {
+        let mock = MockFileOperations()
+        mock.shouldFailTrash = true
+        let manager = SourceManager(fileOperations: mock)
+        let url = URL(fileURLWithPath: "/Volumes/Card02/DCIM")
+        manager.sourceURL = url
+        manager.sourceFileTypes = [.jpeg: 5]
+        manager.scanProgress = "preserved"
+
+        let result = manager.trashCurrentSource()
+
+        XCTAssertTrue(result.hasPrefix("Failed to move to Trash:"),
+                      "Should be a failure message; got \(result)")
+        XCTAssertEqual(manager.sourceURL, url, "Source URL must NOT be cleared on failure")
+        XCTAssertEqual(manager.sourceFileTypes, [.jpeg: 5], "File types must NOT be cleared on failure")
+        XCTAssertEqual(manager.scanProgress, "preserved", "Scan progress must NOT be cleared on failure")
     }
 }

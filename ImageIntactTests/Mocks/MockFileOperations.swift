@@ -15,28 +15,31 @@ class MockFileOperations: FileOperationsProtocol {
     var copiedFiles: [(source: URL, destination: URL)] = []
     var createdDirectories: [URL] = []
     var removedItems: [URL] = []
+    var trashedItems: [URL] = []
     var checksumCalculations: [URL] = []
     var securityScopedAccesses: [URL] = []
     var movedItems: [(source: URL, destination: URL)] = []
     var setAttributesCalls: [(attributes: [FileAttributeKey: Any], url: URL)] = []
     var mockDirectoryContents: [URL: [URL]] = [:]
     var createdFiles: [(url: URL, data: Data?, attributes: [FileAttributeKey: Any]?)] = []
-    
+
     // MARK: - Configurable behaviors
     var shouldFailCopy = false
     var shouldFailChecksum = false
     var shouldFailCreateFile = false
+    var shouldFailTrash = false
     var filesExist: Set<URL> = []
     var mockChecksums: [URL: String] = [:]
     var mockFileSizes: [URL: Int64] = [:]
     var mockAttributes: [URL: [FileAttributeKey: Any]] = [:]
-    
+
     // MARK: - Error types for testing
     enum MockError: Error {
         case copyFailed
         case checksumFailed
         case directoryCreationFailed
         case itemRemovalFailed
+        case trashFailed
     }
     
     // MARK: - FileOperationsProtocol implementation
@@ -71,6 +74,18 @@ class MockFileOperations: FileOperationsProtocol {
     
     func removeItem(at url: URL) throws {
         removedItems.append(url)
+        filesExist.remove(url)
+        mockFileSizes.removeValue(forKey: url)
+        mockChecksums.removeValue(forKey: url)
+        mockAttributes.removeValue(forKey: url)
+    }
+
+    func trashItem(at url: URL) throws {
+        trashedItems.append(url)
+        if shouldFailTrash {
+            throw MockError.trashFailed
+        }
+        // Simulate the trash by removing the file from the exists set.
         filesExist.remove(url)
         mockFileSizes.removeValue(forKey: url)
         mockChecksums.removeValue(forKey: url)

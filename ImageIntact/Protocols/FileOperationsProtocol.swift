@@ -90,6 +90,13 @@ protocol FileOperationsProtocol {
   ///   - attributes: File attributes
   /// - Returns: true if file was created
   func createFile(at url: URL, contents data: Data?, attributes: [FileAttributeKey: Any]?) -> Bool
+
+  /// Move an item to the macOS Trash. The default implementation calls
+  /// `FileManager.default.trashItem`; tests can use `MockFileOperations` to
+  /// avoid touching the user's real Trash.
+  /// - Parameter url: item to trash
+  /// - Throws: any error from the underlying FileManager call
+  func trashItem(at url: URL) throws
 }
 
 /// Extension to provide convenience methods

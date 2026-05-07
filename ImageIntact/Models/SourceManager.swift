@@ -224,6 +224,10 @@ class SourceManager {
     /// Extracted from `BackupManager.trashSourceFolder` (#103 / AMUX-22). The
     /// caller (BackupManager) stores the returned string in `trashSourceResult`
     /// for its existing alert binding.
+    ///
+    /// Goes through `fileOperations.trashItem` rather than `FileManager.default`
+    /// so tests can inject a mock and assert on cleanup behavior without
+    /// actually touching the user's real Trash.
     @discardableResult
     func trashCurrentSource() -> String {
         guard let source = sourceURL else {
@@ -231,8 +235,7 @@ class SourceManager {
         }
 
         do {
-            var trashedURL: NSURL?
-            try FileManager.default.trashItem(at: source, resultingItemURL: &trashedURL)
+            try fileOperations.trashItem(at: source)
             let name = source.lastPathComponent
             logInfo("Moved source folder to Trash: \(name)")
 
