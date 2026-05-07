@@ -115,6 +115,11 @@ class DefaultFileOperations: FileOperationsProtocol {
     try fileManager.removeItem(at: url)
   }
 
+  func trashItem(at url: URL) throws {
+    var trashedURL: NSURL?
+    try fileManager.trashItem(at: url, resultingItemURL: &trashedURL)
+  }
+
   func attributesOfItem(at url: URL) throws -> [FileAttributeKey: Any] {
     return try fileManager.attributesOfItem(atPath: url.path)
   }
