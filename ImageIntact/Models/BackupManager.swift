@@ -373,62 +373,10 @@ class BackupManager {
     }
 
     func setSource(_ url: URL) {
-        sourceManager.sourceURL = url
-        BookmarkManager.saveBookmark(url: url, key: BookmarkManager.sourceKey)
-        sourceManager.tagSourceFolder(at: url)
-
-        // Clear previous scan results
-        sourceManager.sourceFileTypes = [:]
-        sourceManager.scanProgress = ""
-        sourceManager.sourceTotalBytes = 0
-
-        // Auto-generate organization name from source path (stays on BackupManager - cross-concern)
-        organizationName = extractSmartFolderName(from: url)
-
-        // Start background scan for image files (skip in tests to avoid race conditions)
-        if !BackupManager.isRunningTests {
-            Task { [weak self] in
-                await self?.sourceManager.scanSourceFolder(url)
-            }
-        }
-    }
-
-    /// Extracts a smart folder name from the source URL
-    /// Examples:
-    /// - ~/Downloads → "Downloads"
-    /// - /Volumes/Card01/DCIM → "Card01"
-    /// - ~/Pictures/2025/Q3/Clients/Johnson → "Johnson"
-    /// - ~/Photos/My Photo Shoot → "My_Photo_Shoot"
-    private func extractSmartFolderName(from url: URL) -> String {
-        let pathComponents = url.pathComponents
-
-        var folderName: String
-
-        // If it's a volume, use the volume name
-        if pathComponents.count > 2 && pathComponents[1] == "Volumes" {
-            folderName = pathComponents[2] // Volume name
-        } else {
-            // Skip generic folder names
-            let genericNames = ["files", "images", "photos", "pictures", "dcim", "documents"]
-
-            // Work backwards through path components to find a meaningful name
-            folderName = url.lastPathComponent // Fallback
-            for component in pathComponents.reversed() {
-                let lowercased = component.lowercased()
-                // Skip empty, hidden, or generic names
-                if !component.isEmpty && !component.hasPrefix(".") && !genericNames.contains(lowercased)
-                    && component != "/"
-                {
-                    folderName = component
-                    break
-                }
-            }
-        }
-
-        // Replace spaces with underscores and collapse multiple underscores
-        return folderName
-            .replacingOccurrences(of: " ", with: "_")
-            .replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
+        sourceManager.prepareSource(at: url)
+        // Auto-generate organization name from source path (cross-concern: a
+        // backup-orchestration field derived from a source URL).
+        organizationName = SmartFolderName.from(url: url)
     }
 
     func setDestination(_ url: URL, at index: Int) {
@@ -500,22 +448,22 @@ class BackupManager {
     // MARK: - UI Test Support
 
     private func loadUITestPaths() {
+        // The TestSourcePath / TestOrganizationName UserDefaults overrides are
+        // for UI testing only. Wrap in #if DEBUG so a malicious local process
+        // can't `defaults write` an arbitrary path into a Full-Disk-Access-
+        // granted release build to coerce the app into reading protected files.
+        #if DEBUG
         logInfo("Loading UI test paths")
 
         // Load test source path
         if let testSourcePath = UserDefaults.standard.string(forKey: "TestSourcePath") {
             let sourceURL = URL(fileURLWithPath: testSourcePath)
             self.sourceManager.sourceURL = sourceURL
-            organizationName = extractSmartFolderName(from: sourceURL)
+            organizationName = SmartFolderName.from(url: sourceURL)
             logInfo("UI Test: Set source to \(testSourcePath)")
         }
 
-        // Delegate destination loading to DestinationManager
-        #if DEBUG
         destinationManager.loadUITestDestinations()
-        #else
-        destinationManager.initializeEmpty()
-        #endif
 
         // Load test organization name if provided
         if let testOrgName = UserDefaults.standard.string(forKey: "TestOrganizationName") {
@@ -526,6 +474,10 @@ class BackupManager {
         // Clear source test values (destination keys cleared by DestinationManager)
         UserDefaults.standard.removeObject(forKey: "TestSourcePath")
         UserDefaults.standard.removeObject(forKey: "TestOrganizationName")
+        #else
+        // Release builds: never honor UI-test UserDefaults overrides.
+        destinationManager.initializeEmpty()
+        #endif
     }
 
     func canRunBackup() -> Bool {

@@ -54,6 +54,11 @@ class SourceManager {
 
     @MainActor
     func scanSourceFolder(_ url: URL) async {
+        // Honor cooperative cancellation. If `prepareSource` was called again with
+        // a new URL while a previous scan was in flight, that previous task gets
+        // `cancel()`'d; this guard keeps it from clobbering the new task's state.
+        guard !Task.isCancelled else { return }
+
         isScanning = true
         scanProgress = "Scanning for image files..."
         sourceFileTypes = [:]
@@ -90,12 +95,24 @@ class SourceManager {
                 }
             }
 
+            // Re-check cancellation right before publishing results — the inner
+            // file scan can take seconds, plenty of time for a follow-up
+            // `prepareSource` to have cancelled us. Without this guard, a stale
+            // long-running scan would overwrite the new scan's state.
+            guard !Task.isCancelled else {
+                await MainActor.run { self.isScanning = false }
+                return
+            }
+
             await MainActor.run {
                 self.sourceFileTypes = results
                 self.sourceTotalBytes = totalBytes
                 self.scanProgress = ImageFileScanner.formatScanResults(results, groupRaw: false)
                 self.isScanning = false
             }
+        } catch is CancellationError {
+            // Cooperative cancellation propagated from inside the scanner.
+            await MainActor.run { self.isScanning = false }
         } catch {
             await MainActor.run {
                 self.scanProgress = "Scan failed: \(error.localizedDescription)"
@@ -151,6 +168,53 @@ class SourceManager {
         let filteredSummary = ImageFileScanner.formatScanResults(filteredTypes, groupRaw: false)
 
         return (filteredSummary, totalFiltered, totalFiles)
+    }
+
+    // MARK: - Source URL Management
+
+    /// Tracks the most recent scan task spawned by `prepareSource(at:)` so it can
+    /// be cancelled if a new source URL is selected before the previous scan
+    /// finishes. Prevents two concurrent scans from racing each other into
+    /// `sourceFileTypes` / `scanProgress`.
+    private var currentScanTask: Task<Void, Never>?
+
+    /// Prepares a new source URL: persists the security-scoped bookmark, tags the
+    /// folder for source detection, clears stale scan state, and (unless we're in
+    /// test mode) kicks off an asynchronous scan for image files. If a scan from a
+    /// previous `prepareSource` call is still in flight it is cancelled before the
+    /// new one starts.
+    ///
+    /// Extracted from `BackupManager.setSource` (#103 / AMUX-18). The cross-cutting
+    /// piece — auto-generating an organization name from the URL — stays at the
+    /// `BackupManager` layer because it's a backup-orchestration concern, not a
+    /// source-state concern.
+    ///
+    /// - Note: Named `prepareSource` rather than `setURL` because the method has
+    ///   significant side effects (bookmark, tag, scan) beyond a simple property
+    ///   set, and naming should reflect that.
+    func prepareSource(at url: URL) {
+        sourceURL = url
+        BookmarkManager.saveBookmark(url: url, key: BookmarkManager.sourceKey)
+        tagSourceFolder(at: url)
+
+        // Clear previous scan results
+        sourceFileTypes = [:]
+        scanProgress = ""
+        sourceTotalBytes = 0
+
+        // Cancel any in-flight scan from a previous prepareSource call before
+        // starting a new one. Same-source-twice is also a no-op via cancellation,
+        // not a no-op via short-circuit, so the second call always reflects the
+        // user's latest intent.
+        currentScanTask?.cancel()
+        currentScanTask = nil
+
+        // Start background scan for image files (skip in tests to avoid race conditions)
+        if !BackupManager.isRunningTests {
+            currentScanTask = Task { [weak self] in
+                await self?.scanSourceFolder(url)
+            }
+        }
     }
 
     // MARK: - Source Tagging
