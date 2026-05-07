@@ -51,4 +51,53 @@ final class SourceManagerTests: XCTestCase {
                       "Second prepareSource must clear results from the first one")
         XCTAssertEqual(manager.scanProgress, "")
     }
+
+    // MARK: - trashCurrentSource
+
+    /// `trashCurrentSource` with no `sourceURL` set returns the no-source
+    /// message and does not raise an error. Deterministic, no filesystem
+    /// side effects.
+    func testTrashCurrentSourceWithoutSourceReturnsErrorMessage() {
+        let manager = SourceManager(fileOperations: DefaultFileOperations())
+        XCTAssertNil(manager.sourceURL)
+        let result = manager.trashCurrentSource()
+        XCTAssertEqual(result, "No source folder to move")
+    }
+
+    /// `trashCurrentSource` with a real temp folder: trashes the folder,
+    /// clears the source URL/state, and returns the user-facing success
+    /// message. Cleans up the trashed item to avoid littering the user's
+    /// Trash. (Pattern mirrored from the pre-existing `TrashSourceTests`.)
+    func testTrashCurrentSourceClearsStateOnSuccess() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SourceManagerTrashTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let manager = SourceManager(fileOperations: DefaultFileOperations())
+        manager.sourceURL = tempDir
+        manager.sourceFileTypes = [.jpeg: 1]
+        manager.scanProgress = "stale"
+
+        let result = manager.trashCurrentSource()
+
+        XCTAssertTrue(result.hasPrefix("Moved \""), "Should be a success message; got \(result)")
+        XCTAssertNil(manager.sourceURL, "Source URL should be cleared after trash")
+        XCTAssertTrue(manager.sourceFileTypes.isEmpty, "File types should be cleared")
+        XCTAssertEqual(manager.scanProgress, "", "Scan progress should be cleared")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempDir.path),
+            "Temp dir should no longer exist at original path"
+        )
+
+        // Best-effort cleanup of the trashed item to avoid littering ~/.Trash.
+        // Walk the user's Trash and remove any matching folder.
+        let trashURL = (try? FileManager.default.url(
+            for: .trashDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+        )) ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
+        if let entries = try? FileManager.default.contentsOfDirectory(atPath: trashURL.path) {
+            for entry in entries where entry.contains("SourceManagerTrashTest-") {
+                try? FileManager.default.removeItem(at: trashURL.appendingPathComponent(entry))
+            }
+        }
+    }
 }

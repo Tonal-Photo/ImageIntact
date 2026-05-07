@@ -217,6 +217,38 @@ class SourceManager {
         }
     }
 
+    /// Moves the current source folder to the macOS Trash and clears all
+    /// source-related state. Returns a human-readable result message suitable
+    /// for surfacing in the UI.
+    ///
+    /// Extracted from `BackupManager.trashSourceFolder` (#103 / AMUX-22). The
+    /// caller (BackupManager) stores the returned string in `trashSourceResult`
+    /// for its existing alert binding.
+    @discardableResult
+    func trashCurrentSource() -> String {
+        guard let source = sourceURL else {
+            return "No source folder to move"
+        }
+
+        do {
+            var trashedURL: NSURL?
+            try FileManager.default.trashItem(at: source, resultingItemURL: &trashedURL)
+            let name = source.lastPathComponent
+            logInfo("Moved source folder to Trash: \(name)")
+
+            // Clear the source selection since the folder no longer exists.
+            sourceURL = nil
+            sourceFileTypes = [:]
+            scanProgress = ""
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+
+            return "Moved \"\(name)\" to Trash"
+        } catch {
+            logWarning("Failed to move source to Trash: \(error.localizedDescription)")
+            return "Failed to move to Trash: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Source Tagging
 
     func tagSourceFolder(at url: URL) {

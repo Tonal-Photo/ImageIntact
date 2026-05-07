@@ -344,28 +344,10 @@ class BackupManager {
 
     /// Move the source folder to Trash after successful backup
     @MainActor
+    /// UI-bound forwarder. Trash logic + state clear lives in `SourceManager`;
+    /// BackupManager just stores the result string for its alert binding.
     func trashSourceFolder() {
-        guard let source = sourceURL else {
-            trashSourceResult = "No source folder to move"
-            return
-        }
-
-        do {
-            var trashedURL: NSURL?
-            try FileManager.default.trashItem(at: source, resultingItemURL: &trashedURL)
-            let name = source.lastPathComponent
-            logInfo("Moved source folder to Trash: \(name)")
-            trashSourceResult = "Moved \"\(name)\" to Trash"
-
-            // Clear the source selection since the folder no longer exists
-            sourceManager.sourceURL = nil
-            sourceManager.sourceFileTypes = [:]
-            sourceManager.scanProgress = ""
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        } catch {
-            logWarning("Failed to move source to Trash: \(error.localizedDescription)")
-            trashSourceResult = "Failed to move to Trash: \(error.localizedDescription)"
-        }
+        trashSourceResult = sourceManager.trashCurrentSource()
     }
 
     func addDestination() {
@@ -750,14 +732,6 @@ class BackupManager {
             autoreleasepool {}
             logInfo("Deep memory cleanup completed", category: .performance)
         }
-    }
-
-    // MARK: - Debug Logging
-
-    @MainActor
-    private func writeDebugLog() {
-        // Implementation for debug logging - placeholder for now
-        logInfo("Debug log: \(failedFiles.count) failed files")
     }
 
     // MARK: - Source Tag Delegation
