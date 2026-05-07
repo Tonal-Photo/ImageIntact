@@ -155,16 +155,27 @@ class SourceManager {
 
     // MARK: - Source URL Management
 
-    /// Sets the source URL and prepares for a fresh scan: persists the
-    /// security-scoped bookmark, tags the folder for source detection, clears
-    /// stale scan state, and (unless we're in test mode) kicks off an
-    /// asynchronous scan for image files.
+    /// Tracks the most recent scan task spawned by `prepareSource(at:)` so it can
+    /// be cancelled if a new source URL is selected before the previous scan
+    /// finishes. Prevents two concurrent scans from racing each other into
+    /// `sourceFileTypes` / `scanProgress`.
+    private var currentScanTask: Task<Void, Never>?
+
+    /// Prepares a new source URL: persists the security-scoped bookmark, tags the
+    /// folder for source detection, clears stale scan state, and (unless we're in
+    /// test mode) kicks off an asynchronous scan for image files. If a scan from a
+    /// previous `prepareSource` call is still in flight it is cancelled before the
+    /// new one starts.
     ///
     /// Extracted from `BackupManager.setSource` (#103 / AMUX-18). The cross-cutting
     /// piece — auto-generating an organization name from the URL — stays at the
     /// `BackupManager` layer because it's a backup-orchestration concern, not a
     /// source-state concern.
-    func setURL(_ url: URL) {
+    ///
+    /// - Note: Named `prepareSource` rather than `setURL` because the method has
+    ///   significant side effects (bookmark, tag, scan) beyond a simple property
+    ///   set, and naming should reflect that.
+    func prepareSource(at url: URL) {
         sourceURL = url
         BookmarkManager.saveBookmark(url: url, key: BookmarkManager.sourceKey)
         tagSourceFolder(at: url)
@@ -174,9 +185,16 @@ class SourceManager {
         scanProgress = ""
         sourceTotalBytes = 0
 
+        // Cancel any in-flight scan from a previous prepareSource call before
+        // starting a new one. Same-source-twice is also a no-op via cancellation,
+        // not a no-op via short-circuit, so the second call always reflects the
+        // user's latest intent.
+        currentScanTask?.cancel()
+        currentScanTask = nil
+
         // Start background scan for image files (skip in tests to avoid race conditions)
         if !BackupManager.isRunningTests {
-            Task { [weak self] in
+            currentScanTask = Task { [weak self] in
                 await self?.scanSourceFolder(url)
             }
         }
