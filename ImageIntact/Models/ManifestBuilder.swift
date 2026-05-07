@@ -326,12 +326,27 @@ actor ManifestBuilder {
 
     // MARK: - Private Methods
 
-    /// Calculate SHA256 checksum for a file
+    /// Calculate SHA256 checksum for a file.
+    ///
+    /// Bridges the synchronous, blocking SHA-256 read into async via GCD.
+    /// `Task.detached` would *not* solve cooperative-pool starvation here — detached
+    /// tasks still run on the same pool, sized to active core count. GCD's global
+    /// queues spawn additional threads for blocking work, keeping the cooperative
+    /// pool free for other async tasks. Same pattern as the protocol-impl call sites
+    /// in `CancellableFileOperations` / `DefaultFileOperations` / `BatchFileProcessor`
+    /// (PR #107). See Apple WWDC 2021 — "Swift concurrency: Behind the scenes".
     private func calculateChecksum(for url: URL, shouldCancel: @escaping () -> Bool) async throws
         -> String
     {
-        try await Task.detached(priority: .userInitiated) {
-            try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
-        }.value
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }
