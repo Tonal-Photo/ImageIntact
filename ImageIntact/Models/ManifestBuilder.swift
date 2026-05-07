@@ -282,42 +282,60 @@ actor ManifestBuilder {
             }
         }
 
-        // Process checksums in batches
-        let checksums: [URL: String]
-        do {
-            checksums = try await batchProcessor.batchCalculateChecksums(
-                filesToProcess.map { $0.url },
-                shouldCancel: shouldCancel
-            )
-        } catch {
-            ApplicationLogger.shared.debug("Batch checksum calculation failed: \(error)", category: .fileSystem)
-            return nil
-        }
+        // Process checksums in batches. Result-typed dict: every processed file
+        // is keyed; per-file failures carry the underlying typed error. Files
+        // omitted entirely from the dict were skipped due to cancellation between
+        // batches (caught by the shouldCancel guard below). The function does not
+        // throw — cancellation surfaces as missing keys, not as a thrown error.
+        let checksums = await batchProcessor.batchCalculateChecksums(
+            filesToProcess.map { $0.url },
+            shouldCancel: shouldCancel
+        )
 
-        guard !shouldCancel() else { return nil }
+        // Bail on either cancellation signal: BatchFileProcessor halts on either,
+        // and treating one without the other as "completed" would fire onFileError
+        // for every unprocessed URL.
+        guard !shouldCancel(), !Task.isCancelled else { return nil }
 
         // Phase 3: Build manifest from results
         var manifest: [FileManifestEntry] = []
 
         for (url, relativePath, size) in filesToProcess {
-            guard let checksum = checksums[url] else {
-                ApplicationLogger.shared.debug("No checksum for \(url.lastPathComponent)", category: .fileSystem)
+            switch checksums[url] {
+            case .success(let checksum):
+                let entry = FileManifestEntry(
+                    relativePath: relativePath,
+                    sourceURL: url,
+                    checksum: checksum,
+                    size: size
+                )
+                manifest.append(entry)
+            case .failure(let error):
+                ApplicationLogger.shared.debug(
+                    "No checksum for \(url.lastPathComponent): \(error.localizedDescription)",
+                    category: .fileSystem
+                )
                 if let callback = onFileError {
                     Task { @MainActor in
-                        callback(url.lastPathComponent, "manifest", "Failed to calculate checksum")
+                        callback(url.lastPathComponent, "manifest", error.localizedDescription)
                     }
                 }
-                continue
+            case nil:
+                // Should be unreachable: we already passed the `guard !shouldCancel()`
+                // above, and BatchFileProcessor's contract is "every input URL gets a
+                // Result entry unless cancellation between batches dropped it" — which
+                // we've ruled out. Reaching this branch means BatchFileProcessor
+                // silently dropped a URL; treat as a high-severity bug signal.
+                ApplicationLogger.shared.warning(
+                    "Missing checksum result for \(url.lastPathComponent) — BatchFileProcessor returned no entry for this URL despite no cancellation",
+                    category: .fileSystem
+                )
+                if let callback = onFileError {
+                    Task { @MainActor in
+                        callback(url.lastPathComponent, "manifest", "Missing checksum result")
+                    }
+                }
             }
-
-            let entry = FileManifestEntry(
-                relativePath: relativePath,
-                sourceURL: url,
-                checksum: checksum,
-                size: size
-            )
-
-            manifest.append(entry)
         }
 
         ApplicationLogger.shared.debug("Manifest built with \(manifest.count) files", category: .fileSystem)
