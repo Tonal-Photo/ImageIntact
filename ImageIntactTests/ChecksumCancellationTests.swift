@@ -126,6 +126,59 @@ final class ChecksumCancellationTests: XCTestCase {
             )
         }
     }
+
+    /// Success path for the async wrapper: a complete read returns a 64-char hex SHA-256.
+    func testSha256AsyncSuccessPath() async throws {
+        let checksum = try await ChecksumService.sha256Async(
+            for: tempFile, shouldCancel: { false }
+        )
+        XCTAssertEqual(checksum.count, 64, "Should be a 64-char hex SHA-256")
+        XCTAssertFalse(checksum.hasPrefix("size:"), "Should be a real hash, not the legacy fallback sentinel")
+    }
+
+    /// Task cancellation bridge: cancelling the parent Task must propagate into
+    /// the GCD work via `withTaskCancellationHandler` + the internal `CancelFlag`,
+    /// causing `sha256Async` to throw a cancellation error even when the caller's
+    /// own `shouldCancel` closure always returns false.
+    ///
+    /// File is sized large enough that the hash takes longer than the pre-cancel
+    /// sleep on a fast SSD (300 MB ≈ 200-600ms on Apple Silicon, well above the
+    /// 50ms sleep). If `OptimizedChecksum` ever gets an order-of-magnitude faster
+    /// or this test starts flaking, bump the file size before assuming the bridge
+    /// is broken.
+    func testSha256AsyncRespectsTaskCancellation() async throws {
+        let largeFile = testDirectory.appendingPathComponent("large-for-cancel.bin")
+        let largeData = Data(repeating: 0xAB, count: 300_000_000) // 300 MB
+        try largeData.write(to: largeFile)
+        defer { try? FileManager.default.removeItem(at: largeFile) }
+
+        let task = Task {
+            // The user's shouldCancel always returns false; cancellation must come
+            // exclusively from the Task.cancel() path below.
+            try await ChecksumService.sha256Async(
+                for: largeFile, shouldCancel: { false }
+            )
+        }
+
+        // Give the GCD work a moment to start, then cancel.
+        try await Task.sleep(nanoseconds: 50_000_000) // 50 ms
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Task.cancel() should have caused sha256Async to throw")
+        } catch {
+            XCTAssertTrue(
+                "\(error)".lowercased().contains("cancel"),
+                "Error should indicate cancellation, got: \(error)"
+            )
+        }
+    }
+
+    private var testDirectory: URL {
+        // Use the same directory the tempFile lives in, for cleanup convenience.
+        tempFile.deletingLastPathComponent()
+    }
 }
 
 // MARK: - Thread-safe counter for @Sendable test closures
