@@ -93,12 +93,32 @@ actor BatchFileProcessor {
 
     // MARK: - Batch Checksum Calculation
 
-    /// Calculate checksums for multiple files in a batch
+    /// Calculate checksums for multiple files in a batch.
+    ///
+    /// Returns a dictionary keyed by every successfully *processed* input URL, with
+    /// the value being either the computed checksum (`.success`) or the typed error
+    /// raised while computing it (`.failure`). URLs that didn't get processed because
+    /// the operation was cancelled mid-batch are *absent* from the returned dict —
+    /// callers should compare keys against the input list (or check `shouldCancel()`)
+    /// to detect partial completion.
+    ///
+    /// This Result-typed contract replaces a previous "successful results only, infer
+    /// failures from missing keys" shape (#108 item 7). Failure entries now carry the
+    /// specific error (e.g. `ChecksumServiceError.fileNotFound`,
+    /// `ChecksumServiceError.unreadable`) so callers can produce specific diagnostics
+    /// instead of a generic "Failed to calculate checksum" message.
+    ///
+    /// Cancellation: if `shouldCancel()` returns `true` between files in a batch, or
+    /// the underlying hashing throws `ChecksumError.cancelled` or `CancellationError`,
+    /// the in-flight batch returns the results accumulated so far and the function
+    /// rethrows `CancellationError` to the caller. Any other error from the hashing
+    /// path is recorded as a `.failure` entry; the batch continues with the remaining
+    /// files (one bad file no longer aborts the entire batch — see PR #107).
     func batchCalculateChecksums(
         _ files: [URL],
         shouldCancel: @escaping () -> Bool
-    ) async throws -> [URL: String] {
-        var results = [URL: String]()
+    ) async throws -> [URL: Result<String, Error>] {
+        var results = [URL: Result<String, Error>]()
 
         for batch in files.chunked(into: batchSize) {
             // Bridge synchronous batch hashing to async via GCD. Two reasons it can't
@@ -108,20 +128,14 @@ actor BatchFileProcessor {
             //   2. Task.detached doesn't help: detached tasks still consume slots on
             //      the limited cooperative pool. GCD's global queues spawn extra
             //      threads for blocking work.
-            // Per-file errors are caught inside the loop so one unreadable file no
-            // longer aborts the whole batch — readable files still produce checksums,
-            // unreadable files are omitted from the result dict (callers like
-            // ManifestBuilder already handle missing entries via `onFileError`).
-            // ChecksumError.cancelled and CancellationError still abort the batch
-            // (with whatever has been hashed so far) to preserve cancellation semantics.
-            let batchResults: [URL: String] = try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<[URL: String], Error>) in
+            let batchResults: [URL: Result<String, Error>] = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<[URL: Result<String, Error>], Error>) in
                 DispatchQueue.global(qos: .userInitiated).async {
                     autoreleasepool {
-                        var batchChecksums = [URL: String]()
+                        var batchResults = [URL: Result<String, Error>]()
                         for file in batch {
                             guard !shouldCancel() else {
-                                continuation.resume(returning: batchChecksums)
+                                continuation.resume(returning: batchResults)
                                 return
                             }
                             do {
@@ -129,24 +143,20 @@ actor BatchFileProcessor {
                                     for: file,
                                     shouldCancel: shouldCancel
                                 )
-                                batchChecksums[file] = checksum
+                                batchResults[file] = .success(checksum)
                             } catch ChecksumError.cancelled {
-                                continuation.resume(returning: batchChecksums)
+                                continuation.resume(returning: batchResults)
                                 return
                             } catch is CancellationError {
-                                continuation.resume(returning: batchChecksums)
+                                continuation.resume(returning: batchResults)
                                 return
                             } catch {
-                                ApplicationLogger.shared.warning(
-                                    "Skipping \(file.lastPathComponent) — checksum failed: \(error.localizedDescription)",
-                                    category: .fileSystem
-                                )
-                                // Omit this file from results; caller's missing-checksum
-                                // path takes over.
-                                continue
+                                // Per-file failure: record the typed error and continue
+                                // so one bad file doesn't abort the rest of the batch.
+                                batchResults[file] = .failure(error)
                             }
                         }
-                        continuation.resume(returning: batchChecksums)
+                        continuation.resume(returning: batchResults)
                     }
                 }
             }

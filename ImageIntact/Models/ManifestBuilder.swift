@@ -282,8 +282,11 @@ actor ManifestBuilder {
             }
         }
 
-        // Process checksums in batches
-        let checksums: [URL: String]
+        // Process checksums in batches. Result-typed dict: every processed file
+        // is keyed; per-file failures carry the underlying typed error. Files
+        // omitted entirely from the dict were skipped due to cancellation between
+        // batches (caught by the shouldCancel guard below).
+        let checksums: [URL: Result<String, Error>]
         do {
             checksums = try await batchProcessor.batchCalculateChecksums(
                 filesToProcess.map { $0.url },
@@ -300,24 +303,30 @@ actor ManifestBuilder {
         var manifest: [FileManifestEntry] = []
 
         for (url, relativePath, size) in filesToProcess {
-            guard let checksum = checksums[url] else {
-                ApplicationLogger.shared.debug("No checksum for \(url.lastPathComponent)", category: .fileSystem)
+            switch checksums[url] {
+            case .success(let checksum):
+                let entry = FileManifestEntry(
+                    relativePath: relativePath,
+                    sourceURL: url,
+                    checksum: checksum,
+                    size: size
+                )
+                manifest.append(entry)
+            case .failure(let error):
+                ApplicationLogger.shared.debug(
+                    "No checksum for \(url.lastPathComponent): \(error.localizedDescription)",
+                    category: .fileSystem
+                )
                 if let callback = onFileError {
                     Task { @MainActor in
-                        callback(url.lastPathComponent, "manifest", "Failed to calculate checksum")
+                        callback(url.lastPathComponent, "manifest", error.localizedDescription)
                     }
                 }
+            case nil:
+                // Cancellation between batches dropped this URL before it was processed.
+                // Don't fire onFileError — it wasn't a per-file failure.
                 continue
             }
-
-            let entry = FileManifestEntry(
-                relativePath: relativePath,
-                sourceURL: url,
-                checksum: checksum,
-                size: size
-            )
-
-            manifest.append(entry)
         }
 
         ApplicationLogger.shared.debug("Manifest built with \(manifest.count) files", category: .fileSystem)

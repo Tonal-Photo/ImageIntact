@@ -2,12 +2,12 @@
 //  BatchFileProcessorTests.swift
 //  ImageIntactTests
 //
-//  Regression tests for BatchFileProcessor.batchCalculateChecksums per-file
-//  error tolerance (PR #107, AMUX-17). Before the size-fallback removal, an
-//  unreadable file in a batch returned a fake "size:" sentinel and the batch
-//  continued. After the removal, that masking is gone — we instead skip the
-//  failing file and continue, so callers like ManifestBuilder still get
-//  checksums for every file that *can* be hashed.
+//  Regression tests for BatchFileProcessor.batchCalculateChecksums:
+//  - Per-file error tolerance (#107, AMUX-17): one bad file no longer
+//    aborts the whole batch.
+//  - Result-typed contract (#108 item 7, PR #113): each processed file gets
+//    a `.success(hash)` or `.failure(error)` entry, so callers can produce
+//    specific diagnostics instead of inferring failure from a missing key.
 //
 
 import XCTest
@@ -42,25 +42,31 @@ final class BatchFileProcessorTests: XCTestCase {
         try? FileManager.default.removeItem(at: testDirectory)
     }
 
-    /// All files in the batch are readable: every URL gets a real checksum.
+    /// All files in the batch are readable: every URL gets a `.success(hash)` entry.
     func testAllReadableFiles() async throws {
         let urls = try makeFiles(["a.txt", "b.txt", "c.txt"], readable: true)
         let result = try await processor.batchCalculateChecksums(urls, shouldCancel: { false })
-        XCTAssertEqual(result.count, urls.count, "Every readable file should produce a checksum")
+        XCTAssertEqual(result.count, urls.count, "Every readable file should produce a result")
         for url in urls {
-            XCTAssertNotNil(result[url], "Missing checksum for \(url.lastPathComponent)")
-            XCTAssertEqual(result[url]?.count, 64, "Should be a 64-char hex SHA-256")
-            XCTAssertFalse(
-                result[url]?.hasPrefix("size:") ?? true,
-                "Should not be the legacy size: sentinel"
-            )
+            guard let entry = result[url] else {
+                XCTFail("Missing result for \(url.lastPathComponent)")
+                continue
+            }
+            switch entry {
+            case .success(let hash):
+                XCTAssertEqual(hash.count, 64, "Should be a 64-char hex SHA-256")
+                XCTAssertFalse(hash.hasPrefix("size:"), "Should not be the legacy size: sentinel")
+            case .failure(let error):
+                XCTFail("\(url.lastPathComponent) should have succeeded, got: \(error)")
+            }
         }
     }
 
-    /// Mixed readable + unreadable files: readable ones produce checksums,
-    /// unreadable ones are omitted from the result dict (caller's missing-key
-    /// path takes over). Crucially, the batch does NOT throw.
-    func testUnreadableFileIsSkippedNotThrown() async throws {
+    /// Mixed readable + unreadable files: readable ones produce `.success`,
+    /// unreadable ones produce `.failure(ChecksumServiceError.unreadable)`.
+    /// The batch does NOT throw — callers iterate Result entries to handle
+    /// per-file outcomes uniformly.
+    func testUnreadableFileSurfacesAsFailureEntry() async throws {
         let readable = try makeFiles(["good1.txt", "good2.txt"], readable: true)
         let unreadable = try makeFiles(["bad.txt"], readable: false)
 
@@ -73,17 +79,34 @@ final class BatchFileProcessorTests: XCTestCase {
             readable + unreadable, shouldCancel: { false }
         )
         XCTAssertEqual(
-            result.count, readable.count,
-            "Only readable files should appear in the result dict"
+            result.count, readable.count + unreadable.count,
+            "Every processed file should have a Result entry (success or failure)"
         )
         for url in readable {
-            XCTAssertNotNil(result[url], "Readable file \(url.lastPathComponent) should have a checksum")
+            switch result[url] {
+            case .success(let hash):
+                XCTAssertEqual(hash.count, 64, "Readable file should produce a real SHA-256")
+            case .failure(let error):
+                XCTFail("Readable file \(url.lastPathComponent) should have succeeded, got: \(error)")
+            case nil:
+                XCTFail("Readable file \(url.lastPathComponent) should have a Result entry")
+            }
         }
         for url in unreadable {
-            XCTAssertNil(
-                result[url],
-                "Unreadable file \(url.lastPathComponent) should be omitted (not given a fake hash)"
-            )
+            switch result[url] {
+            case .success:
+                XCTFail("Unreadable file \(url.lastPathComponent) should not have produced a hash")
+            case .failure(let error):
+                guard let serviceError = error as? ChecksumServiceError,
+                      case .unreadable(let failedURL) = serviceError
+                else {
+                    XCTFail("Expected ChecksumServiceError.unreadable for \(url.lastPathComponent), got: \(error)")
+                    continue
+                }
+                XCTAssertEqual(failedURL, url, "Failure entry should carry the offending URL")
+            case nil:
+                XCTFail("Unreadable file \(url.lastPathComponent) should appear as a .failure entry, not be omitted")
+            }
         }
     }
 
