@@ -119,11 +119,13 @@ final class ChecksumCancellationTests: XCTestCase {
                 shouldCancel: { counter.increment() > cancelAfterChunks }
             )
             XCTFail("sha256Async should have thrown a cancellation error")
+        } catch let error as ChecksumError {
+            guard case .cancelled = error else {
+                XCTFail("Should throw ChecksumError.cancelled, got: \(error)")
+                return
+            }
         } catch {
-            XCTAssertTrue(
-                "\(error)".lowercased().contains("cancel"),
-                "Error should indicate cancellation, got: \(error)"
-            )
+            XCTFail("Expected ChecksumError.cancelled, got: \(type(of: error)) \(error)")
         }
     }
 
@@ -167,11 +169,13 @@ final class ChecksumCancellationTests: XCTestCase {
         do {
             _ = try await task.value
             XCTFail("Task.cancel() should have caused sha256Async to throw")
+        } catch let error as ChecksumError {
+            guard case .cancelled = error else {
+                XCTFail("Should throw ChecksumError.cancelled, got: \(error)")
+                return
+            }
         } catch {
-            XCTAssertTrue(
-                "\(error)".lowercased().contains("cancel"),
-                "Error should indicate cancellation, got: \(error)"
-            )
+            XCTFail("Expected ChecksumError.cancelled, got: \(type(of: error)) \(error)")
         }
     }
 

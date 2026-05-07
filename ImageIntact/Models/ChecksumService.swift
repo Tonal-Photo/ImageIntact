@@ -102,6 +102,11 @@ enum ChecksumService {
     ///
     /// QoS: the dispatched queue's QoS is mapped from `Task.currentPriority`, so a
     /// background-priority caller doesn't artificially elevate the underlying I/O.
+    /// Note: GCD threads do *not* participate in Swift Concurrency's dynamic priority
+    /// escalation. If the calling task is later awaited by a higher-priority task,
+    /// this work continues at its initial QoS rather than being escalated. Acceptable
+    /// for ImageIntact's foreground/userInitiated workload; reconsider if this method
+    /// is ever called from low-priority contexts that may be escalated mid-flight.
     ///
     /// Concurrency note: `DispatchQueue.global` can spawn many threads under high
     /// concurrent load. ImageIntact's backup pipeline bounds concurrent calls to
