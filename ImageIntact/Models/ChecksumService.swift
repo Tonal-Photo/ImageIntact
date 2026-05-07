@@ -19,10 +19,22 @@ import Foundation
 /// The associated `URL` lets callers report which file failed without having to
 /// preserve it from the call site. `LocalizedError` conformance keeps existing
 /// `error.localizedDescription` consumers working.
-enum ChecksumServiceError: Error, LocalizedError, Equatable {
+///
+/// `readFailed(URL, Error)` is the catch-all for any underlying read failure that
+/// doesn't fit the other cases. Wrapping rather than rethrowing means callers
+/// only need to know about `ChecksumServiceError` and `ChecksumError` to handle
+/// every failure path — the underlying `Error` is preserved as the associated
+/// value for diagnostics or logging.
+///
+/// `Equatable` is intentionally *not* synthesized: `readFailed`'s associated
+/// `Error` doesn't conform to `Equatable`, so manual conformance would have to
+/// elide that field. Tests use pattern matching (`case .fileNotFound = error`)
+/// which doesn't require `Equatable`.
+enum ChecksumServiceError: Error, LocalizedError {
     case fileNotFound(URL)
     case iCloudNotDownloaded(URL)
     case unreadable(URL)
+    case readFailed(URL, underlyingError: Error)
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +44,8 @@ enum ChecksumServiceError: Error, LocalizedError, Equatable {
             return "File is in iCloud but not downloaded: \(url.lastPathComponent)"
         case .unreadable(let url):
             return "File is not readable: \(url.lastPathComponent)"
+        case .readFailed(let url, let underlying):
+            return "Failed to read \(url.lastPathComponent): \(underlying.localizedDescription)"
         }
     }
 }
@@ -65,8 +79,13 @@ enum ChecksumService {
     static func sha256(
         for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
     ) throws -> String {
-        // iCloud-not-downloaded check (semantic, not TOCTOU — the resource value isn't
-        // surfaced from a CryptoKit read in any reliable way).
+        // iCloud-not-downloaded check kept explicit because
+        // `ubiquitousItemDownloadingStatus` isn't reliably surfaced through a CryptoKit
+        // read; without this check the read could either silently trigger an iCloud
+        // download or fail with a confusing native error. There's still a tiny
+        // (microsecond-scale) TOCTOU window between this check and the read — the OS
+        // could begin downloading in that window — but the alternative (no check) is
+        // strictly worse for diagnostic clarity.
         if let status = try? fileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
             .ubiquitousItemDownloadingStatus,
             status == .notDownloaded
@@ -97,12 +116,17 @@ enum ChecksumService {
             case NSFileReadNoPermissionError:
                 throw ChecksumServiceError.unreadable(fileURL)
             default:
-                throw nsError
+                throw ChecksumServiceError.readFailed(fileURL, underlyingError: nsError)
             }
+        } catch {
+            // Catch-all for any non-Cocoa Error (e.g., POSIXError if a future call site
+            // bypasses Foundation wrappers). Wrap rather than rethrow so the caller's
+            // contract stays "ChecksumServiceError | ChecksumError | CancellationError".
+            throw ChecksumServiceError.readFailed(fileURL, underlyingError: error)
         }
-        // Any non-Cocoa error bubbles up to the caller as-is. Returning a size-based
-        // pseudo-checksum here would silently treat distinct files as identical when
-        // reads fail under load — unacceptable for a backup tool.
+        // Returning a size-based pseudo-checksum here would silently treat distinct
+        // files as identical when reads fail under load — unacceptable for a backup
+        // tool. Removed in PR #107.
     }
 
     /// Async wrapper around `sha256(for:shouldCancel:)` that bridges the synchronous,
