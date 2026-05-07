@@ -23,9 +23,8 @@ enum ChecksumService {
     /// - Parameters:
     ///   - fileURL: file to hash
     ///   - shouldCancel: cooperative cancellation predicate, polled by the inner reader
-    ///   - isNetworkVolume: currently unused; kept for call-site compatibility
     static func sha256(
-        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool, isNetworkVolume _: Bool = false
+        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
     ) throws -> String {
         // First check if file exists
         guard FileManager.default.fileExists(atPath: fileURL.path) else {

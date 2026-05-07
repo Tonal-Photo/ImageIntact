@@ -188,8 +188,7 @@ class MemoryOptimizationTests: XCTestCase {
         // Calculate checksum (should use autoreleasepool internally)
         let checksum = try ChecksumService.sha256(
             for: testFile,
-            shouldCancel: { false },
-            isNetworkVolume: false
+            shouldCancel: { false }
         )
 
         // Verify we got a checksum
@@ -206,8 +205,7 @@ class MemoryOptimizationTests: XCTestCase {
         // Calculate checksum (should use streaming for large files)
         let checksum = try ChecksumService.sha256(
             for: testFile,
-            shouldCancel: { false },
-            isNetworkVolume: false
+            shouldCancel: { false }
         )
 
         // Verify we got a valid checksum

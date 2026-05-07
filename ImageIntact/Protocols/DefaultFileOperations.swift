@@ -120,12 +120,7 @@ class DefaultFileOperations: FileOperationsProtocol {
   }
 
   func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
-    // Use the existing static method from BackupManager
-    // This maintains compatibility with existing checksum logic
-    // Pass network volume status for optimized reading
-    let isNetwork = isNetworkVolume(url: url)
-    return try ChecksumService.sha256(
-      for: url, shouldCancel: shouldCancel, isNetworkVolume: isNetwork)
+    return try ChecksumService.sha256(for: url, shouldCancel: shouldCancel)
   }
 
   func startAccessingSecurityScopedResource(for url: URL) -> Bool {
