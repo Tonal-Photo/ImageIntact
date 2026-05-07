@@ -54,6 +54,11 @@ class SourceManager {
 
     @MainActor
     func scanSourceFolder(_ url: URL) async {
+        // Honor cooperative cancellation. If `prepareSource` was called again with
+        // a new URL while a previous scan was in flight, that previous task gets
+        // `cancel()`'d; this guard keeps it from clobbering the new task's state.
+        guard !Task.isCancelled else { return }
+
         isScanning = true
         scanProgress = "Scanning for image files..."
         sourceFileTypes = [:]
@@ -90,12 +95,24 @@ class SourceManager {
                 }
             }
 
+            // Re-check cancellation right before publishing results — the inner
+            // file scan can take seconds, plenty of time for a follow-up
+            // `prepareSource` to have cancelled us. Without this guard, a stale
+            // long-running scan would overwrite the new scan's state.
+            guard !Task.isCancelled else {
+                await MainActor.run { self.isScanning = false }
+                return
+            }
+
             await MainActor.run {
                 self.sourceFileTypes = results
                 self.sourceTotalBytes = totalBytes
                 self.scanProgress = ImageFileScanner.formatScanResults(results, groupRaw: false)
                 self.isScanning = false
             }
+        } catch is CancellationError {
+            // Cooperative cancellation propagated from inside the scanner.
+            await MainActor.run { self.isScanning = false }
         } catch {
             await MainActor.run {
                 self.scanProgress = "Scan failed: \(error.localizedDescription)"
