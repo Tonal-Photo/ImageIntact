@@ -153,6 +153,35 @@ class SourceManager {
         return (filteredSummary, totalFiltered, totalFiles)
     }
 
+    // MARK: - Source URL Management
+
+    /// Sets the source URL and prepares for a fresh scan: persists the
+    /// security-scoped bookmark, tags the folder for source detection, clears
+    /// stale scan state, and (unless we're in test mode) kicks off an
+    /// asynchronous scan for image files.
+    ///
+    /// Extracted from `BackupManager.setSource` (#103 / AMUX-18). The cross-cutting
+    /// piece — auto-generating an organization name from the URL — stays at the
+    /// `BackupManager` layer because it's a backup-orchestration concern, not a
+    /// source-state concern.
+    func setURL(_ url: URL) {
+        sourceURL = url
+        BookmarkManager.saveBookmark(url: url, key: BookmarkManager.sourceKey)
+        tagSourceFolder(at: url)
+
+        // Clear previous scan results
+        sourceFileTypes = [:]
+        scanProgress = ""
+        sourceTotalBytes = 0
+
+        // Start background scan for image files (skip in tests to avoid race conditions)
+        if !BackupManager.isRunningTests {
+            Task { [weak self] in
+                await self?.scanSourceFolder(url)
+            }
+        }
+    }
+
     // MARK: - Source Tagging
 
     func tagSourceFolder(at url: URL) {
