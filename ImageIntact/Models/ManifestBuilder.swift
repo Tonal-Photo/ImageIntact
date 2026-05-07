@@ -292,7 +292,10 @@ actor ManifestBuilder {
             shouldCancel: shouldCancel
         )
 
-        guard !shouldCancel() else { return nil }
+        // Bail on either cancellation signal: BatchFileProcessor halts on either,
+        // and treating one without the other as "completed" would fire onFileError
+        // for every unprocessed URL.
+        guard !shouldCancel(), !Task.isCancelled else { return nil }
 
         // Phase 3: Build manifest from results
         var manifest: [FileManifestEntry] = []
