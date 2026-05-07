@@ -5,22 +5,62 @@ final class ImageFileTypeTests: XCTestCase {
     
     // MARK: - File Type Detection Tests
     
-    func testRAWFileDetection() {
-        // Test common RAW formats
-        let rawExtensions = ["nef", "cr2", "arw", "dng", "orf", "rw2", "pef", "srw", "x3f", "raf"]
-        
+    func testRAWFileDetection() throws {
+        // Test common RAW formats, including both Hasselblad formats (3fr newer, fff older)
+        let rawExtensions = [
+            "nef", "cr2", "arw", "dng", "orf", "rw2", "pef", "srw", "x3f", "raf",
+            "3fr", "fff", "iiq", "mef", "mos",
+        ]
+
         for ext in rawExtensions {
             let url = URL(fileURLWithPath: "/test/photo.\(ext)")
             XCTAssertTrue(ImageFileType.isImageFile(url), "\(ext) should be recognized as image file")
-            
-            if let fileType = ImageFileType.from(fileExtension: ext) {
-                XCTAssertTrue(fileType.isRaw, "\(ext) should be recognized as RAW")
-                XCTAssertFalse(fileType.isVideo, "\(ext) should not be video")
-                XCTAssertFalse(fileType.isSidecar, "\(ext) should not be sidecar")
-            } else {
-                XCTFail("Failed to detect file type for \(ext)")
-            }
+
+            // Use XCTUnwrap so a missing mapping fails the test instead of silently passing
+            let fileType = try XCTUnwrap(
+                ImageFileType.from(fileExtension: ext),
+                "\(ext) should map to an ImageFileType case"
+            )
+            XCTAssertTrue(fileType.isRaw, "\(ext) should be recognized as RAW")
+            XCTAssertFalse(fileType.isVideo, "\(ext) should not be video")
+            XCTAssertFalse(fileType.isSidecar, "\(ext) should not be sidecar")
         }
+    }
+
+    func testHasselbladFormats() {
+        // Hasselblad shoots .3fr (newer) and .fff (older) RAW, with .phos sidecars from Phocus
+        XCTAssertEqual(ImageFileType.from(fileExtension: "3fr"), .threefr)
+        XCTAssertEqual(ImageFileType.from(fileExtension: "3FR"), .threefr, "should be case-insensitive")
+        XCTAssertTrue(ImageFileType.threefr.isRaw)
+        XCTAssertFalse(ImageFileType.threefr.isSidecar)
+
+        XCTAssertEqual(ImageFileType.from(fileExtension: "fff"), .fff)
+        XCTAssertTrue(ImageFileType.fff.isRaw)
+
+        // Phocus sidecar
+        XCTAssertEqual(ImageFileType.from(fileExtension: "phos"), .phos)
+        XCTAssertEqual(ImageFileType.from(fileExtension: "PHOS"), .phos, "should be case-insensitive")
+        XCTAssertTrue(ImageFileType.phos.isSidecar)
+        XCTAssertFalse(ImageFileType.phos.isRaw)
+        XCTAssertFalse(ImageFileType.phos.isVideo)
+
+        // Hasselblad RAW should pass through both filter presets
+        XCTAssertTrue(FileTypeFilter.rawOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.3fr")))
+        XCTAssertTrue(FileTypeFilter.rawOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.fff")))
+        XCTAssertTrue(FileTypeFilter.photosOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.3fr")))
+        XCTAssertTrue(FileTypeFilter.photosOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.fff")))
+
+        // Phocus sidecars are NOT in the RAW or Photos presets — they're sidecars.
+        // Note: this means picking "RAW Only" silently drops the sidecar (same as
+        // existing behavior for .xmp). The fix for that is a separate concern from
+        // recognition; tracked outside this change.
+        XCTAssertFalse(FileTypeFilter.rawOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.phos")))
+        XCTAssertFalse(FileTypeFilter.photosOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.phos")))
+        XCTAssertFalse(FileTypeFilter.videosOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/img.phos")))
+
+        // Filter must be case-insensitive at the URL level — cameras often produce uppercase extensions
+        XCTAssertTrue(FileTypeFilter.rawOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/IMG.3FR")))
+        XCTAssertTrue(FileTypeFilter.rawOnly.shouldInclude(fileURL: URL(fileURLWithPath: "/IMG.FFF")))
     }
     
     func testStandardImageDetection() {
@@ -54,7 +94,7 @@ final class ImageFileTypeTests: XCTestCase {
     }
     
     func testSidecarFileDetection() {
-        let sidecarFormats = ["xmp", "aae", "thm", "dop", "pp3"]
+        let sidecarFormats = ["xmp", "aae", "thm", "dop", "pp3", "phos"]
         
         for ext in sidecarFormats {
             let url = URL(fileURLWithPath: "/test/metadata.\(ext)")

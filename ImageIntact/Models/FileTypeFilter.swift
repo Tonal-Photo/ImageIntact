@@ -66,23 +66,34 @@ public struct FileTypeFilter: Codable, Equatable {
   /// No filtering - include all files
   public static let allFiles = FileTypeFilter()
 
-  /// RAW files only
-  public static let rawOnly = FileTypeFilter(extensions: [
-    "nef", "cr2", "cr3", "arw", "orf", "rw2", "dng", "raf", "raw", "rwl", "srw", "x3f",
-  ])
+  /// RAW files only — derived from `ImageFileType` so new RAW formats added to the enum
+  /// are automatically picked up by this preset (single source of truth).
+  public static let rawOnly: FileTypeFilter = {
+    var extensions = Set<String>()
+    for type in ImageFileType.allCases where type.isRaw {
+      extensions.formUnion(type.extensions)
+    }
+    return FileTypeFilter(extensions: extensions)
+  }()
 
-  /// All photo types (RAW + processed)
-  public static let photosOnly = FileTypeFilter(extensions: [
-    // RAW formats
-    "nef", "cr2", "cr3", "arw", "orf", "rw2", "dng", "raf", "raw", "rwl", "srw", "x3f",
-    // Processed formats
-    "jpg", "jpeg", "heic", "heif", "png", "tiff", "tif", "bmp", "webp",
-  ])
+  /// All photo types (RAW + processed) — derived from `ImageFileType`.
+  /// Includes anything that is neither a video nor a sidecar/catalog file.
+  public static let photosOnly: FileTypeFilter = {
+    var extensions = Set<String>()
+    for type in ImageFileType.allCases where !type.isVideo && !type.isSidecar {
+      extensions.formUnion(type.extensions)
+    }
+    return FileTypeFilter(extensions: extensions)
+  }()
 
-  /// Video files only
-  public static let videosOnly = FileTypeFilter(extensions: [
-    "mov", "mp4", "avi", "mkv", "m4v", "mpg", "mpeg", "wmv", "flv", "webm", "mts", "m2ts",
-  ])
+  /// Video files only — derived from `ImageFileType`.
+  public static let videosOnly: FileTypeFilter = {
+    var extensions = Set<String>()
+    for type in ImageFileType.allCases where type.isVideo {
+      extensions.formUnion(type.extensions)
+    }
+    return FileTypeFilter(extensions: extensions)
+  }()
 
   // MARK: - Helper Properties
 

@@ -140,7 +140,8 @@ class UTIFileTypeDetector {
             "com.olympus.orf-raw", // Olympus ORF
             "com.panasonic.rw2-raw", // Panasonic RW2
             "com.pentax.pef-raw", // Pentax PEF
-            "com.hasselblad.fff-raw", // Hasselblad FFF
+            "com.hasselblad.fff-raw", // Hasselblad FFF (older)
+            "com.hasselblad.3fr-raw", // Hasselblad 3FR (newer)
             "com.phaseone.iiq-raw", // Phase One IIQ
             "com.leica.rwl-raw", // Leica RWL
             "com.samsung.srw-raw", // Samsung SRW

@@ -584,6 +584,7 @@ struct FileTypesContent: View {
           Text("**Nikon**: NEF, NRW")
           Text("**Sony**: ARW, SRF, SR2")
           Text("**Fujifilm**: RAF")
+          Text("**Hasselblad**: 3FR, FFF")
           Text("**Others**: DNG, ORF, RW2, PEF, IIQ, and 20+ more")
         }
         .font(.callout)
@@ -602,6 +603,7 @@ struct FileTypesContent: View {
           Text("**Adobe**: XMP sidecars, DNG")
           Text("**Lightroom**: Catalogs (.lrcat), Preview data (.lrdata)")
           Text("**Capture One**: Catalogs (.cocatalog), Sessions (.cosessiondb), Settings (.cos)")
+          Text("**Hasselblad Phocus**: Sidecars (.phos)")
           Text("**Apple**: AAE sidecars")
           Text("**Others**: DxO (.dop), RawTherapee (.pp3)")
         }
