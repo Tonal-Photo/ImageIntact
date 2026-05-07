@@ -318,9 +318,20 @@ actor ManifestBuilder {
                     }
                 }
             case nil:
-                // Cancellation between batches dropped this URL before it was processed.
-                // Don't fire onFileError — it wasn't a per-file failure.
-                continue
+                // Should be unreachable: we already passed the `guard !shouldCancel()`
+                // above, and BatchFileProcessor's contract is "every input URL gets a
+                // Result entry unless cancellation between batches dropped it" — which
+                // we've ruled out. Reaching this branch means BatchFileProcessor
+                // silently dropped a URL; treat as a high-severity bug signal.
+                ApplicationLogger.shared.warning(
+                    "Missing checksum result for \(url.lastPathComponent) — BatchFileProcessor returned no entry for this URL despite no cancellation",
+                    category: .fileSystem
+                )
+                if let callback = onFileError {
+                    Task { @MainActor in
+                        callback(url.lastPathComponent, "manifest", "Missing checksum result")
+                    }
+                }
             }
         }
 

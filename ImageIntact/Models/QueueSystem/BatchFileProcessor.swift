@@ -167,8 +167,13 @@ actor BatchFileProcessor {
             results.merge(batchResults) { _, new in new }
 
             // Cancellation between batches: stop iterating and return what we have.
-            // Caller distinguishes "cancelled" from "completed" via shouldCancel().
-            if shouldCancel() { return results }
+            // Check both the user's shouldCancel closure AND Swift Task cancellation;
+            // if a parent Task.cancel() fired but shouldCancel didn't flip (e.g. the
+            // closure isn't wired to Task.isCancelled), we'd otherwise busy-loop
+            // through aborted batches. Caller distinguishes "cancelled" from
+            // "completed" via shouldCancel() or by comparing the result key set
+            // against the input list.
+            if shouldCancel() || Task.isCancelled { return results }
         }
 
         return results
