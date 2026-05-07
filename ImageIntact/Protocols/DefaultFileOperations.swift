@@ -124,7 +124,7 @@ class DefaultFileOperations: FileOperationsProtocol {
     // This maintains compatibility with existing checksum logic
     // Pass network volume status for optimized reading
     let isNetwork = isNetworkVolume(url: url)
-    return try BackupManager.sha256ChecksumStatic(
+    return try ChecksumService.sha256(
       for: url, shouldCancel: shouldCancel, isNetworkVolume: isNetwork)
   }
 

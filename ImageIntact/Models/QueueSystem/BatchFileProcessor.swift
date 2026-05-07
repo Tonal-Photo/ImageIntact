@@ -114,7 +114,7 @@ actor BatchFileProcessor {
                                 return
                             }
 
-                            let checksum = try BackupManager.sha256ChecksumStatic(
+                            let checksum = try ChecksumService.sha256(
                                 for: file,
                                 shouldCancel: shouldCancel
                             )

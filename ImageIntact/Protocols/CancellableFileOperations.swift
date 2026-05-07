@@ -385,7 +385,7 @@ class CancellableFileOperations: FileOperationsProtocol {
     // This uses SHA-256 which is what the rest of the app expects
     // Pass network volume status for optimized reading
     let isNetwork = isNetworkVolume(url: url)
-    return try BackupManager.sha256ChecksumStatic(
+    return try ChecksumService.sha256(
       for: url, shouldCancel: shouldCancel, isNetworkVolume: isNetwork)
   }
 
