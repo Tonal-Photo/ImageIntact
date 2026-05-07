@@ -141,6 +141,34 @@ final class NativeChecksumTests: XCTestCase {
         }
     }
 
+    /// Regression test for the `.readFailed` catch-all wrapping introduced when
+    /// the typed enum was added (#108 PR #112). Pointing the service at a
+    /// directory triggers an `NSCocoaErrorDomain` error that is neither
+    /// `NSFileReadNoSuchFileError` nor `NSFileReadNoPermissionError`, so it must
+    /// surface as `ChecksumServiceError.readFailed(url, underlyingError:)` rather
+    /// than as a raw NSError.
+    func testSHA256ChecksumForDirectoryWrapsAsReadFailed() throws {
+        let dir = testDirectory.appendingPathComponent("not-a-file-its-a-directory")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+
+        XCTAssertThrowsError(
+            try ChecksumService.sha256(for: dir, shouldCancel: { false })
+        ) { error in
+            guard let serviceError = error as? ChecksumServiceError else {
+                XCTFail("Expected ChecksumServiceError, got: \(type(of: error)) \(error)")
+                return
+            }
+            guard case .readFailed(let url, let underlying) = serviceError else {
+                XCTFail("Expected ChecksumServiceError.readFailed, got: \(serviceError)")
+                return
+            }
+            XCTAssertEqual(url, dir, "Error should carry the offending URL")
+            XCTAssertNotNil(underlying.localizedDescription, "Underlying error should be preserved")
+        }
+    }
+
     func testSHA256ChecksumForBinaryFile() throws {
         // Create binary file with various byte patterns
         let testFile = testDirectory.appendingPathComponent("binary.dat")

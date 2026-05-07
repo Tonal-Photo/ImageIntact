@@ -55,18 +55,23 @@ enum ChecksumService {
     ///
     /// Throws:
     /// - `ChecksumServiceError.iCloudNotDownloaded(url)` — file is in iCloud but not yet
-    ///   downloaded locally. Detected up front via `ubiquitousItemDownloadingStatus`
-    ///   resource value (semantic check, not TOCTOU; the underlying read would either
-    ///   silently trigger a download or fail with a confusing native error).
+    ///   downloaded locally. Detected up front via `ubiquitousItemDownloadingStatus`.
+    ///   Tiny TOCTOU window between the check and the read is acceptable — the
+    ///   alternative (no check) is strictly worse for diagnostic clarity.
     /// - `ChecksumServiceError.fileNotFound(url)` — mapped from
     ///   `NSCocoaErrorDomain` + `NSFileReadNoSuchFileError` raised by the read.
     /// - `ChecksumServiceError.unreadable(url)` — mapped from
     ///   `NSCocoaErrorDomain` + `NSFileReadNoPermissionError` raised by the read.
+    /// - `ChecksumServiceError.readFailed(url, underlyingError:)` — catch-all wrapper
+    ///   around any other read failure (corrupt file, I/O error, POSIX error from a
+    ///   future call site that bypasses Foundation). Underlying error is preserved
+    ///   for diagnostics.
     /// - `ChecksumError.cancelled` — propagated from `OptimizedChecksum` when the
-    ///   `shouldCancel` closure returns true, or when a `CancellationError` is caught
-    ///   from the surrounding `Task`.
-    /// - Any other `NSError` from the read is rethrown as-is (e.g., I/O errors,
-    ///   filesystem corruption).
+    ///   `shouldCancel` closure returns true.
+    /// - `CancellationError` — propagated as-is from a cancelled parent `Task` to
+    ///   preserve Swift structured-concurrency semantics. (Wrapping it as a
+    ///   domain-specific error would cause `TaskGroup` siblings to treat it as a
+    ///   regular failure rather than cooperative cancellation.)
     ///
     /// The previous size-based fallback (`"size:%016x"`) was removed in PR #107 —
     /// for a verification tool, masking a read failure with a fake hash is a
@@ -106,9 +111,12 @@ enum ChecksumService {
         } catch let checksumError as ChecksumError {
             // Never swallow ChecksumError (includes .cancelled) — rethrow immediately
             throw checksumError
-        } catch is CancellationError {
-            // Never swallow Swift Task cancellation either
-            throw ChecksumError.cancelled
+        } catch let cancellation as CancellationError {
+            // Rethrow Swift's structured-concurrency cancellation as-is. Wrapping it
+            // as ChecksumError.cancelled would cause a parent TaskGroup to treat it
+            // as a regular failure rather than cooperative cancellation, which would
+            // not unwind sibling tasks correctly.
+            throw cancellation
         } catch let nsError as NSError where nsError.domain == NSCocoaErrorDomain {
             switch nsError.code {
             case NSFileReadNoSuchFileError, NSFileNoSuchFileError:
