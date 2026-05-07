@@ -814,39 +814,10 @@ class BackupManager {
         sourceManager.checkForSourceTag(at: url)
     }
 
-    // MARK: - Simple Progress Updates
-
-    @MainActor
-    func updateProgress(fileName: String, destinationName: String) {
-        Task {
-            // Update through ProgressTracker
-            progressTracker.updateFileProgress(fileName: fileName, destinationName: destinationName)
-        }
-    }
-
-    @MainActor
-    func updateCopySpeed(bytesAdded: Int64) {
-        progressTracker.totalBytesCopied += bytesAdded
-        let elapsed = Date().timeIntervalSince(progressTracker.copyStartTime)
-        if elapsed > 0 {
-            progressTracker.copySpeed = Double(progressTracker.totalBytesCopied) / (1024 * 1024) / elapsed
-            // ETA update is handled by ProgressTracker internally
-        }
-    }
-
-    @MainActor
-    func updateETA() {
-        // Delegate to ProgressTracker - kept for compatibility
-        // The actual ETA calculation happens in ProgressTracker
-    }
+    // MARK: - Progress Forwarding
 
     func formattedETA() -> String {
         return progressTracker.formattedETA()
-    }
-
-    @MainActor
-    func resetProgress() {
-        progressTracker.resetAll()
     }
 
     @MainActor

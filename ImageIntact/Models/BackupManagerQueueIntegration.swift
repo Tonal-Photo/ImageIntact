@@ -283,14 +283,14 @@ extension BackupManager {
             fastestDestination: fastestDestination, fastestSpeed: fastestSpeed
         )
 
-        // Update progress tracker
+        // Update progress tracker. updateFromCoordinator calls updateETA internally,
+        // so no separate ETA call is needed here.
         progressTracker.updateFromCoordinator(
             overallProgress: coordinator.overallProgress,
             totalBytes: coordinator.totalBytesToCopy,
             copiedBytes: coordinator.totalBytesCopied,
             speed: coordinator.currentSpeed
         )
-        updateETA()
 
         // Update processed files count
         let maxVerified = coordinator.destinationStatuses.values.map(\.verifiedCount).max() ?? 0

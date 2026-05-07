@@ -38,29 +38,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertTrue(backupManager.destinationProgress.isEmpty)
     }
 
-    // MARK: - Progress Management Tests
-
-    func testProgressReset() async {
-        // Set some initial values
-        backupManager.currentFileIndex = 10
-        backupManager.currentFileName = "test.jpg"
-        backupManager.currentDestinationName = "Backup Drive"
-        backupManager.copySpeed = 50.0
-        backupManager.totalBytesCopied = 1_000_000
-
-        // Reset progress
-        await MainActor.run {
-            backupManager.resetProgress()
-        }
-
-        // Verify reset
-        XCTAssertEqual(backupManager.currentFileIndex, 0)
-        XCTAssertEqual(backupManager.currentFileName, "")
-        XCTAssertEqual(backupManager.currentDestinationName, "")
-        XCTAssertEqual(backupManager.copySpeed, 0.0)
-        XCTAssertEqual(backupManager.totalBytesCopied, 0)
-        XCTAssertTrue(backupManager.destinationProgress.isEmpty)
-    }
 
     func testDestinationProgressInitialization() async {
         let destinations = [
@@ -150,14 +127,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertEqual(backupManager.statusMessage, "Backup complete!")
     }
 
-    // MARK: - Copy Speed Calculation
-
-    func testCopySpeedCalculation() async {
-        await MainActor.run {
-            backupManager.updateCopySpeed(bytesAdded: 1024 * 1024) // 1 MB
-        }
-        XCTAssertGreaterThan(backupManager.copySpeed, 0)
-    }
 
     // MARK: - Session ID Tests
 
@@ -224,21 +193,6 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertEqual(backupManager.destinationURLs, [nil])
     }
 
-    // MARK: - Async Progress Update Tests
-
-    func testAsyncProgressUpdate() async {
-        await MainActor.run {
-            backupManager.updateProgress(fileName: "test.jpg", destinationName: "Backup")
-        }
-
-        // Wait for the internal Task to complete
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
-
-        // The atomic counter should have incremented
-        XCTAssertGreaterThan(backupManager.currentFileIndex, 0)
-        XCTAssertEqual(backupManager.currentFileName, "test.jpg")
-        XCTAssertEqual(backupManager.currentDestinationName, "Backup")
-    }
 
     // MARK: - Error State Tests
 
