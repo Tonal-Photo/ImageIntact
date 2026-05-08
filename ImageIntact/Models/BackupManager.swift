@@ -51,8 +51,6 @@ class BackupManager {
     var sessionID = UUID().uuidString
     var shouldCancel = false
     var debugLog: [String] = []
-    var hasWrittenDebugLog = false
-    var lastDebugLogPath: URL?
 
     // Progress tracking delegated to ProgressTracker
     let progressTracker = ProgressTracker()
@@ -165,23 +163,7 @@ class BackupManager {
     // See: GH issue #91, finding #8.
     var organizationName: String = "" {
         didSet {
-            var cleaned = organizationName
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "\\", with: "_")
-                .replacingOccurrences(of: ":", with: "_")  // macOS Finder path separator
-                .replacingOccurrences(of: "\0", with: "")  // null bytes
-                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
-            // APFS/HFS+ limit is 255 UTF-8 bytes, not characters.
-            if cleaned.utf8.count > 255 {
-                var truncated = ""
-                for char in cleaned {
-                    let next = truncated + String(char)
-                    if next.utf8.count > 255 { break }
-                    truncated = next
-                }
-                cleaned = truncated
-            }
-            let sanitized = cleaned
+            let sanitized = SmartFolderName.sanitize(organizationName)
             if sanitized != organizationName {
                 organizationName = sanitized
             }
@@ -237,7 +219,6 @@ class BackupManager {
     }
 
     var logEntries: [LogEntry] = []
-    private var currentOperation: DispatchWorkItem?
     var currentOrchestrator: BackupOrchestrator?
 
     // MARK: - Initialization
@@ -278,13 +259,14 @@ class BackupManager {
             return
         }
 
-        // Initialize file type filter on source manager
-        initializeFileTypeFilter()
-
         // Restore last session if enabled
         if PreferencesManager.shared.restoreLastSession {
             destinationManager.loadFromSession()
-            loadSourceFromSession()
+            if let restoredURL = sourceManager.loadFromSession(), !BackupManager.isRunningTests {
+                Task { [sourceManager] in
+                    await sourceManager.scanSourceFolder(restoredURL)
+                }
+            }
         } else {
             destinationManager.initializeEmpty()
             logInfo("Initialized with single empty destination slot")
@@ -292,44 +274,6 @@ class BackupManager {
 
         // Validate and analyze loaded destinations
         destinationManager.validateAndAnalyzeDestinations()
-    }
-
-    // MARK: - Initialization Helpers
-
-    /// Initialize the file type filter from user preferences
-    private func initializeFileTypeFilter() {
-        let filterPref = PreferencesManager.shared.defaultFileTypeFilter
-        switch filterPref {
-        case "photos":
-            sourceManager.fileTypeFilter = .photosOnly
-        case "raw":
-            sourceManager.fileTypeFilter = .rawOnly
-        case "videos":
-            sourceManager.fileTypeFilter = .videosOnly
-        default:
-            sourceManager.fileTypeFilter = FileTypeFilter()
-        }
-    }
-
-    /// Load source URL from saved bookmark and trigger scan
-    private func loadSourceFromSession() {
-        guard let savedSourceURL = BookmarkManager.loadBookmark(forKey: BookmarkManager.sourceKey) else { return }
-
-        let canAccess = savedSourceURL.startAccessingSecurityScopedResource()
-        if canAccess {
-            savedSourceURL.stopAccessingSecurityScopedResource()
-            sourceManager.sourceURL = savedSourceURL
-            logInfo("Loaded source: \(savedSourceURL.lastPathComponent)")
-            // Skip async scan in tests to avoid race conditions with tearDown
-            if !BackupManager.isRunningTests {
-                Task {
-                    await sourceManager.scanSourceFolder(savedSourceURL)
-                }
-            }
-        } else {
-            logWarning("Saved source bookmark is invalid, clearing...")
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        }
     }
 
     // MARK: - Public Methods
@@ -604,7 +548,6 @@ class BackupManager {
         logEntries = []
         shouldCancel = false
         debugLog = []
-        hasWrittenDebugLog = false
 
         // Save organization folder name to recent list and as last used
         if !organizationName.isEmpty {
@@ -669,9 +612,6 @@ class BackupManager {
             self?.currentOrchestrator?.cancel()
         }
 
-        // Cancel any pending operation
-        currentOperation?.cancel()
-
         // Clean up resources
         Task { [weak self] in
             await self?.resourceManager.cleanup()
@@ -700,7 +640,6 @@ class BackupManager {
 
         // Clear orchestrator reference
         currentOrchestrator = nil
-        currentOperation = nil
 
         // Note: Core Data will manage its own memory
         EventLogger.shared.resetContexts()
