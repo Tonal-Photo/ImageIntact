@@ -48,6 +48,42 @@ class SourceManager {
         // Load preferences
         self.includeSubdirectories = PreferencesManager.shared.includeSubdirectories
         self.excludeCacheFiles = PreferencesManager.shared.excludeCacheFiles
+        self.fileTypeFilter = Self.fileTypeFilterFromPreferences()
+    }
+
+    private static func fileTypeFilterFromPreferences() -> FileTypeFilter {
+        switch PreferencesManager.shared.defaultFileTypeFilter {
+        case "photos": return .photosOnly
+        case "raw":    return .rawOnly
+        case "videos": return .videosOnly
+        default:       return FileTypeFilter()
+        }
+    }
+
+    // MARK: - Session Restore
+
+    /// Restores the source URL from the saved security-scoped bookmark.
+    ///
+    /// Returns the restored URL on success, or nil if no bookmark exists or access
+    /// is denied (in which case the stale bookmark is cleared from UserDefaults).
+    /// The caller is responsible for triggering any subsequent async scan — this
+    /// method deliberately does NOT start one, so test mode can suppress it cleanly.
+    @MainActor
+    func loadFromSession() -> URL? {
+        guard let savedSourceURL = BookmarkManager.loadBookmark(forKey: BookmarkManager.sourceKey) else {
+            return nil
+        }
+        let canAccess = savedSourceURL.startAccessingSecurityScopedResource()
+        if canAccess {
+            savedSourceURL.stopAccessingSecurityScopedResource()
+            sourceURL = savedSourceURL
+            logInfo("Loaded source: \(savedSourceURL.lastPathComponent)")
+            return savedSourceURL
+        } else {
+            logWarning("Saved source bookmark is invalid, clearing...")
+            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+            return nil
+        }
     }
 
     // MARK: - File Scanning

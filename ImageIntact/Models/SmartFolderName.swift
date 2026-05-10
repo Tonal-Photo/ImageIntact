@@ -46,4 +46,32 @@ enum SmartFolderName {
             .replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
     }
+
+    /// Sanitizes a string for use as a filesystem folder name.
+    ///
+    /// - Replaces `/`, `\`, and `:` with underscores.
+    /// - Removes null bytes.
+    /// - Trims leading/trailing whitespace and dots.
+    /// - Truncates to ≤ 255 UTF-8 bytes without splitting multi-byte characters.
+    ///
+    /// Pure function — no side effects. Idempotent: `sanitize(sanitize(x)) == sanitize(x)`.
+    static func sanitize(_ name: String) -> String {
+        var cleaned = name
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+            .replacingOccurrences(of: "\0", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        // APFS/HFS+ limit is 255 UTF-8 bytes, not characters.
+        if cleaned.utf8.count > 255 {
+            var truncated = ""
+            for char in cleaned {
+                let next = truncated + String(char)
+                if next.utf8.count > 255 { break }
+                truncated = next
+            }
+            cleaned = truncated
+        }
+        return cleaned
+    }
 }
