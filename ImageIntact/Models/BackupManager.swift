@@ -185,6 +185,7 @@ class BackupManager {
     var showDuplicateWarning = false
     var duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]?
     let duplicateDetector: DuplicateDetectorProtocol
+    let destinationAlertPresenter: DestinationAlertPresenting
     var skipExactDuplicates = true
     var skipRenamedDuplicates = false
 
@@ -228,7 +229,8 @@ class BackupManager {
         notificationService: NotificationProtocol? = nil,
         driveAnalyzer: DriveAnalyzerProtocol? = nil,
         diskSpaceChecker: DiskSpaceProtocol? = nil,
-        duplicateDetector: DuplicateDetectorProtocol? = nil
+        duplicateDetector: DuplicateDetectorProtocol? = nil,
+        destinationAlertPresenter: DestinationAlertPresenting? = nil
     ) {
         // Use provided dependencies or create real implementations
         let resolvedFileOps = fileOperations ?? DefaultFileOperations()
@@ -239,6 +241,7 @@ class BackupManager {
         self.driveAnalyzer = resolvedDriveAnalyzer
         self.diskSpaceChecker = resolvedDiskSpace
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
+        self.destinationAlertPresenter = destinationAlertPresenter ?? NSAlertDestinationPresenter()
 
         // Create delegated managers
         self.sourceManager = SourceManager(fileOperations: resolvedFileOps)
@@ -315,36 +318,11 @@ class BackupManager {
                 totalBytesToCopy: totalBytesToCopy
             )
         } catch DestinationError.sameAsSource {
-            if !BackupManager.isRunningTests {
-                let alert = NSAlert()
-                alert.messageText = "Invalid Destination"
-                alert.informativeText = "The destination folder cannot be the same as the source folder."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-            }
+            destinationAlertPresenter.presentSameAsSourceAlert()
         } catch DestinationError.duplicateDestination(let idx) {
-            if !BackupManager.isRunningTests {
-                let alert = NSAlert()
-                alert.messageText = "Duplicate Destination"
-                alert.informativeText =
-                    "This folder is already selected as destination #\(idx + 1). Please choose a different folder."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-            }
+            destinationAlertPresenter.presentDuplicateDestinationAlert(existingIndex: idx)
         } catch DestinationError.sourceTagConflict(let tagURL) {
-            if !BackupManager.isRunningTests {
-                let alert = NSAlert()
-                alert.messageText = "Source Folder Selected"
-                alert.informativeText =
-                    "This folder was previously used as a source. Using it as a destination will remove the source tag. Do you want to continue?"
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "Use This Folder")
-                alert.addButton(withTitle: "Cancel")
-                let response = alert.runModal()
-                if response == .alertSecondButtonReturn { return }
-            }
+            guard destinationAlertPresenter.presentSourceTagConflictAlert() else { return }
             sourceManager.removeSourceTag(at: tagURL)
             do {
                 try destinationManager.setDestination(
