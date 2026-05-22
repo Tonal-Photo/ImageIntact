@@ -102,11 +102,10 @@ struct NSAlertBackupPresenter: BackupAlertPresenting {
             message += "📊 Files to backup:\n"
             if filteredSummary.willCopy != filteredSummary.total {
                 message += "   \(filteredSummary.willCopy) of \(filteredSummary.total) files (filtered)\n"
-                message += "   Types: \(filteredSummary.summary)\n\n"
             } else {
                 message += "   \(filteredSummary.total) files\n"
-                message += "   Types: \(filteredSummary.summary)\n\n"
             }
+            message += "   Types: \(filteredSummary.summary)\n\n"
         } else if summary.totalFiles > 0, let fileTypeSummary = summary.fileTypeSummary {
             message += "📊 Files to backup: \(summary.totalFiles)\n"
             message += "   Types: \(fileTypeSummary)\n\n"

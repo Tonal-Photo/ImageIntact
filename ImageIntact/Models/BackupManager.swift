@@ -435,8 +435,8 @@ class BackupManager {
         if PreferencesManager.shared.showPreflightSummary {
             let summary = buildPreflightSummary(source: source, destinations: destinations)
             let (proceed, showAgain) = backupAlertPresenter.presentPreflightSummary(summary)
-            PreferencesManager.shared.showPreflightSummary = showAgain
             guard proceed else { return }
+            PreferencesManager.shared.showPreflightSummary = showAgain
         }
 
         // State setup — reset everything cleanupMemory's deferred task would have
@@ -479,16 +479,17 @@ class BackupManager {
         let nonFilteredTypeSummary: String? = sourceFileTypes.isEmpty ? nil : getFormattedFileTypeSummary()
 
         // Build destination tuples with optional drive device names.
-        var destTuples: [(name: String, deviceName: String?)] = []
-        for (index, dest) in destinations.enumerated() {
-            var deviceName: String? = nil
-            if index < destinationItems.count {
-                let itemID = destinationItems[index].id
-                if let driveInfo = destinationDriveInfo[itemID], !driveInfo.deviceName.isEmpty {
-                    deviceName = driveInfo.deviceName
-                }
-            }
-            destTuples.append((name: dest.lastPathComponent, deviceName: deviceName))
+        // Zip the raw parallel arrays before filtering nils so indices stay aligned:
+        // compactMap on destinationURLs alone would shift the index into
+        // destinationItems if any earlier slot is nil.
+        let validPairs: [(URL, DestinationItem)] = zip(destinationURLs, destinationItems).compactMap { url, item in
+            guard let url = url else { return nil }
+            return (url, item)
+        }
+        let destTuples: [(name: String, deviceName: String?)] = validPairs.map { url, item in
+            let deviceName = destinationDriveInfo[item.id]?.deviceName
+            let resolvedDeviceName = (deviceName?.isEmpty == false) ? deviceName : nil
+            return (name: url.lastPathComponent, deviceName: resolvedDeviceName)
         }
 
         return PreflightSummary(
