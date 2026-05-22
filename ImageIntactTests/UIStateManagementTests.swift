@@ -97,7 +97,10 @@ class UIStateManagementTests: XCTestCase {
         backupManager.cancelOperation()
 
         XCTAssertTrue(backupManager.shouldCancel)
-        XCTAssertTrue(backupManager.statusMessage.contains("Cancelling"))
+        // After AMUX-15, state mutations in cancelOperation are synchronous (formerly
+        // wrapped in an async Task). By the time cancelOperation returns, the status
+        // has already advanced from "Cancelling backup..." to "Backup cancelled".
+        XCTAssertEqual(backupManager.statusMessage, "Backup cancelled")
     }
 
     // MARK: - Failed Files Tracking
