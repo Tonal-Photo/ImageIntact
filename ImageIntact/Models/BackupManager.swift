@@ -186,6 +186,9 @@ class BackupManager {
     var duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]?
     let duplicateDetector: DuplicateDetectorProtocol
     let destinationAlertPresenter: DestinationAlertPresenting
+    let backupAlertPresenter: BackupAlertPresenting
+    private let deferredCleanupDelayNanos: UInt64
+    internal var deferredCleanupTask: Task<Void, Never>?
     var skipExactDuplicates = true
     var skipRenamedDuplicates = false
 
@@ -230,7 +233,9 @@ class BackupManager {
         driveAnalyzer: DriveAnalyzerProtocol? = nil,
         diskSpaceChecker: DiskSpaceProtocol? = nil,
         duplicateDetector: DuplicateDetectorProtocol? = nil,
-        destinationAlertPresenter: DestinationAlertPresenting? = nil
+        destinationAlertPresenter: DestinationAlertPresenting? = nil,
+        backupAlertPresenter: BackupAlertPresenting? = nil,
+        deferredCleanupDelayNanos: UInt64 = 10_000_000_000
     ) {
         // Use provided dependencies or create real implementations
         let resolvedFileOps = fileOperations ?? DefaultFileOperations()
@@ -242,6 +247,8 @@ class BackupManager {
         self.diskSpaceChecker = resolvedDiskSpace
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
         self.destinationAlertPresenter = destinationAlertPresenter ?? NSAlertDestinationPresenter()
+        self.backupAlertPresenter = backupAlertPresenter ?? NSAlertBackupPresenter()
+        self.deferredCleanupDelayNanos = deferredCleanupDelayNanos
 
         // Create delegated managers
         self.sourceManager = SourceManager(fileOperations: resolvedFileOps)
@@ -251,9 +258,10 @@ class BackupManager {
             diskSpaceChecker: resolvedDiskSpace
         )
 
-        // Initialize organization name from last used (if user previously customized)
+        // Initialize organization name from last used (if user previously customized).
+        // Wrap in SmartFolderName.sanitize because didSet doesn't fire during init.
         if let lastUsedName = PreferencesManager.shared.lastUsedOrganizationFolderName {
-            organizationName = lastUsedName
+            organizationName = SmartFolderName.sanitize(lastUsedName)
         }
 
         // Check for UI test mode
@@ -389,6 +397,12 @@ class BackupManager {
     }
 
     func runBackup() {
+        // Low fix: isProcessing guard — prevent re-entrant runBackup.
+        guard !isProcessing else {
+            logWarning("runBackup called while already processing — ignoring")
+            return
+        }
+
         guard let source = sourceURL else {
             logWarning("Missing source folder.")
             return
@@ -396,134 +410,44 @@ class BackupManager {
 
         let destinations = destinationURLs.compactMap { $0 }
 
-        // Check disk space for all destinations
+        // Check disk space for all destinations.
+        // High fix: use sourceTotalBytes (set at scan time) not totalBytesToCopy
+        // (a progress var that is 0 or stale before the orchestrator runs).
         let spaceChecks = diskSpaceChecker.checkAllDestinations(
             destinations: destinations,
-            requiredBytes: totalBytesToCopy
+            requiredBytes: sourceTotalBytes
         )
 
         let (canProceed, warnings, errors) = diskSpaceChecker.evaluateSpaceChecks(spaceChecks)
 
-        // If we have errors (insufficient space), show alert and abort
+        // Insufficient space: show alert and abort.
         if !canProceed {
-            let alert = NSAlert()
-            alert.messageText = "Insufficient Disk Space"
-            alert.informativeText = errors.joined(separator: "\n\n")
-            alert.alertStyle = .critical
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
+            backupAlertPresenter.presentInsufficientSpaceAlert(errors: errors)
             return
         }
 
-        // If we have warnings (< 10% free after backup), show alert with option to proceed
+        // Low space warning: let user decide whether to proceed.
         if !warnings.isEmpty {
-            let alert = NSAlert()
-            alert.messageText = "Low Disk Space Warning"
-            alert.informativeText = warnings.joined(separator: "\n\n") + "\n\nDo you want to continue?"
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Continue")
-            alert.addButton(withTitle: "Cancel")
-
-            let response = alert.runModal()
-            if response != .alertFirstButtonReturn {
-                return
-            }
+            guard backupAlertPresenter.presentLowSpaceWarning(warnings: warnings) else { return }
         }
 
-        // Show pre-flight summary if enabled
+        // Pre-flight summary (if enabled).
         if PreferencesManager.shared.showPreflightSummary {
-            let alert = NSAlert()
-            alert.messageText = "Backup Summary"
-
-            // Build the summary message
-            var message = "Ready to start backup:\n\n"
-
-            // Source info
-            message += "📁 Source: \(source.lastPathComponent)\n"
-            message += "   Path: \(source.path)\n\n"
-
-            // File summary
-            if let filteredSummary = getFilteredFilesSummary() {
-                message += "📊 Files to backup:\n"
-                if filteredSummary.willCopy != filteredSummary.total {
-                    message += "   \(filteredSummary.willCopy) of \(filteredSummary.total) files (filtered)\n"
-                    message += "   Types: \(filteredSummary.summary)\n\n"
-                } else {
-                    message += "   \(filteredSummary.total) files\n"
-                    message += "   Types: \(filteredSummary.summary)\n\n"
-                }
-            } else if !sourceFileTypes.isEmpty {
-                let totalFiles = sourceFileTypes.values.reduce(0, +)
-                message += "📊 Files to backup: \(totalFiles)\n"
-                message += "   Types: \(getFormattedFileTypeSummary())\n\n"
-            }
-
-            // Size info
-            if sourceTotalBytes > 0 {
-                let formatter = ByteCountFormatter()
-                formatter.countStyle = .file
-                let sizeString = formatter.string(fromByteCount: sourceTotalBytes)
-                message += "💾 Total size: \(sizeString)\n\n"
-            }
-
-            // Destination info
-            message += "📍 Destination\(destinations.count > 1 ? "s" : ""):\n"
-            for (index, dest) in destinations.enumerated() {
-                message += "   \(index + 1). \(dest.lastPathComponent)"
-
-                // Add drive info if available
-                if index < destinationItems.count {
-                    let itemID = destinationItems[index].id
-                    if let driveInfo = destinationDriveInfo[itemID] {
-                        if !driveInfo.deviceName.isEmpty {
-                            message += " (\(driveInfo.deviceName))"
-                        }
-                    }
-                }
-                message += "\n"
-            }
-
-            // Settings info
-            message += "\n⚙️ Settings:\n"
-            if PreferencesManager.shared.excludeCacheFiles {
-                message += "   • Cache files will be excluded\n"
-            }
-            if PreferencesManager.shared.skipHiddenFiles {
-                message += "   • Hidden files will be skipped\n"
-            }
-            if !fileTypeFilter.includedExtensions.isEmpty {
-                message += "   • File type filter is active\n"
-            }
-
-            alert.informativeText = message
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Start Backup")
-            alert.addButton(withTitle: "Cancel")
-
-            // Add "Show this summary before run" checkbox
-            alert.showsSuppressionButton = true
-            alert.suppressionButton?.title = "Show this summary before run"
-            alert.suppressionButton?.state = .on // Checked by default
-
-            let response = alert.runModal()
-
-            // Update preference based on checkbox state
-            // Note: suppression button logic is inverted - when unchecked, we disable the summary
-            PreferencesManager.shared.showPreflightSummary = (alert.suppressionButton?.state == .on)
-
-            if response != .alertFirstButtonReturn {
-                return
-            }
+            let summary = buildPreflightSummary(source: source, destinations: destinations)
+            let (proceed, showAgain) = backupAlertPresenter.presentPreflightSummary(summary)
+            PreferencesManager.shared.showPreflightSummary = showAgain
+            guard proceed else { return }
         }
 
+        // State setup — reset everything cleanupMemory's deferred task would have
+        // cleared so we don't depend on its timing (High fix: state leak on rapid restart).
         isProcessing = true
         statusMessage = "Preparing backup..."
-        progressTracker.totalFiles = 0
-        progressTracker.processedFiles = 0
-        progressTracker.currentFile = ""
         failedFiles = []
-        sessionID = UUID().uuidString
+        statistics.reset()
+        progressTracker.resetAll()
         logEntries = []
+        sessionID = UUID().uuidString
         shouldCancel = false
         debugLog = []
 
@@ -543,13 +467,55 @@ class BackupManager {
         }
     }
 
+    /// Build the data snapshot the preflight presenter needs.
+    /// Pure data construction — no UI. Pulled out so runBackup is easy to read
+    /// and the summary construction is testable in isolation.
+    private func buildPreflightSummary(source: URL, destinations: [URL]) -> PreflightSummary {
+        // Filtered summary (when a file-type filter is active).
+        let filteredSummary = getFilteredFilesSummary()
+
+        // Non-filtered file count and type summary (used when no filter is active).
+        let nonFilteredTotalFiles = sourceFileTypes.values.reduce(0, +)
+        let nonFilteredTypeSummary: String? = sourceFileTypes.isEmpty ? nil : getFormattedFileTypeSummary()
+
+        // Build destination tuples with optional drive device names.
+        var destTuples: [(name: String, deviceName: String?)] = []
+        for (index, dest) in destinations.enumerated() {
+            var deviceName: String? = nil
+            if index < destinationItems.count {
+                let itemID = destinationItems[index].id
+                if let driveInfo = destinationDriveInfo[itemID], !driveInfo.deviceName.isEmpty {
+                    deviceName = driveInfo.deviceName
+                }
+            }
+            destTuples.append((name: dest.lastPathComponent, deviceName: deviceName))
+        }
+
+        return PreflightSummary(
+            sourceName: source.lastPathComponent,
+            sourcePath: source.path,
+            filteredSummary: filteredSummary,
+            fileTypeSummary: nonFilteredTypeSummary,
+            totalFiles: nonFilteredTotalFiles,
+            totalBytes: sourceTotalBytes,
+            destinations: destTuples,
+            excludeCacheFiles: PreferencesManager.shared.excludeCacheFiles,
+            skipHiddenFiles: PreferencesManager.shared.skipHiddenFiles,
+            fileTypeFilterActive: !fileTypeFilter.includedExtensions.isEmpty
+        )
+    }
+
     func cancelOperation() {
         guard !shouldCancel else { return } // Prevent multiple cancellations
+
+        // Local strong ref keeps orchestrator alive through end of this function
+        // even after cleanupMemory nils currentOrchestrator. (Medium fix: deallocation race)
+        let orchestratorRef = currentOrchestrator
         shouldCancel = true
         statusMessage = "Cancelling backup..."
 
-        // Clean up any pending large backup confirmation
-        // This resumes the continuation with false to unblock the waiting backup
+        // Clean up any pending large backup confirmation.
+        // Resumes the continuation with false to unblock the waiting backup.
         if let continuation = largeBackupContinuation {
             ApplicationLogger.shared.warning("Cleaning up pending large backup continuation due to cancellation", category: .backup)
             continuation.resume(returning: false)
@@ -558,50 +524,39 @@ class BackupManager {
             largeBackupInfo = nil
         }
 
-        // Immediately clear all progress indicators
-        Task { @MainActor [weak self] in
-            guard let self = self else { return }
-
-            // Force clear all destination progress immediately
-            for name in self.progressTracker.destinationProgress.keys {
-                self.progressTracker.setDestinationProgress(0, for: name)
-                self.progressTracker.setDestinationState("cancelled", for: name)
-            }
-
-            // Clear file name displays
-            self.currentFileName = ""
-            self.currentDestinationName = ""
-            self.overallStatusText = "" // Clear this so UI doesn't show "1 destination copying"
-
-            // Force UI update
-            self.isProcessing = false
-            self.currentPhase = .idle
-            self.statusMessage = "Backup cancelled"
-
-            // Clear progress tracker immediately - this resets all the computed values
-            self.progressTracker.resetAll()
-
-            // Stop sleep prevention
-            SleepPrevention.shared.stopPreventingSleep()
+        // Synchronous immediate state clear (was inside a Task; the deferral broke the
+        // new `guard !isProcessing` in runBackup on rapid cancel→backup). (Medium fix)
+        for name in progressTracker.destinationProgress.keys {
+            progressTracker.setDestinationProgress(0, for: name)
+            progressTracker.setDestinationState("cancelled", for: name)
         }
+        currentFileName = ""
+        currentDestinationName = ""
+        overallStatusText = ""
+        currentPhase = .idle
+        statusMessage = "Backup cancelled"
+        progressTracker.resetAll()
+        SleepPrevention.shared.stopPreventingSleep()
 
-        // Cancel orchestrator
-        Task { @MainActor [weak self] in
-            self?.currentOrchestrator?.cancel()
-        }
+        // Blocker fix: cancel synchronously against retained ref BEFORE cleanupMemory
+        // nils currentOrchestrator. Previously this was in a Task — cancel never reached
+        // the orchestrator because cleanupMemory ran first and nil'd the reference.
+        orchestratorRef?.cancel()
 
-        // Clean up resources
+        // Flip the gating flag AFTER orchestrator cancel propagates. (Medium fix: ordering)
+        isProcessing = false
+
+        // Resource cleanup can stay async — not on the rapid-restart path.
         Task { [weak self] in
             await self?.resourceManager.cleanup()
         }
 
-        // Force memory cleanup
         cleanupMemory()
     }
 
-    /// Force memory cleanup after backup completion or cancellation
+    /// Force memory cleanup after backup completion or cancellation.
     func cleanupMemory() {
-        // Clear large data structures
+        // Immediate cleanup — clear large data structures.
         logEntries.removeAll(keepingCapacity: false)
         debugLog.removeAll(keepingCapacity: false)
 
@@ -610,30 +565,29 @@ class BackupManager {
         // DON'T clear progress data yet - UI may still need it
         // DON'T clear sourceFileTypes - needed for UI display
 
-        // Note: We keep sourceFileTypes since it's needed for the UI
-        // It will be refreshed when a new source is selected
-
-        // Don't clear destination info - keep it for UI display
-        // destinationDriveInfo.removeAll(keepingCapacity: false)
-
-        // Clear orchestrator reference
+        // Clear orchestrator reference.
         currentOrchestrator = nil
 
-        // Note: Core Data will manage its own memory
+        // Note: Core Data will manage its own memory.
         EventLogger.shared.resetContexts()
 
-        // Force cleanup with autorelease pool
-        autoreleasepool {}
+        // Low fix: removed two empty autoreleasepool {} calls (drained nothing).
 
         logInfo("Initial memory cleanup completed", category: .performance)
 
-        // Schedule deep cleanup after UI has shown stats
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
-
+        // High fix: cancel any prior deferred task; capture session id; bail on mismatch.
+        // Prevents a prior backup's deferred cleanup from wiping a new backup's state.
+        deferredCleanupTask?.cancel()
+        let capturedSessionID = sessionID
+        deferredCleanupTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .nanoseconds(Int(self?.deferredCleanupDelayNanos ?? 10_000_000_000)))
+            guard !Task.isCancelled else { return }
             guard let self = self else { return }
+            guard self.sessionID == capturedSessionID else {
+                logInfo("Deferred cleanup bailed: session changed", category: .performance)
+                return
+            }
 
-            // Now clear the rest
             self.failedFiles.removeAll(keepingCapacity: false)
             self.progressTracker.resetAll()
             self.progressTracker.destinationProgress.removeAll(keepingCapacity: false)
@@ -643,10 +597,7 @@ class BackupManager {
             self.overallStatusText = ""
             // Keep scanProgress - it shows the file type summary
 
-            // Clean up checksum buffer pool
             ChecksumBufferPool.shared.cleanupUnusedBuffers()
-
-            autoreleasepool {}
             logInfo("Deep memory cleanup completed", category: .performance)
         }
     }

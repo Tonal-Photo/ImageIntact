@@ -65,6 +65,12 @@ final class MockDiskSpaceChecker: DiskSpaceProtocol {
   var checkCallCount = 0
   var evaluationResult: (canProceed: Bool, warnings: [String], errors: [String]) = (true, [], [])
 
+  /// Captures the most recent `requiredBytes` value passed to
+  /// `checkAllDestinations` so tests can assert on the value (e.g.
+  /// verifying the disk-space gate uses `sourceTotalBytes` rather than
+  /// the historically-buggy `totalBytesToCopy`).
+  var lastRequiredBytes: Int64?
+
   func checkDestinationSpace(
     destination: URL, requiredBytes: Int64, additionalBuffer: Int64 = 100_000_000
   ) -> DiskSpaceChecker.SpaceCheckResult {
@@ -127,6 +133,7 @@ final class MockDiskSpaceChecker: DiskSpaceProtocol {
   func checkAllDestinations(destinations: [URL], requiredBytes: Int64) -> [DiskSpaceChecker
     .SpaceCheckResult]
   {
+    lastRequiredBytes = requiredBytes
     return destinations.map { destination in
       checkDestinationSpace(destination: destination, requiredBytes: requiredBytes)
     }
