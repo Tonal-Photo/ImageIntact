@@ -580,8 +580,12 @@ class BackupManager {
         // Prevents a prior backup's deferred cleanup from wiping a new backup's state.
         deferredCleanupTask?.cancel()
         let capturedSessionID = sessionID
+        let capturedDelayNanos = deferredCleanupDelayNanos
         deferredCleanupTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .nanoseconds(Int(self?.deferredCleanupDelayNanos ?? 10_000_000_000)))
+            // Bail early if self is already gone — no point sleeping for 10s
+            // just to do nothing on wake (would leave a zombie task in the pool).
+            guard self != nil else { return }
+            try? await Task.sleep(for: .nanoseconds(Int(capturedDelayNanos)))
             guard !Task.isCancelled else { return }
             guard let self = self else { return }
             guard self.sessionID == capturedSessionID else {
