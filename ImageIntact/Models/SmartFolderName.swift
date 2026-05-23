@@ -49,18 +49,31 @@ enum SmartFolderName {
 
     /// Sanitizes a string for use as a filesystem folder name.
     ///
-    /// - Replaces `/`, `\`, and `:` with underscores.
-    /// - Removes null bytes.
+    /// - Replaces `/`, `\`, and `:` with underscores (path-separator characters).
+    /// - Strips all C0 control characters (0x00–0x1F) and DEL (0x7F). This includes
+    ///   null bytes, tabs, line endings, and terminal escape sequences. The latter
+    ///   are a real concern: a filename containing ANSI escape codes can rewrite
+    ///   preceding output in directory listings.
     /// - Trims leading/trailing whitespace and dots.
     /// - Truncates to ≤ 255 UTF-8 bytes without splitting multi-byte characters.
     ///
+    /// International characters (CJK, Cyrillic, accented Latin, emoji) are
+    /// intentionally preserved — this is a photography app and users routinely
+    /// have folder names like "São Paulo", "München", "日本", "📷". A strict
+    /// alphanumeric allowlist would break legitimate workflows.
+    ///
     /// Pure function — no side effects. Idempotent: `sanitize(sanitize(x)) == sanitize(x)`.
     static func sanitize(_ name: String) -> String {
-        var cleaned = name
+        // Strip all control characters (C0 range + DEL). CharacterSet's
+        // `.controlCharacters` set covers 0x00–0x1F and 0x7F (and the C1 range,
+        // which is also safe to strip from a filename).
+        let stripped = String(String.UnicodeScalarView(
+            name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+        ))
+        var cleaned = stripped
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "\\", with: "_")
             .replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "\0", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         // APFS/HFS+ limit is 255 UTF-8 bytes, not characters.
         if cleaned.utf8.count > 255 {
