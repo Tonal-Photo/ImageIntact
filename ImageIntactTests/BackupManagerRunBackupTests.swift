@@ -102,6 +102,18 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
                       "isProcessing should remain true when guard fires")
     }
 
+    /// AMUX-207: canRunBackup must reflect the scan-in-progress state so the UI
+    /// disables the Backup button while a scan is running. Without this, the UI
+    /// and runBackup's actual gate would disagree.
+    func testCanRunBackup_falseDuringScan() {
+        bm.setSource(makeURL("/Volumes/CardA/DCIM"))
+        bm.setDestination(makeURL("/Volumes/BackupDrive"), at: 0)
+        bm.sourceManager.isScanning = true
+
+        XCTAssertFalse(bm.canRunBackup(),
+                       "canRunBackup must report false while source scan is in progress")
+    }
+
     /// AMUX-207: source scan in progress → early return, no presenter calls.
     /// The scan resets sourceTotalBytes=0; without this guard the disk-space
     /// check trivially passes (requiredBytes=0) even if destinations are full.

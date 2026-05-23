@@ -393,7 +393,10 @@ class BackupManager {
     }
 
     func canRunBackup() -> Bool {
-        return sourceURL != nil && !destinationURLs.compactMap { $0 }.isEmpty && !isProcessing
+        return sourceURL != nil
+            && !destinationURLs.compactMap { $0 }.isEmpty
+            && !isProcessing
+            && !sourceManager.isScanning
     }
 
     func runBackup() {
