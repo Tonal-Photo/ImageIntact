@@ -27,40 +27,31 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
     var mockFileOps: MockFileOperations!
     var mockPresenter: MockBackupAlertPresenter!
     var mockDiskSpace: MockDiskSpaceChecker!
-
-    // Saved preferences to restore in tearDown.
-    private var savedShowPreflightSummary: Bool = false
+    var prefs: InMemoryPreferencesProvider!
 
     override func setUp() async throws {
         try await super.setUp()
 
-        // Capture original state BEFORE resetting, so tearDown can restore it.
-        savedShowPreflightSummary = PreferencesManager.shared.showPreflightSummary
-
-        // Clear preferences state (bookmarks already cleared by base class).
-        PreferencesManager.shared.resetToDefaults()
-
         mockFileOps = MockFileOperations()
         mockPresenter = MockBackupAlertPresenter()
         mockDiskSpace = MockDiskSpaceChecker()
+        prefs = InMemoryPreferencesProvider()
 
         // Default: disk space check passes with no warnings or errors.
         mockDiskSpace.evaluationResult = (canProceed: true, warnings: [], errors: [])
 
-        // New init params (don't exist yet — compile failure is expected in red phase).
+        // AMUX-205: inject InMemoryPreferencesProvider so this test never touches
+        // PreferencesManager.shared. Per-instance prefs storage means no cross-test bleed.
         bm = BackupManager(
             fileOperations: mockFileOps,
             diskSpaceChecker: mockDiskSpace,
-            backupAlertPresenter: mockPresenter
+            backupAlertPresenter: mockPresenter,
+            preferences: prefs
         )
     }
 
     override func tearDown() async throws {
-        // Reset to defaults first, then restore the captured original value
-        // last — so the restore is not immediately nullified by the reset call.
-        PreferencesManager.shared.resetToDefaults()
-        PreferencesManager.shared.showPreflightSummary = savedShowPreflightSummary
-
+        prefs = nil
         mockPresenter = nil
         mockDiskSpace = nil
         mockFileOps = nil
@@ -214,7 +205,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         mockPresenter.lowSpaceReturnValue = true
         // Preflight must also be cancelled so runBackup doesn't try to launch the real backup.
         mockPresenter.preflightReturnValue = (proceed: false, showAgain: true)
-        PreferencesManager.shared.showPreflightSummary = true
+        prefs.showPreflightSummary = true
 
         bm.runBackup()
 
@@ -228,7 +219,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
     func testRunBackup_preflight_cancelled_returns() {
         setUpSourceAndDestination()
         mockPresenter.preflightReturnValue = (proceed: false, showAgain: true)
-        PreferencesManager.shared.showPreflightSummary = true
+        prefs.showPreflightSummary = true
 
         bm.runBackup()
 
@@ -242,7 +233,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
     func testRunBackup_preflight_proceedTrue_setsIsProcessing() {
         setUpSourceAndDestination()
         mockPresenter.preflightReturnValue = (proceed: true, showAgain: true)
-        PreferencesManager.shared.showPreflightSummary = true
+        prefs.showPreflightSummary = true
 
         bm.runBackup()
 
@@ -254,13 +245,13 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
     /// Suppression checkbox behavior: showAgain=false writes false to preferences.
     func testRunBackup_preflight_showAgainFalse_writesPreferenceFalse() {
         setUpSourceAndDestination()
-        PreferencesManager.shared.showPreflightSummary = true
+        prefs.showPreflightSummary = true
         // User unchecks "Show this summary before run" and clicks Start Backup.
         mockPresenter.preflightReturnValue = (proceed: true, showAgain: false)
 
         bm.runBackup()
 
-        XCTAssertFalse(PreferencesManager.shared.showPreflightSummary,
+        XCTAssertFalse(prefs.showPreflightSummary,
                        "showPreflightSummary must be written back as false when showAgain=false")
     }
 
@@ -276,7 +267,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         mockDiskSpace.evaluationResult = (canProceed: true, warnings: [], errors: [])
         // Cancel at preflight so the backup doesn't actually start.
         mockPresenter.preflightReturnValue = (proceed: false, showAgain: true)
-        PreferencesManager.shared.showPreflightSummary = true
+        prefs.showPreflightSummary = true
 
         // Inject source URL and byte count directly into sourceManager, bypassing
         // prepareSource (which would synchronously reset sourceTotalBytes = 0 and skip
@@ -296,7 +287,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
     /// entirely and proceeds directly to setting isProcessing = true.
     func testRunBackup_preflightDisabled_noWarnings_setsIsProcessingWithoutAlerts() {
         // Preflight disabled — the presenter should never be asked to show the summary.
-        PreferencesManager.shared.showPreflightSummary = false
+        prefs.showPreflightSummary = false
 
         // Disk space defaults (set in setUp): canProceed = true, no warnings, no errors.
         setUpSourceAndDestination()

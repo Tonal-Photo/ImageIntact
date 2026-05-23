@@ -21,24 +21,26 @@ final class BackupManagerSetDestinationTests: XCTestCase {
     var mockFileOps: MockFileOperations!
     var mockPresenter: MockDestinationAlertPresenter!
     var backupManager: BackupManager!
+    var prefs: InMemoryPreferencesProvider!
 
     override func setUp() async throws {
         try await super.setUp()
 
-        // Clear bookmark and preferences state so init doesn't restore stale data.
+        // Clear bookmark state so init doesn't restore stale data.
         UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         for key in BookmarkManager.destinationKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
-        PreferencesManager.shared.resetToDefaults()
 
         mockFileOps = MockFileOperations()
         mockPresenter = MockDestinationAlertPresenter()
+        prefs = InMemoryPreferencesProvider()
 
-        // New init param (doesn't exist yet — compile failure is expected).
+        // AMUX-205: inject prefs so this test never mutates PreferencesManager.shared.
         backupManager = BackupManager(
             fileOperations: mockFileOps,
-            destinationAlertPresenter: mockPresenter
+            destinationAlertPresenter: mockPresenter,
+            preferences: prefs
         )
     }
 
@@ -47,11 +49,11 @@ final class BackupManagerSetDestinationTests: XCTestCase {
         for key in BookmarkManager.destinationKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
-        PreferencesManager.shared.resetToDefaults()
 
         backupManager = nil
         mockPresenter = nil
         mockFileOps = nil
+        prefs = nil
 
         try await super.tearDown()
     }
