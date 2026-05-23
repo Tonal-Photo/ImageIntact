@@ -50,25 +50,32 @@ enum SmartFolderName {
     /// Sanitizes a string for use as a filesystem folder name.
     ///
     /// - Replaces `/`, `\`, and `:` with underscores (path-separator characters).
-    /// - Strips all C0 control characters (0x00–0x1F) and DEL (0x7F). This includes
-    ///   null bytes, tabs, line endings, and terminal escape sequences. The latter
-    ///   are a real concern: a filename containing ANSI escape codes can rewrite
-    ///   preceding output in directory listings.
+    /// - Strips Unicode "Control" category characters (`Cc`): C0 (0x00–0x1F),
+    ///   C1 (0x80–0x9F), and DEL (0x7F). This includes null bytes, tabs, line
+    ///   endings, and terminal escape sequences. The latter are a real concern:
+    ///   a filename containing ANSI escape codes can rewrite preceding output
+    ///   in directory listings.
+    /// - **Preserves** Unicode "Format" category (`Cf`). Cf includes Zero-Width
+    ///   Joiners (U+200D) used in family emojis like 👨‍👩‍👧‍👦 and bidirectional
+    ///   markers used in Right-to-Left languages. Stripping Cf would break
+    ///   legitimate international filenames.
     /// - Trims leading/trailing whitespace and dots.
     /// - Truncates to ≤ 255 UTF-8 bytes without splitting multi-byte characters.
     ///
-    /// International characters (CJK, Cyrillic, accented Latin, emoji) are
+    /// International characters (CJK, Cyrillic, accented Latin, emoji, RTL) are
     /// intentionally preserved — this is a photography app and users routinely
-    /// have folder names like "São Paulo", "München", "日本", "📷". A strict
-    /// alphanumeric allowlist would break legitimate workflows.
+    /// have folder names like "São Paulo", "München", "日本", "📷", "‫مرحبا‬".
+    /// A strict alphanumeric allowlist (or stripping Cf) would break legitimate
+    /// workflows.
     ///
     /// Pure function — no side effects. Idempotent: `sanitize(sanitize(x)) == sanitize(x)`.
     static func sanitize(_ name: String) -> String {
-        // Strip all control characters (C0 range + DEL). CharacterSet's
-        // `.controlCharacters` set covers 0x00–0x1F and 0x7F (and the C1 range,
-        // which is also safe to strip from a filename).
+        // Strip Cc (Control) category only. Foundation's
+        // `CharacterSet.controlCharacters` includes BOTH Cc and Cf — using it
+        // here would also strip ZWJ and bidirectional markers, breaking
+        // family emojis and RTL languages.
         let stripped = String(String.UnicodeScalarView(
-            name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+            name.unicodeScalars.filter { $0.properties.generalCategory != .control }
         ))
         var cleaned = stripped
             .replacingOccurrences(of: "/", with: "_")

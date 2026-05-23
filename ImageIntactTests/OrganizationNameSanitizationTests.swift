@@ -176,6 +176,34 @@ final class OrganizationNameSanitizationTests: XCTestCase {
         }
     }
 
+    /// Family/profession emojis use Zero-Width Joiners (U+200D, Cf category) to
+    /// glue scalar codepoints into a single rendered glyph. The sanitizer MUST
+    /// preserve Cf so 👨‍👩‍👧‍👦 doesn't decompose to 👨👩👧👦.
+    func testZeroWidthJoinerEmoji_preserved() {
+        // Family: man, woman, girl, boy — 4 emoji joined by 3 ZWJs (U+200D).
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+        backupManager.organizationName = "Trip \(family) 2024"
+        XCTAssertEqual(backupManager.organizationName, "Trip \(family) 2024",
+                       "ZWJ-glued family emoji must survive sanitization")
+        XCTAssertTrue(backupManager.organizationName.unicodeScalars.contains(where: { $0.value == 0x200D }),
+                      "Zero-Width Joiner (U+200D) must be preserved")
+    }
+
+    /// Right-to-Left language folder names rely on bidirectional control
+    /// characters (also Cf category) for correct display. They must be preserved.
+    func testRightToLeftText_preserved() {
+        // Arabic "مرحبا" (Marhaba — hello). No control chars at the codepoint
+        // level; this is purely a string-preservation test for the RTL script.
+        backupManager.organizationName = "مرحبا 2024"
+        XCTAssertEqual(backupManager.organizationName, "مرحبا 2024",
+                       "Arabic text must survive sanitization")
+
+        // Hebrew "שלום" (Shalom — hello).
+        backupManager.organizationName = "שלום 2024"
+        XCTAssertEqual(backupManager.organizationName, "שלום 2024",
+                       "Hebrew text must survive sanitization")
+    }
+
     /// Idempotence sanity check across the new cases.
     func testSanitize_idempotent_controlChars() {
         let inputs = ["Photos\u{01}", "Photos\tBackup", "..\u{1B}foo", "Photos\u{7F}"]
