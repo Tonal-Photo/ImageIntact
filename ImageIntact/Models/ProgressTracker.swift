@@ -45,6 +45,40 @@ class ProgressTracker: ProgressTrackerProtocol {
 
     // MARK: - Reset Methods
 
+    /// Reset only the transient run-level metrics (counts, bytes, speed,
+    /// timers). Preserves `destinationProgress`, `destinationStates`,
+    /// `destinationTotalFiles`, and `sourceTotalBytes` so the per-destination
+    /// "cancelled" badges set by the caller remain visible and source metadata
+    /// stays intact.
+    ///
+    /// Used by `BackupManager.cancelOperation` so the UI shows
+    /// `cancelled` per destination without wiping it (AMUX-210).
+    func markAsCancelled() {
+        totalFiles = 0
+        processedFiles = 0
+        verifiedFiles = 0
+        currentFileIndex = 0
+        currentFileName = ""
+        currentDestinationName = ""
+        currentFile = ""
+
+        totalBytesToCopy = 0
+        totalBytesCopied = 0
+        // Keep sourceTotalBytes — it's source metadata, not run-specific.
+
+        copySpeed = 0.0
+        estimatedSecondsRemaining = nil
+        copyStartTime = Date()
+        lastETAUpdate = Date()
+        recentSpeedSamples.removeAll()
+
+        phaseProgress = 0.0
+        overallProgress = 0.0
+
+        // Intentionally KEEP destinationProgress / destinationStates /
+        // destinationTotalFiles so the cancelled badges persist.
+    }
+
     /// Reset all progress tracking
     func resetAll() {
         totalFiles = 0
