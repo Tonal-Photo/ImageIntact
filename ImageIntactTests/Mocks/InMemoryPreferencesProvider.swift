@@ -13,10 +13,11 @@ import Foundation
 /// Test double for `PreferencesProviding`. Each instance owns its own storage,
 /// so multiple BackupManager tests can hold independent preference state.
 ///
-/// Marked `@MainActor` to match BackupManager's isolation — all production reads
-/// and writes through this protocol come from a `@MainActor` `BackupManager`,
-/// so no cross-actor synchronization is required and TSAN stays clean.
-@MainActor
+/// Not annotated `@MainActor` (to match the unisolated `PreferencesProviding`
+/// protocol and `PreferencesManager`, which is itself not MainActor-isolated).
+/// In practice every caller is MainActor-isolated — `BackupManager` is
+/// `@MainActor` and all of these tests are `@MainActor` — so the unsynchronized
+/// `var` properties are safe and TSAN stays clean.
 final class InMemoryPreferencesProvider: PreferencesProviding {
     var enableSmartDuplicateDetection: Bool
     var lastUsedOrganizationFolderName: String?
