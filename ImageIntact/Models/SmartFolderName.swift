@@ -49,18 +49,65 @@ enum SmartFolderName {
 
     /// Sanitizes a string for use as a filesystem folder name.
     ///
-    /// - Replaces `/`, `\`, and `:` with underscores.
-    /// - Removes null bytes.
-    /// - Trims leading/trailing whitespace and dots.
-    /// - Truncates to ≤ 255 UTF-8 bytes without splitting multi-byte characters.
+    /// Processing order:
+    /// 1. Replace tab/CR/LF with space — so `"My\tFolder"` becomes `"My Folder"`,
+    ///    not `"MyFolder"`. Preserves word boundaries when control whitespace
+    ///    sneaks into the input.
+    /// 2. Strip Unicode `Cc` (Control: C0 0x00–0x1F, C1 0x80–0x9F, DEL 0x7F),
+    ///    `Zl` (Line Separator U+2028), and `Zp` (Paragraph Separator U+2029).
+    ///    These can produce multiline directory listings or terminal escape
+    ///    spoofing if left in.
+    /// 3. Replace `/`, `\`, and `:` with underscores (path separators).
+    /// 4. Trim leading/trailing whitespace and dots.
+    /// 5. Truncate to ≤ 255 UTF-8 bytes without splitting multi-byte characters.
+    ///
+    /// **Preserved on purpose**: Unicode `Cf` (Format) category — includes Zero-Width
+    /// Joiners (U+200D) used in family emojis like 👨‍👩‍👧‍👦 and bidirectional
+    /// markers used in Right-to-Left languages. Stripping Cf would break legitimate
+    /// international filenames.
+    ///
+    /// **Caller responsibility**: an input consisting entirely of strippable
+    /// characters (e.g. `".."`, `"   "`, `"\t\n"`) returns `""`. Callers that
+    /// construct paths from the result MUST guard `!result.isEmpty` before
+    /// appending — otherwise `baseURL.appendingPathComponent("")` resolves to
+    /// `baseURL` itself. `BackupManager.runBackup` does this check at the
+    /// `!organizationName.isEmpty` guard.
+    ///
+    /// International characters (CJK, Cyrillic, accented Latin, emoji, RTL) are
+    /// intentionally preserved — this is a photography app and users routinely
+    /// have folder names like "São Paulo", "München", "日本", "📷", "‫مرحبا‬".
+    /// A strict alphanumeric allowlist (or stripping Cf) would break legitimate
+    /// workflows.
     ///
     /// Pure function — no side effects. Idempotent: `sanitize(sanitize(x)) == sanitize(x)`.
     static func sanitize(_ name: String) -> String {
-        var cleaned = name
+        // 1. Replace whitespace-like control chars with space so word boundaries
+        //    survive (e.g. "My\tFolder" → "My Folder", not "MyFolder").
+        //    Covers TAB, LF, VT, FF, CR — the C0 chars users typically encounter
+        //    as "whitespace" in pasted content.
+        let spaced = name
+            .replacingOccurrences(of: "\t", with: " ")  // 0x09 HT
+            .replacingOccurrences(of: "\n", with: " ")  // 0x0A LF
+            .replacingOccurrences(of: "\u{0B}", with: " ") // VT
+            .replacingOccurrences(of: "\u{0C}", with: " ") // FF
+            .replacingOccurrences(of: "\r", with: " ")  // 0x0D CR
+
+        // 2. Strip Cc (Control), Zl (Line Separator U+2028), Zp (Paragraph
+        //    Separator U+2029). Cf (Format — ZWJ, bidi markers) is preserved.
+        let stripped = String(String.UnicodeScalarView(
+            spaced.unicodeScalars.filter { scalar in
+                switch scalar.properties.generalCategory {
+                case .control, .lineSeparator, .paragraphSeparator:
+                    return false
+                default:
+                    return true
+                }
+            }
+        ))
+        var cleaned = stripped
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "\\", with: "_")
             .replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "\0", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         // APFS/HFS+ limit is 255 UTF-8 bytes, not characters.
         if cleaned.utf8.count > 255 {
