@@ -83,10 +83,14 @@ enum SmartFolderName {
     static func sanitize(_ name: String) -> String {
         // 1. Replace whitespace-like control chars with space so word boundaries
         //    survive (e.g. "My\tFolder" → "My Folder", not "MyFolder").
+        //    Covers TAB, LF, VT, FF, CR — the C0 chars users typically encounter
+        //    as "whitespace" in pasted content.
         let spaced = name
-            .replacingOccurrences(of: "\t", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")  // 0x09 HT
+            .replacingOccurrences(of: "\n", with: " ")  // 0x0A LF
+            .replacingOccurrences(of: "\u{0B}", with: " ") // VT
+            .replacingOccurrences(of: "\u{0C}", with: " ") // FF
+            .replacingOccurrences(of: "\r", with: " ")  // 0x0D CR
 
         // 2. Strip Cc (Control), Zl (Line Separator U+2028), Zp (Paragraph
         //    Separator U+2029). Cf (Format — ZWJ, bidi markers) is preserved.
