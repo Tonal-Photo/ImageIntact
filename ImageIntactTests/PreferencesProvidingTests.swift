@@ -123,4 +123,94 @@ final class PreferencesProvidingTests: XCTestCase {
         // Reading is harmless and doesn't mutate UserDefaults.
         _ = prefs.confirmLargeBackups
     }
+
+    // MARK: - BackupManager DI — writes back through injected preferences
+
+    /// `respondToLargeBackupConfirmation(dontShowAgain: true)` must write
+    /// `skipLargeBackupWarning = true` to the injected provider, not to
+    /// `PreferencesManager.shared`.
+    func testBackupManager_respondToLargeBackup_dontShowAgain_writesToInjectedPreferences() {
+        let prefs = InMemoryPreferencesProvider(skipLargeBackupWarning: false)
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        bm.respondToLargeBackupConfirmation(shouldContinue: false, dontShowAgain: true)
+
+        XCTAssertTrue(prefs.skipLargeBackupWarning,
+                      "respondToLargeBackupConfirmation must persist dontShowAgain through preferences.skipLargeBackupWarning")
+    }
+
+    /// `respondToLargeBackupConfirmation(dontShowAgain: false)` must NOT
+    /// touch `skipLargeBackupWarning`.
+    func testBackupManager_respondToLargeBackup_dontShowAgainFalse_leavesSkipWarning() {
+        let prefs = InMemoryPreferencesProvider(skipLargeBackupWarning: false)
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        bm.respondToLargeBackupConfirmation(shouldContinue: true, dontShowAgain: false)
+
+        XCTAssertFalse(prefs.skipLargeBackupWarning,
+                       "respondToLargeBackupConfirmation must leave skipLargeBackupWarning unchanged when dontShowAgain=false")
+    }
+
+    /// runBackup must record the organizationName via the injected provider's
+    /// `lastUsedOrganizationFolderName` and `addRecentOrganizationFolderName`.
+    /// We can't drive runBackup to completion from a unit test (it spawns the
+    /// async backup pipeline), but the persist-name block runs synchronously
+    /// before that point, so a runBackup() call is enough to observe the writes.
+    func testBackupManager_runBackup_recordsOrganizationNameInPreferences() {
+        let prefs = InMemoryPreferencesProvider()
+        let mockDisk = MockDiskSpaceChecker()
+        mockDisk.evaluationResult = (canProceed: true, warnings: [], errors: [])
+        let mockPresenter = MockBackupAlertPresenter()
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            diskSpaceChecker: mockDisk,
+            backupAlertPresenter: mockPresenter,
+            preferences: prefs
+        )
+
+        // Set a source + destination so runBackup can reach the persist-name block.
+        bm.sourceManager.sourceURL = URL(fileURLWithPath: "/Volumes/CardA/DCIM")
+        bm.setDestination(URL(fileURLWithPath: "/Volumes/BackupDrive"), at: 0)
+        bm.organizationName = "MyShoot"
+
+        bm.runBackup()
+
+        XCTAssertEqual(prefs.lastUsedOrganizationFolderName, "MyShoot",
+                       "runBackup must persist organizationName via preferences.lastUsedOrganizationFolderName")
+        XCTAssertEqual(prefs.recentOrganizationFolderNames.first, "MyShoot",
+                       "runBackup must record organizationName via preferences.addRecentOrganizationFolderName")
+    }
+
+    /// runBackup with empty organizationName must NOT touch the recent list or
+    /// `lastUsedOrganizationFolderName`.
+    func testBackupManager_runBackup_emptyOrganizationName_leavesRecentEmpty() {
+        let prefs = InMemoryPreferencesProvider(lastUsedOrganizationFolderName: "PriorValue")
+        let mockDisk = MockDiskSpaceChecker()
+        mockDisk.evaluationResult = (canProceed: true, warnings: [], errors: [])
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            diskSpaceChecker: mockDisk,
+            backupAlertPresenter: MockBackupAlertPresenter(),
+            preferences: prefs
+        )
+
+        bm.sourceManager.sourceURL = URL(fileURLWithPath: "/Volumes/CardA/DCIM")
+        bm.setDestination(URL(fileURLWithPath: "/Volumes/BackupDrive"), at: 0)
+        bm.organizationName = ""
+
+        bm.runBackup()
+
+        XCTAssertEqual(prefs.lastUsedOrganizationFolderName, "PriorValue",
+                       "runBackup with empty organizationName must not overwrite lastUsedOrganizationFolderName")
+        XCTAssertTrue(prefs.recentOrganizationFolderNames.isEmpty,
+                      "runBackup with empty organizationName must not call addRecentOrganizationFolderName")
+    }
 }
