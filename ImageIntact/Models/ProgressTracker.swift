@@ -79,29 +79,12 @@ class ProgressTracker: ProgressTrackerProtocol {
         // destinationTotalFiles so the cancelled badges persist.
     }
 
-    /// Reset all progress tracking
+    /// Reset all progress tracking, including source metadata and the
+    /// per-destination dicts. Called by `BackupManager.runBackup` at the top
+    /// of its state-setup block so a fresh backup starts from clean state.
     func resetAll() {
-        totalFiles = 0
-        processedFiles = 0
-        verifiedFiles = 0
-        currentFileIndex = 0
-        currentFileName = ""
-        currentDestinationName = ""
-        currentFile = ""
-
-        totalBytesToCopy = 0
-        totalBytesCopied = 0
-        sourceTotalBytes = 0
-
-        copySpeed = 0.0
-        estimatedSecondsRemaining = nil
-        copyStartTime = Date()
-        lastETAUpdate = Date()
-        recentSpeedSamples.removeAll()
-
-        phaseProgress = 0.0
-        overallProgress = 0.0
-
+        markAsCancelled()           // clears the 12 transient run-level metrics
+        sourceTotalBytes = 0         // also reset source metadata
         destinationProgress.removeAll()
         destinationTotalFiles.removeAll()
         destinationStates.removeAll()
