@@ -408,6 +408,14 @@ class BackupManager {
             return
         }
 
+        // AMUX-207: scan in progress means sourceTotalBytes is reset to 0;
+        // disk-space check below would trivially pass (requiredBytes=0)
+        // even if destinations are full. Bail until the scan completes.
+        guard !sourceManager.isScanning else {
+            logWarning("runBackup called while source scan is in progress — ignoring")
+            return
+        }
+
         let destinations = destinationURLs.compactMap { $0 }
         // AMUX-208: empty-destinations guard. UI gates this via canRunBackup(),
         // but runBackup itself didn't — a programmatic re-entry could fall through.
