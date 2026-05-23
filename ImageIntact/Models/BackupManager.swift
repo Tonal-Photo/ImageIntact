@@ -393,7 +393,10 @@ class BackupManager {
     }
 
     func canRunBackup() -> Bool {
-        return sourceURL != nil && !destinationURLs.compactMap { $0 }.isEmpty && !isProcessing
+        return sourceURL != nil
+            && !destinationURLs.compactMap { $0 }.isEmpty
+            && !isProcessing
+            && !sourceManager.isScanning
     }
 
     func runBackup() {
@@ -405,6 +408,14 @@ class BackupManager {
 
         guard let source = sourceURL else {
             logWarning("Missing source folder.")
+            return
+        }
+
+        // AMUX-207: scan in progress means sourceTotalBytes is reset to 0;
+        // disk-space check below would trivially pass (requiredBytes=0)
+        // even if destinations are full. Bail until the scan completes.
+        guard !sourceManager.isScanning else {
+            logWarning("runBackup called while source scan is in progress — ignoring")
             return
         }
 
