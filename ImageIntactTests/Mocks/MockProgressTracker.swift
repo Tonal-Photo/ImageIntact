@@ -57,7 +57,22 @@ class MockProgressTracker: ProgressTrackerProtocol {
         destinationTotalFiles.removeAll()
         destinationStates.removeAll()
     }
-    
+
+    /// AMUX-210: clears transient metrics; preserves destination dicts.
+    var markAsCancelledCalled = false
+    func markAsCancelled() {
+        markAsCancelledCalled = true
+        totalFiles = 0
+        processedFiles = 0
+        currentFileName = ""
+        totalBytesToCopy = 0
+        totalBytesCopied = 0
+        copySpeed = 0.0
+        estimatedSecondsRemaining = nil
+        overallProgress = 0.0
+        // Keep destinationProgress / destinationStates / destinationTotalFiles.
+    }
+
     func startCopyTracking() {
         startCopyTrackingCalled = true
     }

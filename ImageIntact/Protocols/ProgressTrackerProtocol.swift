@@ -51,6 +51,13 @@ protocol ProgressTrackerProtocol: AnyObject {
   /// Reset all progress tracking
   func resetAll()
 
+  /// Clear transient per-run metrics (counts, bytes, speed, ETA, phase
+  /// progress) while preserving `destinationProgress`, `destinationStates`,
+  /// `destinationTotalFiles`, and `sourceTotalBytes`. Used by
+  /// `BackupManager.cancelOperation` so cancelled-state badges persist
+  /// (AMUX-210).
+  func markAsCancelled()
+
   /// Start tracking copy operation
   func startCopyTracking()
 
