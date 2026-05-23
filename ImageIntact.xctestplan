@@ -17,7 +17,7 @@
   },
   "testTargets" : [
     {
-      "parallelizable" : false,
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:ImageIntact.xcodeproj",
         "identifier" : "71592B6A2E3CE71700571AB3",
