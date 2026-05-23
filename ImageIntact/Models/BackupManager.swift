@@ -409,6 +409,12 @@ class BackupManager {
         }
 
         let destinations = destinationURLs.compactMap { $0 }
+        // AMUX-208: empty-destinations guard. UI gates this via canRunBackup(),
+        // but runBackup itself didn't — a programmatic re-entry could fall through.
+        guard !destinations.isEmpty else {
+            logWarning("runBackup called with no destinations — ignoring")
+            return
+        }
 
         // Check disk space for all destinations.
         // High fix: use sourceTotalBytes (set at scan time) not totalBytesToCopy

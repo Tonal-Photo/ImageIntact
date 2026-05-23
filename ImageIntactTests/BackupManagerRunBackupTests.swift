@@ -102,6 +102,22 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
                       "isProcessing should remain true when guard fires")
     }
 
+    /// AMUX-208: empty destinations → early return, no presenter calls.
+    /// Mirrors the missing-source guard. Same shape as the AMUX-15 isProcessing guard.
+    func testRunBackup_emptyDestinations_logsAndReturns() {
+        bm.setSource(makeURL("/Volumes/CardA/DCIM"))
+        // Intentionally do NOT call setDestination — destinationURLs stays []/[nil].
+
+        bm.runBackup()
+
+        XCTAssertEqual(mockPresenter.presentInsufficientSpaceCalls.count, 0,
+                       "No presenter calls when destinations is empty")
+        XCTAssertEqual(mockPresenter.presentLowSpaceCalls.count, 0)
+        XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0)
+        XCTAssertFalse(bm.isProcessing,
+                       "isProcessing must be false after early-return (empty destinations)")
+    }
+
     /// Existing behavior preserved: no source → early return, no presenter calls.
     func testRunBackup_missingSource_logsAndReturns() {
         // No source set — sourceURL is nil.
