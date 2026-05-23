@@ -223,7 +223,7 @@ class BackupManager {
     }
 
     var logEntries: [LogEntry] = []
-    var currentOrchestrator: BackupOrchestrator?
+    var currentOrchestrator: BackupOrchestrating?
 
     // MARK: - Initialization
 
