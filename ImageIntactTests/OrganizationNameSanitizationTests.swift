@@ -120,29 +120,46 @@ final class OrganizationNameSanitizationTests: XCTestCase {
                        "Leading dot in `..\\foo` must be stripped")
     }
 
-    /// Tab character (\t) embedded mid-string should be stripped.
-    func testTabCharacter_stripped() {
+    /// Tab character (\t) mid-string becomes a space — preserves word boundary
+    /// so "My\tFolder" reads as "My Folder", not "MyFolder".
+    func testTabCharacter_becomesSpace() {
         backupManager.organizationName = "Photos\tBackup"
         XCTAssertFalse(backupManager.organizationName.contains("\t"),
-                       "Embedded tab character should be stripped")
-        XCTAssertEqual(backupManager.organizationName, "PhotosBackup",
-                       "Tab strip should leave surrounding characters intact")
+                       "Embedded tab character should be replaced")
+        XCTAssertEqual(backupManager.organizationName, "Photos Backup",
+                       "Tab should become space to preserve word boundary")
     }
 
-    /// Carriage return (\r) embedded mid-string should be stripped.
-    func testCarriageReturn_stripped() {
+    /// Carriage return (\r) mid-string becomes a space.
+    func testCarriageReturn_becomesSpace() {
         backupManager.organizationName = "Photos\rBackup"
         XCTAssertFalse(backupManager.organizationName.contains("\r"),
-                       "Embedded carriage return should be stripped")
-        XCTAssertEqual(backupManager.organizationName, "PhotosBackup")
+                       "Embedded carriage return should be replaced")
+        XCTAssertEqual(backupManager.organizationName, "Photos Backup")
     }
 
-    /// Newline (\n) embedded mid-string should be stripped.
-    func testNewline_stripped() {
+    /// Newline (\n) mid-string becomes a space.
+    func testNewline_becomesSpace() {
         backupManager.organizationName = "Photos\nBackup"
         XCTAssertFalse(backupManager.organizationName.contains("\n"),
-                       "Embedded newline should be stripped")
-        XCTAssertEqual(backupManager.organizationName, "PhotosBackup")
+                       "Embedded newline should be replaced")
+        XCTAssertEqual(backupManager.organizationName, "Photos Backup")
+    }
+
+    /// Unicode Line Separator (U+2028) is in category Zl (not Cc), so the
+    /// general-category filter misses it without an explicit add. Strip it
+    /// to prevent multiline directory listings.
+    func testUnicodeLineSeparator_stripped() {
+        backupManager.organizationName = "Photos\u{2028}Backup"
+        XCTAssertFalse(backupManager.organizationName.unicodeScalars.contains(where: { $0.value == 0x2028 }),
+                       "U+2028 (Line Separator) must be stripped")
+    }
+
+    /// Unicode Paragraph Separator (U+2029) is category Zp.
+    func testUnicodeParagraphSeparator_stripped() {
+        backupManager.organizationName = "Photos\u{2029}Backup"
+        XCTAssertFalse(backupManager.organizationName.unicodeScalars.contains(where: { $0.value == 0x2029 }),
+                       "U+2029 (Paragraph Separator) must be stripped")
     }
 
     /// Arbitrary C0 control characters (0x01-0x1F) should be stripped.
