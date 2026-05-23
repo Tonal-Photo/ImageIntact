@@ -59,6 +59,20 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
                        "orchestrator.cancel() must be called synchronously before cleanupMemory nils it")
     }
 
+    /// AMUX-210: cancelled-state badges must persist after cancelOperation
+    /// returns. Previously they were set then immediately wiped by resetAll().
+    func testCancelOperation_cancelledStatePersists() {
+        bm.isProcessing = true
+        bm.progressTracker.setDestinationProgress(50, for: "/Volumes/BackupDrive")
+
+        bm.cancelOperation()
+
+        XCTAssertEqual(bm.progressTracker.destinationStates["/Volumes/BackupDrive"], "cancelled",
+                       "cancelled state must persist after cancelOperation")
+        XCTAssertEqual(bm.progressTracker.destinationProgress["/Volumes/BackupDrive"], 0,
+                       "progress for cancelled destination must be zeroed")
+    }
+
     /// shouldCancel guard: second cancelOperation call is ignored.
     func testCancelOperation_doubleCallIgnored() {
         let mockOrch = MockBackupOrchestrator()

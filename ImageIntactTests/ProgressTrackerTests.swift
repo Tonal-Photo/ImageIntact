@@ -90,4 +90,58 @@ final class ProgressTrackerTests: XCTestCase {
         tracker.updateFromCoordinator(overallProgress: -0.5, totalBytes: 100, copiedBytes: 0, speed: 1)
         XCTAssertEqual(tracker.overallProgress, 0.0, accuracy: 0.0001, "Should clamp lower bound")
     }
+
+    // MARK: - AMUX-210: markAsCancelled
+
+    /// `markAsCancelled` clears transient run-level metrics but preserves the
+    /// destination dicts and source metadata so cancelled-state badges survive.
+    func testMarkAsCancelled_clearsTransientMetricsButKeepsDestinationsAndSource() {
+        let tracker = ProgressTracker()
+
+        // Seed the transient metrics that should be cleared.
+        tracker.totalFiles = 10
+        tracker.processedFiles = 3
+        tracker.verifiedFiles = 2
+        tracker.currentFileIndex = 4
+        tracker.currentFileName = "photo.raw"
+        tracker.currentDestinationName = "/Volumes/Drive1"
+        tracker.currentFile = "photo.raw"
+        tracker.totalBytesToCopy = 1_000_000
+        tracker.totalBytesCopied = 250_000
+        tracker.copySpeed = 5.0
+        tracker.estimatedSecondsRemaining = 30
+        tracker.phaseProgress = 0.4
+        tracker.overallProgress = 0.25
+
+        // Seed the per-destination state that should be preserved.
+        tracker.setDestinationProgress(0, for: "/Volumes/Drive1")
+        tracker.setDestinationState("cancelled", for: "/Volumes/Drive1")
+        tracker.destinationTotalFiles["/Volumes/Drive1"] = 10
+        tracker.sourceTotalBytes = 5_000_000
+
+        tracker.markAsCancelled()
+
+        // Transient metrics cleared.
+        XCTAssertEqual(tracker.totalFiles, 0)
+        XCTAssertEqual(tracker.processedFiles, 0)
+        XCTAssertEqual(tracker.verifiedFiles, 0)
+        XCTAssertEqual(tracker.currentFileIndex, 0)
+        XCTAssertEqual(tracker.currentFileName, "")
+        XCTAssertEqual(tracker.currentDestinationName, "")
+        XCTAssertEqual(tracker.currentFile, "")
+        XCTAssertEqual(tracker.totalBytesToCopy, 0)
+        XCTAssertEqual(tracker.totalBytesCopied, 0)
+        XCTAssertEqual(tracker.copySpeed, 0.0, accuracy: 0.0001)
+        XCTAssertNil(tracker.estimatedSecondsRemaining)
+        XCTAssertEqual(tracker.phaseProgress, 0.0, accuracy: 0.0001)
+        XCTAssertEqual(tracker.overallProgress, 0.0, accuracy: 0.0001)
+
+        // Per-destination state preserved.
+        XCTAssertEqual(tracker.destinationProgress["/Volumes/Drive1"], 0)
+        XCTAssertEqual(tracker.destinationStates["/Volumes/Drive1"], "cancelled")
+        XCTAssertEqual(tracker.destinationTotalFiles["/Volumes/Drive1"], 10)
+
+        // Source metadata preserved.
+        XCTAssertEqual(tracker.sourceTotalBytes, 5_000_000)
+    }
 }

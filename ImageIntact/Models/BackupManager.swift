@@ -553,7 +553,11 @@ class BackupManager {
         overallStatusText = ""
         currentPhase = .idle
         statusMessage = "Backup cancelled"
-        progressTracker.resetAll()
+        // AMUX-210: use markAsCancelled() instead of resetAll(). resetAll wipes
+        // destinationStates, which would flash-and-disappear the "cancelled" badges
+        // we just set above. markAsCancelled clears transient metrics (counts,
+        // bytes, speed, ETA) but preserves the destinationProgress/States dicts.
+        progressTracker.markAsCancelled()
         SleepPrevention.shared.stopPreventingSleep()
 
         // Blocker fix: cancel synchronously against retained ref BEFORE cleanupMemory
