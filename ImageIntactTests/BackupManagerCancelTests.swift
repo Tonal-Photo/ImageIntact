@@ -48,10 +48,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
     /// cancel was scheduled in a Task — this test asserts the count without any
     /// Task.yield, so it would be 0 with the old code.
     func testCancelOperation_cancelsOrchestratorBeforeNil() {
-        let mockOrch = MockBackupOrchestrator(
-            progressTracker: ProgressTracker(),
-            resourceManager: ResourceManager()
-        )
+        let mockOrch = MockBackupOrchestrator()
         bm.currentOrchestrator = mockOrch
         bm.isProcessing = true
 
@@ -64,10 +61,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
 
     /// shouldCancel guard: second cancelOperation call is ignored.
     func testCancelOperation_doubleCallIgnored() {
-        let mockOrch = MockBackupOrchestrator(
-            progressTracker: ProgressTracker(),
-            resourceManager: ResourceManager()
-        )
+        let mockOrch = MockBackupOrchestrator()
         bm.currentOrchestrator = mockOrch
         bm.isProcessing = true
 

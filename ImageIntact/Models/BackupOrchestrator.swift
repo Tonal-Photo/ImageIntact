@@ -1,10 +1,23 @@
 import AppKit
 import Foundation
 
+/// Minimal protocol surface that `BackupManager` needs from a backup orchestrator.
+/// Exposes only `cancel()` because that's the only method `BackupManager` calls
+/// against `currentOrchestrator`. Keeps mock-able surface small and prevents
+/// the test double from having to subclass the concrete class.
+///
+/// `AnyObject` constraint: orchestrators have identity (BackupManager tracks
+/// the current one via a stored reference) and `weak` capture semantics are
+/// used in cancellation Tasks.
+@MainActor
+protocol BackupOrchestrating: AnyObject {
+    func cancel()
+}
+
 /// Orchestrates the entire backup process by coordinating between components
 /// This is the top-level controller that manages ManifestBuilder, ProgressTracker, and BackupCoordinator
 @MainActor
-class BackupOrchestrator {
+class BackupOrchestrator: BackupOrchestrating {
     // MARK: - Components
 
     private let manifestBuilder = ManifestBuilder()
