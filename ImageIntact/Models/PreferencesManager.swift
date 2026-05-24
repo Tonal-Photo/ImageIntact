@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-class PreferencesManager: ObservableObject {
+class PreferencesManager: ObservableObject, PreferencesProviding {
     static let shared = PreferencesManager()
 
     // MARK: - General Preferences

@@ -20,20 +20,20 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
     // MARK: - Test fixtures
 
     var mockFileOps: MockFileOperations!
+    var prefs: InMemoryPreferencesProvider!
 
     override func setUp() async throws {
         try await super.setUp()
 
-        // Clear preferences state (bookmarks already cleared by base class).
-        PreferencesManager.shared.resetToDefaults()
-
         mockFileOps = MockFileOperations()
-        bm = BackupManager(fileOperations: mockFileOps)
+        prefs = InMemoryPreferencesProvider()
+
+        // AMUX-205: inject prefs so this test never mutates PreferencesManager.shared.
+        bm = BackupManager(fileOperations: mockFileOps, preferences: prefs)
     }
 
     override func tearDown() async throws {
-        PreferencesManager.shared.resetToDefaults()
-
+        prefs = nil
         mockFileOps = nil
 
         // Base class cancels any in-flight backup (reads self.bm before releasing it)

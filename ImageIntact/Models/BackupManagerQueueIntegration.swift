@@ -511,16 +511,19 @@ extension BackupManager {
         statistics.completeBackup()
     }
 
-    /// Handle backup completion (notifications and UI)
+    /// Handle backup completion (notifications and UI).
+    /// `internal` (not `private`) so tests can drive it directly with mocked
+    /// `preferences` / `notificationService` and assert which prefs reads gate
+    /// which side effects (AMUX-205 panel review round 4).
     @MainActor
-    private func handleBackupCompletion(destinations: [URL]) async {
+    func handleBackupCompletion(destinations: [URL]) async {
         // Stop preventing sleep
         SleepPrevention.shared.stopPreventingSleep()
 
         // Show completion report if not cancelled
         if !shouldCancel {
             // Send notification if enabled
-            if PreferencesManager.shared.showNotificationOnComplete {
+            if preferences.showNotificationOnComplete {
                 notificationService.sendBackupCompletionNotification(
                     filesCopied: progressTracker.processedFiles,
                     destinations: destinations.count,
@@ -533,7 +536,7 @@ extension BackupManager {
             showCompletionReport = true
 
             // Offer to trash source if enabled and backup was fully successful
-            if PreferencesManager.shared.trashSourceAfterBackup
+            if preferences.trashSourceAfterBackup
                 && failedFiles.isEmpty
                 && sourceURL != nil
             {
@@ -671,21 +674,24 @@ extension BackupManager {
 
     // MARK: - Large Backup Confirmation
 
-    /// Check if this is a large backup and wait for user confirmation if needed
-    /// Returns true if backup should proceed, false if user cancelled
+    /// Check if this is a large backup and wait for user confirmation if needed.
+    /// Returns true if backup should proceed, false if user cancelled.
+    /// `internal` (not `private`) so tests can drive the early-return branches
+    /// directly and assert which prefs reads gate which behavior (AMUX-205
+    /// panel review round 4).
     @MainActor
-    private func checkForLargeBackupAndWait(
+    func checkForLargeBackupAndWait(
         source _: URL, destinations: [URL], manifest: [FileManifestEntry]
     ) async -> Bool {
         ApplicationLogger.shared.debug(
-            "Checking for large backup (threshold: \(PreferencesManager.shared.largeBackupFileThreshold) files / \(PreferencesManager.shared.largeBackupSizeThresholdGB) GB)",
+            "Checking for large backup (threshold: \(preferences.largeBackupFileThreshold) files / \(preferences.largeBackupSizeThresholdGB) GB)",
             category: .backup
         )
 
         // Skip if user disabled confirmations or already disabled warnings
         guard
-            PreferencesManager.shared.confirmLargeBackups
-            && !PreferencesManager.shared.skipLargeBackupWarning
+            preferences.confirmLargeBackups
+            && !preferences.skipLargeBackupWarning
         else {
             return true // Proceed with backup
         }
@@ -695,9 +701,9 @@ extension BackupManager {
 
         statusMessage = "Analyzing backup size..."
 
-        let fileThreshold = PreferencesManager.shared.largeBackupFileThreshold
+        let fileThreshold = preferences.largeBackupFileThreshold
         let sizeThresholdBytes = Int64(
-            PreferencesManager.shared.largeBackupSizeThresholdGB * 1_000_000_000)
+            preferences.largeBackupSizeThresholdGB * 1_000_000_000)
         let totalBytes = manifest.reduce(0) { $0 + $1.size }
 
         // Check if backup exceeds thresholds
@@ -738,7 +744,7 @@ extension BackupManager {
         largeBackupInfo = nil
 
         if dontShowAgain {
-            PreferencesManager.shared.skipLargeBackupWarning = true
+            preferences.skipLargeBackupWarning = true
         }
 
         // Resume the waiting backup process

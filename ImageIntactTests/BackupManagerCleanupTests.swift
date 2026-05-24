@@ -29,20 +29,15 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
-        // Clear preferences state (bookmarks already cleared by base class).
-        PreferencesManager.shared.resetToDefaults()
-
         mockFileOps = MockFileOperations()
         // Note: bm is not pre-assigned here — each test assigns self.bm with its own
-        // BackupManager (custom deferredCleanupDelayNanos). The base class tearDown will
-        // cancel any in-flight backup via self.bm before releasing it.
+        // BackupManager (custom deferredCleanupDelayNanos + injected
+        // InMemoryPreferencesProvider). The base class tearDown will cancel any
+        // in-flight backup via self.bm before releasing it.
     }
 
     override func tearDown() async throws {
-        PreferencesManager.shared.resetToDefaults()
-
         mockFileOps = nil
-
         // Base class cancels any in-flight backup via self.bm and restores bookmarks.
         try await super.tearDown()
     }
@@ -68,6 +63,7 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
         // Assigned to self.bm so the base class tearDown can cancel any in-flight work.
         self.bm = BackupManager(
             fileOperations: mockFileOps,
+            preferences: InMemoryPreferencesProvider(),
             deferredCleanupDelayNanos: 50_000_000  // 50ms
         )
 
@@ -105,6 +101,7 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
         // Assigned to self.bm so the base class tearDown can cancel any in-flight work.
         self.bm = BackupManager(
             fileOperations: mockFileOps,
+            preferences: InMemoryPreferencesProvider(),
             deferredCleanupDelayNanos: 50_000_000  // 50ms
         )
 
@@ -133,6 +130,7 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
         // Assigned to self.bm so the base class tearDown can cancel any in-flight work.
         self.bm = BackupManager(
             fileOperations: mockFileOps,
+            preferences: InMemoryPreferencesProvider(),
             deferredCleanupDelayNanos: 50_000_000  // 50ms
         )
 

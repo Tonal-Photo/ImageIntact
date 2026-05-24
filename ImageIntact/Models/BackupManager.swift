@@ -34,6 +34,7 @@ class BackupManager {
     let notificationService: NotificationProtocol
     let driveAnalyzer: DriveAnalyzerProtocol
     let diskSpaceChecker: DiskSpaceProtocol
+    let preferences: PreferencesProviding
 
     // MARK: - Delegated Managers
 
@@ -179,7 +180,7 @@ class BackupManager {
 
     // Duplicate detection state
     var enableDuplicateDetection: Bool {
-        PreferencesManager.shared.enableSmartDuplicateDetection
+        preferences.enableSmartDuplicateDetection
     }
 
     var showDuplicateWarning = false
@@ -235,6 +236,7 @@ class BackupManager {
         duplicateDetector: DuplicateDetectorProtocol? = nil,
         destinationAlertPresenter: DestinationAlertPresenting? = nil,
         backupAlertPresenter: BackupAlertPresenting? = nil,
+        preferences: PreferencesProviding = PreferencesManager.shared,
         deferredCleanupDelayNanos: UInt64 = 10_000_000_000
     ) {
         // Use provided dependencies or create real implementations
@@ -248,6 +250,7 @@ class BackupManager {
         self.duplicateDetector = duplicateDetector ?? DuplicateDetector()
         self.destinationAlertPresenter = destinationAlertPresenter ?? NSAlertDestinationPresenter()
         self.backupAlertPresenter = backupAlertPresenter ?? NSAlertBackupPresenter()
+        self.preferences = preferences
         self.deferredCleanupDelayNanos = deferredCleanupDelayNanos
 
         // Create delegated managers
@@ -260,7 +263,7 @@ class BackupManager {
 
         // Initialize organization name from last used (if user previously customized).
         // Wrap in SmartFolderName.sanitize because didSet doesn't fire during init.
-        if let lastUsedName = PreferencesManager.shared.lastUsedOrganizationFolderName {
+        if let lastUsedName = preferences.lastUsedOrganizationFolderName {
             organizationName = SmartFolderName.sanitize(lastUsedName)
         }
 
@@ -271,7 +274,7 @@ class BackupManager {
         }
 
         // Restore last session if enabled
-        if PreferencesManager.shared.restoreLastSession {
+        if preferences.restoreLastSession {
             destinationManager.loadFromSession()
             if let restoredURL = sourceManager.loadFromSession(), !BackupManager.isRunningTests {
                 Task { [sourceManager] in
@@ -449,11 +452,11 @@ class BackupManager {
         }
 
         // Pre-flight summary (if enabled).
-        if PreferencesManager.shared.showPreflightSummary {
+        if preferences.showPreflightSummary {
             let summary = buildPreflightSummary(source: source, destinations: destinations)
             let (proceed, showAgain) = backupAlertPresenter.presentPreflightSummary(summary)
             guard proceed else { return }
-            PreferencesManager.shared.showPreflightSummary = showAgain
+            preferences.showPreflightSummary = showAgain
         }
 
         // State setup — reset everything cleanupMemory's deferred task would have
@@ -470,8 +473,8 @@ class BackupManager {
 
         // Save organization folder name to recent list and as last used
         if !organizationName.isEmpty {
-            PreferencesManager.shared.addRecentOrganizationFolderName(organizationName)
-            PreferencesManager.shared.lastUsedOrganizationFolderName = organizationName
+            preferences.addRecentOrganizationFolderName(organizationName)
+            preferences.lastUsedOrganizationFolderName = organizationName
         }
 
         // Start preventing sleep
@@ -517,8 +520,8 @@ class BackupManager {
             totalFiles: nonFilteredTotalFiles,
             totalBytes: sourceTotalBytes,
             destinations: destTuples,
-            excludeCacheFiles: PreferencesManager.shared.excludeCacheFiles,
-            skipHiddenFiles: PreferencesManager.shared.skipHiddenFiles,
+            excludeCacheFiles: preferences.excludeCacheFiles,
+            skipHiddenFiles: preferences.skipHiddenFiles,
             fileTypeFilterActive: !fileTypeFilter.includedExtensions.isEmpty
         )
     }
