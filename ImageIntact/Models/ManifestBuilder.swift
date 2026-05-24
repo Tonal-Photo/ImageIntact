@@ -71,6 +71,46 @@ actor ManifestBuilder {
 
     init() {}
 
+    // MARK: - Path canonicalization
+
+    /// Resolve `url` to its canonical absolute path via `realpath(3)`.
+    ///
+    /// On macOS this returns the form that `FileManager`'s directory
+    /// enumerator yields for child URLs (e.g. `/private/var/...` for paths
+    /// under the system temp dir), letting us compare with `hasPrefix` and
+    /// strip a known prefix length deterministically.
+    ///
+    /// On `realpath` failure (e.g. the path doesn't exist), falls back to
+    /// `url.path`. Callers should be prepared for the prefix-strip to fail
+    /// for URLs outside the canonical source tree.
+    ///
+    /// Passes `nil` as the second arg so `realpath` allocates the output
+    /// buffer dynamically — using a fixed `PATH_MAX` buffer would fail for
+    /// paths longer than 1024 bytes on Apple platforms (POSIX recommendation).
+    static func canonicalPath(of url: URL) -> String {
+        return url.withUnsafeFileSystemRepresentation { ptr -> String in
+            guard let ptr = ptr, let resolved = realpath(ptr, nil) else {
+                return url.path
+            }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+    }
+
+    /// Strip `canonicalSourcePrefix` from `urlPath`. Returns `nil` when
+    /// `urlPath` doesn't start with the prefix — callers should treat that
+    /// as "url lives outside the source tree" and skip the entry rather than
+    /// storing an absolute path as the manifest's "relative" field.
+    ///
+    /// Caller is responsible for shape: the prefix should end with `/` for
+    /// non-root sources and be just `/` for the root case (so that paths
+    /// like `/Applications/Foo.app` strip correctly under a root source
+    /// without producing a leading `/`).
+    static func stripCanonicalPrefix(_ canonicalSourcePrefix: String, from urlPath: String) -> String? {
+        guard urlPath.hasPrefix(canonicalSourcePrefix) else { return nil }
+        return String(urlPath.dropFirst(canonicalSourcePrefix.count))
+    }
+
     // MARK: - Helper Methods
 
     /// Check if a file or directory should be excluded as a cache/temporary file
@@ -185,6 +225,22 @@ actor ManifestBuilder {
         var skippedCache = 0
         var skippedUnsupported = 0
         var skippedByFilter = 0
+        var skippedOutsideSource = 0
+
+        // macOS symlinks `/var` → `/private/var` (and `/tmp` → `/private/tmp`).
+        // `FileManager.default.temporaryDirectory` hands back the `/var/...` form,
+        // but `enumerator.nextObject()` returns each child with the resolved
+        // `/private/var/...` form. `URL.resolvingSymlinksInPath()` doesn't help
+        // here — it strips `/private` rather than adding it. `realpath(3)` does:
+        // it follows symlinks AND returns the canonical absolute path that
+        // matches the enumerator's children. Compute it once outside the loop
+        // to avoid per-file filesystem I/O.
+        //
+        // Root source (`/`) is special-cased so the prefix is `/` rather than
+        // `//` — otherwise children like `/Applications/...` would fail the
+        // hasPrefix check.
+        let canonicalSource = Self.canonicalPath(of: source)
+        let canonicalSourcePrefix = canonicalSource == "/" ? "/" : canonicalSource + "/"
 
         // Collect files first
         while let url = enumerator.nextObject() as? URL {
@@ -250,7 +306,21 @@ actor ManifestBuilder {
                     ApplicationLogger.shared.debug("Found video: \(url.lastPathComponent)", category: .fileSystem)
                 }
 
-                let relativePath = url.path.replacingOccurrences(of: source.path + "/", with: "")
+                // Strip the canonical source prefix to get the relativePath.
+                // If the url doesn't start with the canonical source (e.g. the
+                // enumerator yielded a path outside the source tree via a
+                // followed symlink), skip and log — storing an absolute path
+                // as a "relative" manifest entry would silently duplicate or
+                // break the destination layout.
+                let urlPath = url.path
+                guard let relativePath = Self.stripCanonicalPrefix(canonicalSourcePrefix, from: urlPath) else {
+                    ApplicationLogger.shared.warning(
+                        "ManifestBuilder: enumerated url outside source canonical prefix; skipping. url=\(urlPath) canonicalSource=\(canonicalSourcePrefix)",
+                        category: .fileSystem
+                    )
+                    skippedOutsideSource += 1
+                    continue
+                }
                 let size = resourceValues.fileSize ?? 0
 
                 filesToProcess.append((url: url, relativePath: relativePath, size: Int64(size)))
@@ -270,6 +340,7 @@ actor ManifestBuilder {
         ApplicationLogger.shared.debug("Skipped (cache): \(skippedCache)", category: .fileSystem)
         ApplicationLogger.shared.debug("Skipped (unsupported): \(skippedUnsupported)", category: .fileSystem)
         ApplicationLogger.shared.debug("Skipped (filter): \(skippedByFilter)", category: .fileSystem)
+        ApplicationLogger.shared.debug("Skipped (outside source): \(skippedOutsideSource)", category: .fileSystem)
         ApplicationLogger.shared.debug("Ready to process: \(filesToProcess.count)", category: .fileSystem)
 
         // Phase 2: Calculate checksums in batches
