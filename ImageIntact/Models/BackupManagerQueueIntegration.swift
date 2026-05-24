@@ -511,9 +511,12 @@ extension BackupManager {
         statistics.completeBackup()
     }
 
-    /// Handle backup completion (notifications and UI)
+    /// Handle backup completion (notifications and UI).
+    /// `internal` (not `private`) so tests can drive it directly with mocked
+    /// `preferences` / `notificationService` and assert which prefs reads gate
+    /// which side effects (AMUX-205 panel review round 4).
     @MainActor
-    private func handleBackupCompletion(destinations: [URL]) async {
+    func handleBackupCompletion(destinations: [URL]) async {
         // Stop preventing sleep
         SleepPrevention.shared.stopPreventingSleep()
 
@@ -671,10 +674,13 @@ extension BackupManager {
 
     // MARK: - Large Backup Confirmation
 
-    /// Check if this is a large backup and wait for user confirmation if needed
-    /// Returns true if backup should proceed, false if user cancelled
+    /// Check if this is a large backup and wait for user confirmation if needed.
+    /// Returns true if backup should proceed, false if user cancelled.
+    /// `internal` (not `private`) so tests can drive the early-return branches
+    /// directly and assert which prefs reads gate which behavior (AMUX-205
+    /// panel review round 4).
     @MainActor
-    private func checkForLargeBackupAndWait(
+    func checkForLargeBackupAndWait(
         source _: URL, destinations: [URL], manifest: [FileManifestEntry]
     ) async -> Bool {
         ApplicationLogger.shared.debug(

@@ -261,6 +261,212 @@ final class PreferencesProvidingTests: XCTestCase {
                      "initializeEmpty slot must have nil URL")
     }
 
+    // MARK: - BackupManager DI — handleBackupCompletion reads
+
+    /// handleBackupCompletion must read `showNotificationOnComplete` from the
+    /// injected provider. With true, the notification service receives a
+    /// completion notification; with false it does not.
+    func testBackupManager_handleBackupCompletion_showNotificationOnCompleteTrue_sendsNotification() async {
+        let prefs = InMemoryPreferencesProvider(showNotificationOnComplete: true)
+        let mockNotifier = MockNotificationService()
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            notificationService: mockNotifier,
+            preferences: prefs
+        )
+
+        await bm.handleBackupCompletion(destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")])
+
+        XCTAssertEqual(mockNotifier.sentNotifications.count, 1,
+                       "handleBackupCompletion must send a notification when showNotificationOnComplete=true")
+    }
+
+    func testBackupManager_handleBackupCompletion_showNotificationOnCompleteFalse_noNotification() async {
+        let prefs = InMemoryPreferencesProvider(showNotificationOnComplete: false)
+        let mockNotifier = MockNotificationService()
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            notificationService: mockNotifier,
+            preferences: prefs
+        )
+
+        await bm.handleBackupCompletion(destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")])
+
+        XCTAssertEqual(mockNotifier.sentNotifications.count, 0,
+                       "handleBackupCompletion must NOT send a notification when showNotificationOnComplete=false")
+    }
+
+    /// handleBackupCompletion must read `trashSourceAfterBackup` from the
+    /// injected provider. With true (and no failed files + a source URL set),
+    /// showTrashConfirmation flips to true.
+    func testBackupManager_handleBackupCompletion_trashSourceAfterBackupTrue_showsTrashConfirmation() async {
+        let prefs = InMemoryPreferencesProvider(trashSourceAfterBackup: true)
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        bm.sourceManager.sourceURL = URL(fileURLWithPath: "/Volumes/CardA/DCIM")
+        // failedFiles is empty by default.
+
+        await bm.handleBackupCompletion(destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")])
+
+        XCTAssertTrue(bm.showTrashConfirmation,
+                      "handleBackupCompletion must flip showTrashConfirmation when trashSourceAfterBackup=true and backup succeeded")
+    }
+
+    func testBackupManager_handleBackupCompletion_trashSourceAfterBackupFalse_noTrashConfirmation() async {
+        let prefs = InMemoryPreferencesProvider(trashSourceAfterBackup: false)
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        bm.sourceManager.sourceURL = URL(fileURLWithPath: "/Volumes/CardA/DCIM")
+
+        await bm.handleBackupCompletion(destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")])
+
+        XCTAssertFalse(bm.showTrashConfirmation,
+                       "handleBackupCompletion must NOT flip showTrashConfirmation when trashSourceAfterBackup=false")
+    }
+
+    // MARK: - BackupManager DI — checkForLargeBackupAndWait reads
+
+    /// `confirmLargeBackups=false` → checkForLargeBackupAndWait returns true
+    /// immediately without computing thresholds. This is a pure read-gate test.
+    func testBackupManager_checkLargeBackup_confirmLargeBackupsFalse_returnsTrueImmediately() async {
+        let prefs = InMemoryPreferencesProvider(
+            largeBackupFileThreshold: 0,                   // would trigger if not gated
+            largeBackupSizeThresholdGB: 0,                 // would trigger if not gated
+            confirmLargeBackups: false,                    // gate: skip the warning entirely
+            skipLargeBackupWarning: false
+        )
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        let result = await bm.checkForLargeBackupAndWait(
+            source: URL(fileURLWithPath: "/Volumes/CardA/DCIM"),
+            destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")],
+            manifest: [FileManifestEntry(relativePath: "a.jpg", sourceURL: URL(fileURLWithPath: "/a.jpg"), checksum: "x", size: 100)]
+        )
+
+        XCTAssertTrue(result,
+                      "checkForLargeBackupAndWait must return true (proceed) when confirmLargeBackups=false, regardless of size")
+        XCTAssertFalse(bm.showLargeBackupConfirmation,
+                       "showLargeBackupConfirmation must stay false when confirmLargeBackups=false")
+    }
+
+    /// `skipLargeBackupWarning=true` → checkForLargeBackupAndWait returns true
+    /// immediately. Verifies the read path (the write path is covered by
+    /// `testBackupManager_respondToLargeBackup_dontShowAgain_writesToInjectedPreferences`).
+    func testBackupManager_checkLargeBackup_skipLargeBackupWarningTrue_returnsTrueImmediately() async {
+        let prefs = InMemoryPreferencesProvider(
+            largeBackupFileThreshold: 0,
+            largeBackupSizeThresholdGB: 0,
+            confirmLargeBackups: true,
+            skipLargeBackupWarning: true                   // gate: user opted out previously
+        )
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        let result = await bm.checkForLargeBackupAndWait(
+            source: URL(fileURLWithPath: "/Volumes/CardA/DCIM"),
+            destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")],
+            manifest: [FileManifestEntry(relativePath: "a.jpg", sourceURL: URL(fileURLWithPath: "/a.jpg"), checksum: "x", size: 100)]
+        )
+
+        XCTAssertTrue(result,
+                      "checkForLargeBackupAndWait must return true (proceed) when skipLargeBackupWarning=true")
+        XCTAssertFalse(bm.showLargeBackupConfirmation,
+                       "showLargeBackupConfirmation must stay false when skipLargeBackupWarning=true")
+    }
+
+    /// Manifest below both thresholds → checkForLargeBackupAndWait returns
+    /// true without showing the warning. Verifies the file-count + GB
+    /// threshold reads from the injected provider.
+    func testBackupManager_checkLargeBackup_belowThresholds_returnsTrueWithoutWarning() async {
+        let prefs = InMemoryPreferencesProvider(
+            largeBackupFileThreshold: 1000,
+            largeBackupSizeThresholdGB: 10.0,
+            confirmLargeBackups: true,
+            skipLargeBackupWarning: false
+        )
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        // Manifest with 1 file, 100 bytes — well below both thresholds.
+        let smallManifest = [FileManifestEntry(
+            relativePath: "a.jpg",
+            sourceURL: URL(fileURLWithPath: "/a.jpg"),
+            checksum: "x",
+            size: 100
+        )]
+
+        let result = await bm.checkForLargeBackupAndWait(
+            source: URL(fileURLWithPath: "/Volumes/CardA/DCIM"),
+            destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")],
+            manifest: smallManifest
+        )
+
+        XCTAssertTrue(result,
+                      "checkForLargeBackupAndWait must return true when manifest is below file+size thresholds")
+        XCTAssertFalse(bm.showLargeBackupConfirmation,
+                       "showLargeBackupConfirmation must stay false when manifest is below thresholds")
+    }
+
+    /// Manifest above the file-count threshold → checkForLargeBackupAndWait
+    /// suspends on a continuation that respondToLargeBackupConfirmation
+    /// resumes. Reaching the continuation at all (and getting back the value
+    /// the responder supplied) proves the largeBackupFileThreshold read was
+    /// taken from the injected provider.
+    func testBackupManager_checkLargeBackup_aboveFileThreshold_blocksOnContinuation() async {
+        let prefs = InMemoryPreferencesProvider(
+            largeBackupFileThreshold: 1,                   // tiny — manifest of 2 files exceeds
+            largeBackupSizeThresholdGB: 1000.0,            // huge — won't trigger via bytes
+            confirmLargeBackups: true,
+            skipLargeBackupWarning: false
+        )
+        let bm = BackupManager(fileOperations: MockFileOperations(), preferences: prefs)
+        let manifest = [
+            FileManifestEntry(relativePath: "a.jpg", sourceURL: URL(fileURLWithPath: "/a.jpg"), checksum: "x", size: 100),
+            FileManifestEntry(relativePath: "b.jpg", sourceURL: URL(fileURLWithPath: "/b.jpg"), checksum: "y", size: 100),
+        ]
+
+        // checkForLargeBackupAndWait suspends on a continuation; resume it
+        // from a separate Task once `showLargeBackupConfirmation` flips.
+        Task { @MainActor in
+            for _ in 0..<100 {
+                if bm.showLargeBackupConfirmation {
+                    bm.respondToLargeBackupConfirmation(shouldContinue: false, dontShowAgain: false)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000)
+            }
+        }
+
+        let result = await bm.checkForLargeBackupAndWait(
+            source: URL(fileURLWithPath: "/Volumes/CardA/DCIM"),
+            destinations: [URL(fileURLWithPath: "/Volumes/BackupDrive")],
+            manifest: manifest
+        )
+
+        XCTAssertFalse(result,
+                       "checkForLargeBackupAndWait must return what the responder supplied (false). Reaching the continuation proves the file-count threshold read fired.")
+    }
+
     /// runBackup with empty organizationName must NOT touch the recent list or
     /// `lastUsedOrganizationFolderName`.
     func testBackupManager_runBackup_emptyOrganizationName_leavesRecentEmpty() {
