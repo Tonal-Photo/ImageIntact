@@ -124,4 +124,64 @@ final class ManifestBuilderRelativePathTests: XCTestCase {
         XCTAssertEqual(manifest?.first?.relativePath, "flat.jpg",
                        "relativePath for a root-level file is just the filename")
     }
+
+    // MARK: - stripCanonicalPrefix
+
+    /// Sanity test: a urlPath under the prefix gets correctly stripped.
+    func testStripPrefix_validPrefix_strips() {
+        let stripped = ManifestBuilder.stripCanonicalPrefix(
+            "/Volumes/SourceDrive/",
+            from: "/Volumes/SourceDrive/photos/raw1.nef"
+        )
+        XCTAssertEqual(stripped, "photos/raw1.nef")
+    }
+
+    /// Repeated source-name segment inside the path: the prefix-only strip
+    /// preserves repeats that `replacingOccurrences` would mangle.
+    func testStripPrefix_repeatedNameInPath_preservesRepeat() {
+        let stripped = ManifestBuilder.stripCanonicalPrefix(
+            "/private/var/folders/abc/T/SourceRoot/",
+            from: "/private/var/folders/abc/T/SourceRoot/SourceRoot/file.jpg"
+        )
+        XCTAssertEqual(stripped, "SourceRoot/file.jpg",
+                       "Repeated source-name as a child directory must NOT be stripped twice")
+    }
+
+    /// Root-source case: prefix is `/` (not `//`), and a normal absolute
+    /// child path strips its leading `/` correctly.
+    /// Regression test for the root-directory bug flagged in round 2 review.
+    func testStripPrefix_rootSourcePrefix_stripsOnlyLeadingSlash() {
+        XCTAssertEqual(
+            ManifestBuilder.stripCanonicalPrefix("/", from: "/Applications/Foo.app"),
+            "Applications/Foo.app",
+            "Root prefix `/` must strip only the leading slash, not match `//`"
+        )
+    }
+
+    /// URL outside the source tree: stripCanonicalPrefix returns nil so the
+    /// caller can skip rather than store an absolute path as a "relative"
+    /// manifest entry. Direct unit test for the safety branch in build().
+    func testStripPrefix_pathOutsideSourceTree_returnsNil() {
+        XCTAssertNil(
+            ManifestBuilder.stripCanonicalPrefix(
+                "/Volumes/SourceDrive/",
+                from: "/Volumes/OtherDrive/photos/raw1.nef"
+            ),
+            "Paths that don't start with the source prefix must return nil so build() can skip them"
+        )
+    }
+
+    /// Edge case: empty prefix would match every string. The contract is
+    /// "must end with `/` or be just `/`" — exercise both legitimate forms
+    /// to lock in the expected behavior.
+    func testStripPrefix_exactMatch_returnsEmptyString() {
+        // A url that matches the prefix exactly (no child path) yields an
+        // empty relativePath. This shouldn't happen in normal enumeration
+        // (the source itself isn't yielded as a child) but the function's
+        // behavior should be predictable.
+        XCTAssertEqual(
+            ManifestBuilder.stripCanonicalPrefix("/foo/bar/", from: "/foo/bar/"),
+            ""
+        )
+    }
 }
