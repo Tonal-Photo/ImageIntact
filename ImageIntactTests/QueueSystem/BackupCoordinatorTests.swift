@@ -181,8 +181,12 @@ final class BackupCoordinatorTests: XCTestCase {
             )
         }
         
-        // Wait for some progress (retry backoff delays mean this can take longer)
-        await fulfillment(of: [expectation], timeout: 15.0)
+        // Wait for some progress. Under parallel test execution, contention
+        // with other suites can push the first-non-zero emission past the
+        // original 15s deadline (flake observed during AMUX-205 baseline and
+        // AMUX-228 full-suite runs). 45s gives ~3x headroom over the typical
+        // case while still failing fast on a genuinely stuck coordinator.
+        await fulfillment(of: [expectation], timeout: 45.0)
         
         // Then
         XCTAssertFalse(progressUpdates.isEmpty, "Should have progress updates")
