@@ -184,4 +184,46 @@ final class ManifestBuilderRelativePathTests: XCTestCase {
             ""
         )
     }
+
+    // MARK: - build end-to-end: symlinked subdirectory pointing outside source
+
+    /// Integration test for the safety branch in `build()`: when a symbolic
+    /// link inside the source points at content outside the source tree,
+    /// the manifest must NOT include the linked target file. With the
+    /// `FileManager` enumerator's default options (no `.followsSymlinks`),
+    /// the symlink is itself yielded as a symbolic-link entry and skipped
+    /// via the existing `isSymbolicLink` guard — verifying this behavior
+    /// end-to-end protects against future regressions if someone adds
+    /// `.followsSymlinks` to the enumerator options.
+    func testBuild_symlinkInsideSource_pointingOutsideTree_isSkipped() async throws {
+        let source = tempDir.appendingPathComponent("source")
+        let external = tempDir.appendingPathComponent("external")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+
+        // Real file inside the source — should be in the manifest.
+        try Data([0xFF]).write(to: source.appendingPathComponent("inside.jpg"))
+        // Real file outside the source — should NOT appear in the manifest.
+        try Data([0xFF]).write(to: external.appendingPathComponent("outside.jpg"))
+
+        // Symlink inside source pointing to the external dir.
+        let link = source.appendingPathComponent("escape_link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: external)
+
+        let manifest = await ManifestBuilder().build(
+            source: source,
+            shouldCancel: { false },
+            filter: FileTypeFilter(),
+            includeSubdirectories: true
+        )
+
+        XCTAssertNotNil(manifest)
+        let paths = manifest?.map { $0.relativePath } ?? []
+        XCTAssertEqual(paths, ["inside.jpg"],
+                       "Manifest must contain only the in-tree file; the symlinked external content must be skipped")
+        XCTAssertFalse(paths.contains("outside.jpg"),
+                       "outside.jpg must not appear in the manifest under any normalization of the link target")
+        XCTAssertFalse(paths.contains(where: { $0.contains("external") }),
+                       "No manifest entry may reference the external/ tree")
+    }
 }
