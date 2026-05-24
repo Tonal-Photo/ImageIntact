@@ -186,6 +186,20 @@ actor ManifestBuilder {
         var skippedUnsupported = 0
         var skippedByFilter = 0
 
+        // macOS symlinks `/var` → `/private/var` (and `/tmp` → `/private/tmp`).
+        // FileManager.default.temporaryDirectory hands back the `/var/...` form,
+        // but `enumerator.nextObject()` returns each child with the resolved
+        // `/private/var/...` form. A plain string-strip of
+        // `source.path + "/"` against `url.path` then matches the suffix after
+        // `/private`, producing garbled relativePaths like `/privatefile.jpg`.
+        // `URL.resolvingSymlinksInPath()` does the reverse — it strips `/private`
+        // out — so resolving BOTH source AND each enumerated url puts them in
+        // the same `/var/...` form and the prefix-strip works. Production
+        // user-picked URLs typically don't traverse symlinks, so this is a
+        // no-op there; the fix is for test correctness (temp dirs) and any
+        // production path that happens to traverse `/tmp` or `/var`.
+        let resolvedSourcePrefix = source.resolvingSymlinksInPath().path + "/"
+
         // Collect files first
         while let url = enumerator.nextObject() as? URL {
             guard !shouldCancel() else { return nil }
@@ -250,7 +264,8 @@ actor ManifestBuilder {
                     ApplicationLogger.shared.debug("Found video: \(url.lastPathComponent)", category: .fileSystem)
                 }
 
-                let relativePath = url.path.replacingOccurrences(of: source.path + "/", with: "")
+                let relativePath = url.resolvingSymlinksInPath().path
+                    .replacingOccurrences(of: resolvedSourcePrefix, with: "")
                 let size = resourceValues.fileSize ?? 0
 
                 filesToProcess.append((url: url, relativePath: relativePath, size: Int64(size)))
