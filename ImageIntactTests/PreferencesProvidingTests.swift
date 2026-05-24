@@ -188,6 +188,79 @@ final class PreferencesProvidingTests: XCTestCase {
                        "runBackup must record organizationName via preferences.addRecentOrganizationFolderName")
     }
 
+    /// buildPreflightSummary must read excludeCacheFiles + skipHiddenFiles from
+    /// the injected provider. We observe the preflight summary the mock
+    /// presenter receives and verify the fields match what we set on `prefs`.
+    func testBackupManager_runBackup_preflight_readsExcludeCacheAndSkipHiddenFromInjectedPreferences() {
+        let prefs = InMemoryPreferencesProvider(
+            showPreflightSummary: true,
+            excludeCacheFiles: false,
+            skipHiddenFiles: false
+        )
+        let mockDisk = MockDiskSpaceChecker()
+        mockDisk.evaluationResult = (canProceed: true, warnings: [], errors: [])
+        let mockPresenter = MockBackupAlertPresenter()
+        // Cancel at preflight so the backup doesn't try to actually run.
+        mockPresenter.preflightReturnValue = (proceed: false, showAgain: true)
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            diskSpaceChecker: mockDisk,
+            backupAlertPresenter: mockPresenter,
+            preferences: prefs
+        )
+
+        bm.sourceManager.sourceURL = URL(fileURLWithPath: "/Volumes/CardA/DCIM")
+        bm.setDestination(URL(fileURLWithPath: "/Volumes/BackupDrive"), at: 0)
+
+        bm.runBackup()
+
+        XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 1,
+                       "Preflight summary must be presented when showPreflightSummary=true")
+        let summary = mockPresenter.presentPreflightCalls.first
+        XCTAssertEqual(summary?.excludeCacheFiles, false,
+                       "buildPreflightSummary must read excludeCacheFiles from preferences (set false on the injected provider)")
+        XCTAssertEqual(summary?.skipHiddenFiles, false,
+                       "buildPreflightSummary must read skipHiddenFiles from preferences (set false on the injected provider)")
+    }
+
+    /// runBackup with `restoreLastSession=false` must NOT call
+    /// destinationManager.loadFromSession at init. We can't easily mock the
+    /// destinationManager, but we can verify the observable result: with no
+    /// bookmark keys set and restoreLastSession=false, init takes the
+    /// `initializeEmpty()` branch and ends up with exactly one empty slot.
+    /// With restoreLastSession=true and no bookmarks, init takes
+    /// loadFromSession() — which also ends up with zero/empty items because
+    /// there's nothing to load. Both branches converge to "no real
+    /// destinations". The test asserts the convergent outcome, which is the
+    /// only externally observable shape without a destinationManager mock.
+    func testBackupManager_init_restoreLastSession_false_initializesEmpty() {
+        // Clear any bookmark state from prior sessions (defensive — the test
+        // base classes also do this, but PreferencesProvidingTests is a
+        // plain XCTestCase).
+        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+        for key in BookmarkManager.destinationKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        let prefs = InMemoryPreferencesProvider(restoreLastSession: false)
+
+        let bm = BackupManager(
+            fileOperations: MockFileOperations(),
+            preferences: prefs
+        )
+
+        // initializeEmpty() seeds exactly one empty DestinationItem.
+        // If init had wrongly hardcoded `PreferencesManager.shared.restoreLastSession`,
+        // it might still load from session — but with bookmarks cleared, the
+        // observable result is identical. The strongest signal we can get
+        // without a destinationManager mock is that the resulting state is
+        // the "no destinations" shape.
+        XCTAssertEqual(bm.destinationItems.count, 1,
+                       "restoreLastSession=false must take the initializeEmpty branch with one empty slot")
+        XCTAssertNil(bm.destinationItems.first?.url,
+                     "initializeEmpty slot must have nil URL")
+    }
+
     /// runBackup with empty organizationName must NOT touch the recent list or
     /// `lastUsedOrganizationFolderName`.
     func testBackupManager_runBackup_emptyOrganizationName_leavesRecentEmpty() {
