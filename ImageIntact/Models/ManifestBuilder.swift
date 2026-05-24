@@ -71,6 +71,28 @@ actor ManifestBuilder {
 
     init() {}
 
+    // MARK: - Path canonicalization
+
+    /// Resolve `url` to its canonical absolute path via `realpath(3)`.
+    ///
+    /// On macOS this returns the form that `FileManager`'s directory
+    /// enumerator yields for child URLs (e.g. `/private/var/...` for paths
+    /// under the system temp dir), letting us compare with `hasPrefix` and
+    /// strip a known prefix length deterministically.
+    ///
+    /// On `realpath` failure (e.g. the path doesn't exist), falls back to
+    /// `url.path`. Callers should be prepared for the prefix-strip to fail
+    /// for URLs outside the canonical source tree.
+    static func canonicalPath(of url: URL) -> String {
+        var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
+        return url.withUnsafeFileSystemRepresentation { ptr -> String in
+            guard let ptr = ptr, realpath(ptr, &buf) != nil else {
+                return url.path
+            }
+            return String(cString: buf)
+        }
+    }
+
     // MARK: - Helper Methods
 
     /// Check if a file or directory should be excluded as a cache/temporary file
@@ -187,18 +209,14 @@ actor ManifestBuilder {
         var skippedByFilter = 0
 
         // macOS symlinks `/var` → `/private/var` (and `/tmp` → `/private/tmp`).
-        // FileManager.default.temporaryDirectory hands back the `/var/...` form,
+        // `FileManager.default.temporaryDirectory` hands back the `/var/...` form,
         // but `enumerator.nextObject()` returns each child with the resolved
-        // `/private/var/...` form. A plain string-strip of
-        // `source.path + "/"` against `url.path` then matches the suffix after
-        // `/private`, producing garbled relativePaths like `/privatefile.jpg`.
-        // `URL.resolvingSymlinksInPath()` does the reverse — it strips `/private`
-        // out — so resolving BOTH source AND each enumerated url puts them in
-        // the same `/var/...` form and the prefix-strip works. Production
-        // user-picked URLs typically don't traverse symlinks, so this is a
-        // no-op there; the fix is for test correctness (temp dirs) and any
-        // production path that happens to traverse `/tmp` or `/var`.
-        let resolvedSourcePrefix = source.resolvingSymlinksInPath().path + "/"
+        // `/private/var/...` form. `URL.resolvingSymlinksInPath()` doesn't help
+        // here — it strips `/private` rather than adding it. `realpath(3)` does:
+        // it follows symlinks AND returns the canonical absolute path that
+        // matches the enumerator's children. Compute it once outside the loop
+        // to avoid per-file filesystem I/O.
+        let canonicalSourcePrefix = Self.canonicalPath(of: source) + "/"
 
         // Collect files first
         while let url = enumerator.nextObject() as? URL {
@@ -264,8 +282,28 @@ actor ManifestBuilder {
                     ApplicationLogger.shared.debug("Found video: \(url.lastPathComponent)", category: .fileSystem)
                 }
 
-                let relativePath = url.resolvingSymlinksInPath().path
-                    .replacingOccurrences(of: resolvedSourcePrefix, with: "")
+                // Strip the canonical source prefix to get the relativePath.
+                // `replacingOccurrences` would replace ALL substring matches —
+                // a problem if any segment of the absolute path happens to
+                // repeat the source path (e.g. `/tmp/foo/tmp/foo/x.jpg` under
+                // source `/tmp/foo`). `hasPrefix` + `dropFirst(count)` strips
+                // only the prefix. If the url doesn't start with the canonical
+                // source (e.g. the enumerator yielded a path outside the source
+                // tree via a followed symlink), skip and log — storing an
+                // absolute path as a "relative" manifest entry would silently
+                // duplicate or break the destination layout.
+                let urlPath = url.path
+                let relativePath: String
+                if urlPath.hasPrefix(canonicalSourcePrefix) {
+                    relativePath = String(urlPath.dropFirst(canonicalSourcePrefix.count))
+                } else {
+                    ApplicationLogger.shared.warning(
+                        "ManifestBuilder: enumerated url outside source canonical prefix; skipping. url=\(urlPath) canonicalSource=\(canonicalSourcePrefix)",
+                        category: .fileSystem
+                    )
+                    skippedNonRegular += 1
+                    continue
+                }
                 let size = resourceValues.fileSize ?? 0
 
                 filesToProcess.append((url: url, relativePath: relativePath, size: Int64(size)))
