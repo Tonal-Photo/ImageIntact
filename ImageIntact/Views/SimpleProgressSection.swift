@@ -4,12 +4,12 @@ struct SimpleProgressSection: View {
   @Bindable var backupManager: BackupManager
 
   var body: some View {
-    if !backupManager.statusMessage.isEmpty || backupManager.isProcessing {
+    if !backupManager.state.statusMessage.isEmpty || backupManager.state.isProcessing {
       VStack(alignment: .leading, spacing: 12) {
         Divider()
           .padding(.horizontal, 20)
 
-        if backupManager.isProcessing && backupManager.totalFiles > 0 {
+        if backupManager.state.isProcessing && backupManager.totalFiles > 0 {
           // Simple overall progress
           VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -33,7 +33,7 @@ struct SimpleProgressSection: View {
               // Overall progress
               HStack {
                 // Show appropriate counter based on phase
-                if backupManager.currentPhase == .verifyingDestinations {
+                if backupManager.state.currentPhase == .verifyingDestinations {
                   Text(
                     "Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.totalFiles)"
                   )
@@ -88,13 +88,13 @@ struct SimpleProgressSection: View {
           .padding(.horizontal, 20)
         } else {
           HStack {
-            if backupManager.isProcessing {
+            if backupManager.state.isProcessing {
               ProgressView()
                 .progressViewStyle(CircularProgressViewStyle())
                 .scaleEffect(0.8)
             }
 
-            Text(backupManager.statusMessage)
+            Text(backupManager.state.statusMessage)
               .font(.system(.body, design: .monospaced))
               .foregroundColor(.secondary)
 

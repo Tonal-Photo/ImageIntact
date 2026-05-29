@@ -76,7 +76,7 @@ struct ContentView: View {
           }
         }
         .frame(maxHeight: .infinity)
-        .onChange(of: backupManager.isProcessing) { _, isProcessing in
+        .onChange(of: backupManager.state.isProcessing) { _, isProcessing in
           if isProcessing {
             // Auto-scroll to progress section when backup starts
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -84,9 +84,9 @@ struct ContentView: View {
             }
           }
         }
-        .onChange(of: backupManager.currentPhase) { _, phase in
+        .onChange(of: backupManager.state.currentPhase) { _, phase in
           // Also scroll when we enter copying phase (in case initial scroll didn't work)
-          if phase == .copyingFiles && backupManager.isProcessing {
+          if phase == .copyingFiles && backupManager.state.isProcessing {
             withAnimation(.easeInOut(duration: 0.3)) {
               scrollProxy.scrollTo("progressSection", anchor: .top)
             }
@@ -183,7 +183,7 @@ struct ContentView: View {
       BackupCompletionView(statistics: backupManager.statistics)
     }
     .sheet(isPresented: $backupManager.showMigrationDialog) {
-      if let firstPlan = backupManager.pendingMigrationPlans.first {
+      if let firstPlan = backupManager.state.pendingMigrationPlans.first {
         MigrationConfirmationView(
           plan: firstPlan,
           destinationName: firstPlan.destinationURL.lastPathComponent,
@@ -204,7 +204,7 @@ struct ContentView: View {
       }
     }
     .sheet(isPresented: $backupManager.showDuplicateWarning) {
-      if let duplicateAnalyses = backupManager.duplicateAnalyses {
+      if let duplicateAnalyses = backupManager.state.duplicateAnalyses {
         DuplicateWarningView(
           analyses: duplicateAnalyses,
           onProceed: { skipExact, skipRenamed in
@@ -232,7 +232,7 @@ struct ContentView: View {
         backupManager.respondToLargeBackupConfirmation(shouldContinue: true, dontShowAgain: true)
       }
     } message: {
-      if let info = backupManager.largeBackupInfo {
+      if let info = backupManager.state.largeBackupInfo {
         Text(getLargeBackupMessage(info: info))
       } else {
         Text("This is a large backup. Do you want to continue?")
@@ -334,7 +334,7 @@ struct ContentView: View {
   // MARK: - Debug Log Methods
   func showDebugLog() {
     // Get the current session ID from BackupManager
-    let sessionID = backupManager.sessionID
+    let sessionID = backupManager.state.sessionID
 
     // Try to get report from Core Data if we have a session
     let eventLogger = EventLogger.shared
@@ -380,25 +380,25 @@ struct ContentView: View {
     let timestamp = dateFormatter.string(from: Date())
 
     var logContent = "ImageIntact Debug Log - \(timestamp)\n"
-    logContent += "Session ID: \(backupManager.sessionID)\n"
+    logContent += "Session ID: \(backupManager.state.sessionID)\n"
     logContent += "Total Files: \(backupManager.totalFiles)\n"
     logContent += "Processed Files: \(backupManager.processedFiles)\n"
-    logContent += "Failed Files: \(backupManager.failedFiles.count)\n"
-    logContent += "Was Cancelled: \(backupManager.shouldCancel)\n\n"
+    logContent += "Failed Files: \(backupManager.state.failedFiles.count)\n"
+    logContent += "Was Cancelled: \(backupManager.state.shouldCancel)\n\n"
 
     // Add detailed error information
-    if !backupManager.failedFiles.isEmpty {
+    if !backupManager.state.failedFiles.isEmpty {
       logContent += "ERROR DETAILS:\n"
-      for (index, failure) in backupManager.failedFiles.enumerated() {
+      for (index, failure) in backupManager.state.failedFiles.enumerated() {
         logContent += "\(index + 1). File: \(failure.file)\n"
         logContent += "   Destination: \(failure.destination)\n"
         logContent += "   Error: \(failure.error)\n\n"
       }
     }
 
-    if !backupManager.debugLog.isEmpty {
+    if !backupManager.state.debugLog.isEmpty {
       logContent += "Checksum Timings:\n"
-      logContent += backupManager.debugLog.joined(separator: "\n")
+      logContent += backupManager.state.debugLog.joined(separator: "\n")
     } else {
       logContent += "No timing data available yet.\n"
     }
@@ -408,7 +408,7 @@ struct ContentView: View {
 
   func exportDebugLog() {
     // Get session data from Core Data
-    let sessionID = backupManager.sessionID
+    let sessionID = backupManager.state.sessionID
     let eventLogger = EventLogger.shared
     var logContent: String
     var exportData: Data?
@@ -518,7 +518,7 @@ struct ContentView: View {
     return formatter.string(fromByteCount: bytes)
   }
 
-  func getLargeBackupMessage(info: BackupManager.LargeBackupInfo) -> String {
+  func getLargeBackupMessage(info: BackupState.LargeBackupInfo) -> String {
     let formatter = ByteCountFormatter()
     formatter.countStyle = .file
     let sizeString = formatter.string(fromByteCount: info.totalBytes)

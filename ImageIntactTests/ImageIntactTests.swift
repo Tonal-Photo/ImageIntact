@@ -287,11 +287,11 @@ class ImageIntactTests: XCTestCase {
         let view1 = BackupManager()
         let view2 = BackupManager()
         
-        XCTAssertNotEqual(view1.sessionID, view2.sessionID, "Each session should have a unique ID")
-        XCTAssertFalse(view1.sessionID.isEmpty, "Session ID should not be empty")
-        
+        XCTAssertNotEqual(view1.state.sessionID, view2.state.sessionID, "Each session should have a unique ID")
+        XCTAssertFalse(view1.state.sessionID.isEmpty, "Session ID should not be empty")
+
         // Verify it's a valid UUID format
-        XCTAssertNotNil(UUID(uuidString: view1.sessionID), "Session ID should be a valid UUID")
+        XCTAssertNotNil(UUID(uuidString: view1.state.sessionID), "Session ID should be a valid UUID")
     }
     
     func testFullCopyWorkflow() throws {

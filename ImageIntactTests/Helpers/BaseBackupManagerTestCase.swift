@@ -51,7 +51,7 @@ class BaseBackupManagerTestCase: XCTestCase {
     override func tearDown() async throws {
         // Cancel any in-flight backup before pref restoration, so spawned
         // Tasks (e.g. `performQueueBasedBackup`) don't leak past this test.
-        if bm?.isProcessing == true {
+        if bm?.state.isProcessing == true {
             bm.cancelOperation()
         }
 

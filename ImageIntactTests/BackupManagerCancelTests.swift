@@ -49,8 +49,8 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
     /// Task.yield, so it would be 0 with the old code.
     func testCancelOperation_cancelsOrchestratorBeforeNil() {
         let mockOrch = MockBackupOrchestrator()
-        bm.currentOrchestrator = mockOrch
-        bm.isProcessing = true
+        bm.state.currentOrchestrator = mockOrch
+        bm.state.isProcessing = true
 
         bm.cancelOperation()
 
@@ -62,7 +62,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
     /// AMUX-210: cancelled-state badges must persist after cancelOperation
     /// returns. Previously they were set then immediately wiped by resetAll().
     func testCancelOperation_cancelledStatePersists() {
-        bm.isProcessing = true
+        bm.state.isProcessing = true
         bm.progressTracker.setDestinationProgress(50, for: "/Volumes/BackupDrive")
 
         bm.cancelOperation()
@@ -76,8 +76,8 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
     /// shouldCancel guard: second cancelOperation call is ignored.
     func testCancelOperation_doubleCallIgnored() {
         let mockOrch = MockBackupOrchestrator()
-        bm.currentOrchestrator = mockOrch
-        bm.isProcessing = true
+        bm.state.currentOrchestrator = mockOrch
+        bm.state.isProcessing = true
 
         bm.cancelOperation()
         bm.cancelOperation()
@@ -90,12 +90,12 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
     /// a Task. With the old code (isProcessing = false inside a Task), this assertion
     /// would fail because the Task hasn't run yet.
     func testCancelOperation_isProcessingFalseSynchronously() {
-        bm.isProcessing = true
+        bm.state.isProcessing = true
 
         bm.cancelOperation()
 
         // Immediate assertion — no Task.yield, no await.
-        XCTAssertFalse(bm.isProcessing,
+        XCTAssertFalse(bm.state.isProcessing,
                        "isProcessing must be set to false synchronously in cancelOperation (not inside a Task)")
     }
 
@@ -108,7 +108,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
         // Spawn a task that suspends on a continuation and captures the result.
         let awaitingTask = Task { @MainActor in
             await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                bm.largeBackupContinuation = continuation
+                bm.state.largeBackupContinuation = continuation
                 bm.showLargeBackupConfirmation = true
             }
         }
@@ -119,7 +119,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
         // Without this guard, cancelOperation() could fire before the continuation
         // is set, do nothing, and then `await awaitingTask.value` hangs forever.
         let deadline = Date().addingTimeInterval(2.0)
-        while bm.largeBackupContinuation == nil {
+        while bm.state.largeBackupContinuation == nil {
             if Date() > deadline {
                 XCTFail("largeBackupContinuation never got set within 2s")
                 return
@@ -127,7 +127,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
             await Task.yield()
         }
 
-        bm.isProcessing = true
+        bm.state.isProcessing = true
         bm.cancelOperation()
 
         // Collect the result the continuation was resumed with.
@@ -135,7 +135,7 @@ final class BackupManagerCancelTests: BaseBackupManagerTestCase {
 
         XCTAssertEqual(continuationResult, false,
                        "Continuation must be resumed with false on cancellation")
-        XCTAssertNil(bm.largeBackupContinuation,
+        XCTAssertNil(bm.state.largeBackupContinuation,
                      "largeBackupContinuation must be nil after cancelOperation")
         XCTAssertFalse(bm.showLargeBackupConfirmation,
                        "showLargeBackupConfirmation must be false after cancelOperation")

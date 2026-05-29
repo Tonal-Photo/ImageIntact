@@ -80,7 +80,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
     /// immediately — no presenter calls, isProcessing stays true (not reset to false).
     func testRunBackup_isProcessingGuard_earlyReturns() {
         setUpSourceAndDestination()
-        bm.isProcessing = true
+        bm.state.isProcessing = true
 
         bm.runBackup()
 
@@ -89,7 +89,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         XCTAssertEqual(mockPresenter.presentLowSpaceCalls.count, 0)
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0)
         // isProcessing stays true — the guard returns before clearing it.
-        XCTAssertTrue(bm.isProcessing,
+        XCTAssertTrue(bm.state.isProcessing,
                       "isProcessing should remain true when guard fires")
     }
 
@@ -118,7 +118,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         XCTAssertEqual(mockPresenter.presentInsufficientSpaceCalls.count, 0)
         XCTAssertEqual(mockPresenter.presentLowSpaceCalls.count, 0)
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0)
-        XCTAssertFalse(bm.isProcessing)
+        XCTAssertFalse(bm.state.isProcessing)
     }
 
     /// AMUX-208: empty destinations → early return, no presenter calls.
@@ -133,7 +133,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
                        "No presenter calls when destinations is empty")
         XCTAssertEqual(mockPresenter.presentLowSpaceCalls.count, 0)
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0)
-        XCTAssertFalse(bm.isProcessing,
+        XCTAssertFalse(bm.state.isProcessing,
                        "isProcessing must be false after early-return (empty destinations)")
     }
 
@@ -147,7 +147,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
                        "No presenter calls when source is missing")
         XCTAssertEqual(mockPresenter.presentLowSpaceCalls.count, 0)
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0)
-        XCTAssertFalse(bm.isProcessing,
+        XCTAssertFalse(bm.state.isProcessing,
                        "isProcessing must be false after early-return (missing source)")
     }
 
@@ -169,7 +169,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         XCTAssertEqual(mockPresenter.presentLowSpaceCalls.count, 0,
                        "Low-space presenter must not be called when errors are present")
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0)
-        XCTAssertFalse(bm.isProcessing,
+        XCTAssertFalse(bm.state.isProcessing,
                        "isProcessing must be false after insufficient-space early return")
     }
 
@@ -190,7 +190,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         XCTAssertEqual(mockPresenter.presentInsufficientSpaceCalls.count, 0)
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0,
                        "Preflight must NOT be called when user declines low-space warning")
-        XCTAssertFalse(bm.isProcessing,
+        XCTAssertFalse(bm.state.isProcessing,
                        "isProcessing must be false after user cancels low-space warning")
     }
 
@@ -225,7 +225,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
 
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 1,
                        "Preflight presenter must be called once")
-        XCTAssertFalse(bm.isProcessing,
+        XCTAssertFalse(bm.state.isProcessing,
                        "isProcessing must be false after user cancels preflight")
     }
 
@@ -238,7 +238,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
         bm.runBackup()
 
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 1)
-        XCTAssertTrue(bm.isProcessing,
+        XCTAssertTrue(bm.state.isProcessing,
                       "isProcessing must be true after runBackup proceeds past preflight")
     }
 
@@ -300,7 +300,7 @@ final class BackupManagerRunBackupTests: BaseBackupManagerTestCase {
                        "Low-space presenter must not fire when there are no warnings")
         XCTAssertEqual(mockPresenter.presentPreflightCalls.count, 0,
                        "Preflight presenter must not fire when preflight is disabled")
-        XCTAssertTrue(bm.isProcessing,
+        XCTAssertTrue(bm.state.isProcessing,
                       "Backup should start immediately when preflight is disabled and space is fine")
     }
 }

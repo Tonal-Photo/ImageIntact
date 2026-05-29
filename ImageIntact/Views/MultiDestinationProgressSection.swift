@@ -32,12 +32,12 @@ struct MultiDestinationProgressSection: View {
   }
 
   var body: some View {
-    if !backupManager.statusMessage.isEmpty || backupManager.isProcessing {
+    if !backupManager.state.statusMessage.isEmpty || backupManager.state.isProcessing {
       VStack(alignment: .leading, spacing: 12) {
         Divider()
           .padding(.horizontal, 20)
 
-        if backupManager.isProcessing && backupManager.totalFiles > 0 {
+        if backupManager.state.isProcessing && backupManager.totalFiles > 0 {
           // Show different UI based on destination count
           if destinations.count <= 1 {
             // Single destination - show simple progress
@@ -50,20 +50,20 @@ struct MultiDestinationProgressSection: View {
           // Preparing or simple status with phase indicator
           VStack(alignment: .leading, spacing: 8) {
             HStack {
-              if backupManager.isProcessing {
+              if backupManager.state.isProcessing {
                 ProgressView()
                   .progressViewStyle(CircularProgressViewStyle())
                   .scaleEffect(0.8)
               }
 
-              Text(backupManager.statusMessage)
+              Text(backupManager.state.statusMessage)
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(.secondary)
 
               Spacer()
 
               // Add cancel button during preparation phases too
-              if backupManager.isProcessing {
+              if backupManager.state.isProcessing {
                 Button(action: {
                   backupManager.cancelOperation()
                 }) {
@@ -77,10 +77,10 @@ struct MultiDestinationProgressSection: View {
             }
 
             // Add network drive warning if applicable
-            if backupManager.isProcessing
-              && (backupManager.statusMessage.contains("Checking")
-                || backupManager.statusMessage.contains("checksum")
-                || backupManager.currentPhase == .buildingManifest)
+            if backupManager.state.isProcessing
+              && (backupManager.state.statusMessage.contains("Checking")
+                || backupManager.state.statusMessage.contains("checksum")
+                || backupManager.state.currentPhase == .buildingManifest)
             {
               if let networkDrives = checkForNetworkDrives() {
                 Label(networkDrives, systemImage: "network")
@@ -91,27 +91,27 @@ struct MultiDestinationProgressSection: View {
             }
 
             // Show phase progress if in phase-based backup
-            if backupManager.isProcessing {
+            if backupManager.state.isProcessing {
               HStack(spacing: 4) {
                 PhaseIndicator(
-                  label: "Analyze", isActive: backupManager.currentPhase == .analyzingSource,
-                  isComplete: backupManager.currentPhase.rawValue
+                  label: "Analyze", isActive: backupManager.state.currentPhase == .analyzingSource,
+                  isComplete: backupManager.state.currentPhase.rawValue
                     > BackupPhase.analyzingSource.rawValue)
                 PhaseIndicator(
-                  label: "Manifest", isActive: backupManager.currentPhase == .buildingManifest,
-                  isComplete: backupManager.currentPhase.rawValue
+                  label: "Manifest", isActive: backupManager.state.currentPhase == .buildingManifest,
+                  isComplete: backupManager.state.currentPhase.rawValue
                     > BackupPhase.buildingManifest.rawValue)
                 PhaseIndicator(
-                  label: "Copy", isActive: backupManager.currentPhase == .copyingFiles,
-                  isComplete: backupManager.currentPhase.rawValue
+                  label: "Copy", isActive: backupManager.state.currentPhase == .copyingFiles,
+                  isComplete: backupManager.state.currentPhase.rawValue
                     > BackupPhase.copyingFiles.rawValue)
                 PhaseIndicator(
-                  label: "Flush", isActive: backupManager.currentPhase == .flushingToDisk,
-                  isComplete: backupManager.currentPhase.rawValue
+                  label: "Flush", isActive: backupManager.state.currentPhase == .flushingToDisk,
+                  isComplete: backupManager.state.currentPhase.rawValue
                     > BackupPhase.flushingToDisk.rawValue)
                 PhaseIndicator(
-                  label: "Verify", isActive: backupManager.currentPhase == .verifyingDestinations,
-                  isComplete: backupManager.currentPhase.rawValue
+                  label: "Verify", isActive: backupManager.state.currentPhase == .verifyingDestinations,
+                  isComplete: backupManager.state.currentPhase.rawValue
                     > BackupPhase.verifyingDestinations.rawValue)
               }
               .font(.caption2)
@@ -195,13 +195,13 @@ struct SimpleBackupProgress: View {
 
       VStack(alignment: .leading, spacing: 8) {
         // Show current phase
-        Text("Phase: \(phaseDescription(for: backupManager.currentPhase))")
+        Text("Phase: \(phaseDescription(for: backupManager.state.currentPhase))")
           .font(.caption)
           .foregroundColor(.secondary)
 
         HStack {
           // Show appropriate counter based on phase
-          if backupManager.currentPhase == .verifyingDestinations {
+          if backupManager.state.currentPhase == .verifyingDestinations {
             Text(
               "Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.totalFiles)"
             )
@@ -340,15 +340,15 @@ struct MultiDestinationProgress: View {
             .font(.caption2)
             .foregroundColor(.secondary)
           Spacer()
-          if !backupManager.overallStatusText.isEmpty {
-            Text(backupManager.overallStatusText)
+          if !backupManager.state.overallStatusText.isEmpty {
+            Text(backupManager.state.overallStatusText)
               .font(.caption2)
               .foregroundColor(.secondary)
-          } else if backupManager.currentPhase == .buildingManifest {
+          } else if backupManager.state.currentPhase == .buildingManifest {
             Text("Building manifest...")
               .font(.caption2)
               .foregroundColor(.secondary)
-          } else if backupManager.currentPhase == .complete {
+          } else if backupManager.state.currentPhase == .complete {
             Text("Complete")
               .font(.caption2)
               .foregroundColor(.green)
@@ -359,7 +359,7 @@ struct MultiDestinationProgress: View {
       }
 
       // Per-destination progress
-      if backupManager.currentPhase == .buildingManifest {
+      if backupManager.state.currentPhase == .buildingManifest {
         // During manifest building, show a single progress for all destinations
         VStack(alignment: .leading, spacing: 4) {
           Text("Building source manifest for all destinations...")
@@ -368,8 +368,8 @@ struct MultiDestinationProgress: View {
           ProgressView(value: backupManager.phaseProgress)
             .progressViewStyle(.linear)
         }
-      } else if backupManager.currentPhase != .idle
-        && backupManager.currentPhase != .analyzingSource
+      } else if backupManager.state.currentPhase != .idle
+        && backupManager.state.currentPhase != .analyzingSource
       {
         // Show destination rows for all other phases
         ForEach(destinations, id: \.lastPathComponent) { destination in
@@ -379,7 +379,7 @@ struct MultiDestinationProgress: View {
             totalFiles: backupManager.progressTracker.destinationTotalFiles[
               destination.lastPathComponent] ?? backupManager.totalFiles,
             isActive: backupManager.currentDestinationName == destination.lastPathComponent,
-            phase: backupManager.currentPhase,
+            phase: backupManager.state.currentPhase,
             state: backupManager.destinationStates[destination.lastPathComponent] ?? "copying",
             isNetworkDrive: networkDrives.contains(destination.lastPathComponent)
           )

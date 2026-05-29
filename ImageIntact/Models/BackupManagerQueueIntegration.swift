@@ -34,22 +34,22 @@ extension BackupManager {
             category: .backup
         )
 
-        statusMessage = "Analyzing source files..."
+        state.statusMessage = "Analyzing source files..."
 
         // Start security access for preflight manifest building
         // This will be stopped after preflight checks, before orchestrator starts
         let preflightAccess = source.startAccessingSecurityScopedResource()
         guard preflightAccess else {
             ApplicationLogger.shared.debug("Failed to access source folder for preflight checks", category: .backup)
-            isProcessing = false
-            statusMessage = "Cannot access source folder - permission denied"
+            state.isProcessing = false
+            state.statusMessage = "Cannot access source folder - permission denied"
             return
         }
 
         let manifestBuilder = ManifestBuilder()
         let preflightManifest = await manifestBuilder.build(
             source: source,
-            shouldCancel: { [weak self] in self?.shouldCancel ?? true },
+            shouldCancel: { [weak self] in self?.state.shouldCancel ?? true },
             filter: fileTypeFilter,
             includeSubdirectories: includeSubdirectories
         )
@@ -60,8 +60,8 @@ extension BackupManager {
                 source.stopAccessingSecurityScopedResource()
             }
             ApplicationLogger.shared.debug("Manifest build failed or was cancelled", category: .backup)
-            isProcessing = false
-            statusMessage = "Backup cancelled or failed"
+            state.isProcessing = false
+            state.statusMessage = "Backup cancelled or failed"
             return
         }
 
@@ -84,14 +84,14 @@ extension BackupManager {
             )
 
             // If migration dialog is shown, wait for user decision
-            if showMigrationDialog, !pendingMigrationPlans.isEmpty {
+            if showMigrationDialog, !state.pendingMigrationPlans.isEmpty {
                 ApplicationLogger.shared.debug("Waiting for migration decision", category: .backup)
                 // Stop preflight security access before waiting for user
                 if preflightAccess {
                     source.stopAccessingSecurityScopedResource()
                 }
                 // The actual backup will be triggered after migration dialog closes
-                isProcessing = false
+                state.isProcessing = false
                 return
             }
         }
@@ -103,14 +103,14 @@ extension BackupManager {
             )
 
             // If duplicate dialog is shown, wait for user decision
-            if showDuplicateWarning, duplicateAnalyses != nil {
+            if showDuplicateWarning, state.duplicateAnalyses != nil {
                 ApplicationLogger.shared.debug("Waiting for duplicate handling decision", category: .backup)
                 // Stop preflight security access before waiting for user
                 if preflightAccess {
                     source.stopAccessingSecurityScopedResource()
                 }
                 // The actual backup will be triggered after duplicate dialog closes
-                isProcessing = false
+                state.isProcessing = false
                 return
             }
         }
@@ -129,8 +129,8 @@ extension BackupManager {
             if preflightAccess {
                 source.stopAccessingSecurityScopedResource()
             }
-            isProcessing = false
-            statusMessage = "Backup cancelled"
+            state.isProcessing = false
+            state.statusMessage = "Backup cancelled"
             return
         }
 
@@ -165,10 +165,10 @@ extension BackupManager {
         // (BackupOrchestrator will use this same ID)
 
         defer {
-            isProcessing = false
-            shouldCancel = false
-            currentOrchestrator = nil
-            duplicateAnalyses = nil // Clear duplicate analyses after backup
+            state.isProcessing = false
+            state.shouldCancel = false
+            state.currentOrchestrator = nil
+            state.duplicateAnalyses = nil // Clear duplicate analyses after backup
 
             // Schedule cleanup after a delay so UI can read the stats first
             Task { @MainActor [weak self] in
@@ -186,11 +186,11 @@ extension BackupManager {
 
         // Set up callbacks
         orchestrator.onStatusUpdate = { [weak self] status in
-            self?.statusMessage = status
+            self?.state.statusMessage = status
         }
 
         orchestrator.onFailedFile = { [weak self] file, destination, error in
-            self?.failedFiles.append((file: file, destination: destination, error: error))
+            self?.state.failedFiles.append((file: file, destination: destination, error: error))
 
             // Track in statistics
             if let fileURL = URL(string: file),
@@ -206,11 +206,11 @@ extension BackupManager {
         }
 
         orchestrator.onPhaseChange = { [weak self] phase in
-            self?.currentPhase = phase
+            self?.state.currentPhase = phase
         }
 
         // Store reference for cancellation
-        currentOrchestrator = orchestrator
+        state.currentOrchestrator = orchestrator
 
         // Build destination item IDs array for drive info lookup
         let destinationItemIDs = destinationItems.prefix(destinations.count).map { $0.id }
@@ -225,19 +225,19 @@ extension BackupManager {
             destinationItemIDs: destinationItemIDs,
             filter: fileTypeFilter,
             organizationName: organizationName,
-            sessionID: sessionID,
+            sessionID: state.sessionID,
             prebuiltManifest: preflightManifest,
-            duplicateAnalyses: duplicateAnalyses,
-            skipExactDuplicates: skipExactDuplicates,
-            skipRenamedDuplicates: skipRenamedDuplicates
+            duplicateAnalyses: state.duplicateAnalyses,
+            skipExactDuplicates: state.skipExactDuplicates,
+            skipRenamedDuplicates: state.skipRenamedDuplicates
         )
 
         // Add any failures to our list (avoiding duplicates)
         for failure in failures {
-            if !failedFiles.contains(where: {
+            if !state.failedFiles.contains(where: {
                 $0.file == failure.file && $0.destination == failure.destination
             }) {
-                failedFiles.append(failure)
+                state.failedFiles.append(failure)
             }
         }
 
@@ -298,7 +298,7 @@ extension BackupManager {
 
         // Update overall status text
         if completeCount > 0 || copyingCount > 0 || verifyingCount > 0 {
-            overallStatusText = buildOverallStatusText(
+            state.overallStatusText = buildOverallStatusText(
                 copying: copyingCount, verifying: verifyingCount,
                 complete: completeCount, total: coordinator.destinationStatuses.count
             )
@@ -344,24 +344,24 @@ extension BackupManager {
         verifyingDestinations: [String], fastestDestination: String?, fastestSpeed: Double
     ) {
         if allComplete {
-            statusMessage = "All destinations complete and verified!"
-            currentPhase = .complete
+            state.statusMessage = "All destinations complete and verified!"
+            state.currentPhase = .complete
         } else if copyingCount > 0, verifyingCount > 0 {
-            statusMessage = "\(copyingCount) copying, \(verifyingCount) verifying"
-            currentPhase = copyingCount > verifyingCount ? .copyingFiles : .verifyingDestinations
+            state.statusMessage = "\(copyingCount) copying, \(verifyingCount) verifying"
+            state.currentPhase = copyingCount > verifyingCount ? .copyingFiles : .verifyingDestinations
         } else if verifyingCount > 0 {
-            statusMessage = "Verifying: \(verifyingDestinations.joined(separator: ", "))"
-            currentPhase = .verifyingDestinations
+            state.statusMessage = "Verifying: \(verifyingDestinations.joined(separator: ", "))"
+            state.currentPhase = .verifyingDestinations
         } else if copyingCount > 0 {
             if let fastest = fastestDestination {
-                statusMessage =
+                state.statusMessage =
                     "\(copyingCount) destination\(copyingCount == 1 ? "" : "s") copying - \(fastest) at \(formatSpeed(fastestSpeed))"
             } else {
-                statusMessage = "\(copyingCount) destination\(copyingCount == 1 ? "" : "s") copying..."
+                state.statusMessage = "\(copyingCount) destination\(copyingCount == 1 ? "" : "s") copying..."
             }
-            currentPhase = .copyingFiles
+            state.currentPhase = .copyingFiles
         } else {
-            statusMessage = "Processing..."
+            state.statusMessage = "Processing..."
         }
     }
 
@@ -407,13 +407,13 @@ extension BackupManager {
     /// Reset all backup state at the start of a new backup
     @MainActor
     private func resetBackupState() {
-        isProcessing = true
-        shouldCancel = false
-        statusMessage = "Preparing backup..."
-        failedFiles = []
-        sessionID = UUID().uuidString
-        logEntries = []
-        debugLog = []
+        state.isProcessing = true
+        state.shouldCancel = false
+        state.statusMessage = "Preparing backup..."
+        state.failedFiles = []
+        state.sessionID = UUID().uuidString
+        state.logEntries = []
+        state.debugLog = []
     }
 
     /// Validate that all locations are still accessible before starting backup
@@ -423,8 +423,8 @@ extension BackupManager {
         let validationAccess = source.startAccessingSecurityScopedResource()
         if !validationAccess {
             ApplicationLogger.shared.debug("Source folder is no longer accessible - permission revoked or drive removed", category: .backup)
-            isProcessing = false
-            statusMessage = "Cannot access source folder - please check permissions and try again"
+            state.isProcessing = false
+            state.statusMessage = "Cannot access source folder - please check permissions and try again"
             return false
         }
         source.stopAccessingSecurityScopedResource()
@@ -434,8 +434,8 @@ extension BackupManager {
             let destAccess = destination.startAccessingSecurityScopedResource()
             if !destAccess {
                 ApplicationLogger.shared.debug("Destination \(destination.lastPathComponent) is no longer accessible", category: .backup)
-                isProcessing = false
-                statusMessage =
+                state.isProcessing = false
+                state.statusMessage =
                     "Cannot access destination '\(destination.lastPathComponent)' - please check connection and try again"
                 return false
             }
@@ -521,7 +521,7 @@ extension BackupManager {
         SleepPrevention.shared.stopPreventingSleep()
 
         // Show completion report if not cancelled
-        if !shouldCancel {
+        if !state.shouldCancel {
             // Send notification if enabled
             if preferences.showNotificationOnComplete {
                 notificationService.sendBackupCompletionNotification(
@@ -537,15 +537,15 @@ extension BackupManager {
 
             // Offer to trash source if enabled and backup was fully successful
             if preferences.trashSourceAfterBackup
-                && failedFiles.isEmpty
+                && state.failedFiles.isEmpty
                 && sourceURL != nil
             {
                 showTrashConfirmation = true
             }
         } else {
             // Clear the overall status text when cancelled
-            overallStatusText = ""
-            statusMessage = "Backup cancelled"
+            state.overallStatusText = ""
+            state.statusMessage = "Backup cancelled"
 
             // Still stop sleep prevention even if cancelled
             logInfo("Backup cancelled by user")
@@ -562,12 +562,12 @@ extension BackupManager {
         ApplicationLogger.shared.debug("Checking for migration opportunities", category: .backup)
 
         // Check for cancellation
-        guard !shouldCancel else {
+        guard !state.shouldCancel else {
             ApplicationLogger.shared.debug("Migration check cancelled", category: .backup)
             return
         }
 
-        pendingMigrationPlans.removeAll()
+        state.pendingMigrationPlans.removeAll()
 
         // Start security-scoped access for source
         let sourceAccessGranted = source.startAccessingSecurityScopedResource()
@@ -588,12 +588,12 @@ extension BackupManager {
                 manifest: manifest
             ) {
                 ApplicationLogger.shared.debug("Migration needed for \(destination.lastPathComponent): \(plan.fileCount) files", category: .backup)
-                pendingMigrationPlans.append(plan)
+                state.pendingMigrationPlans.append(plan)
             }
         }
 
         // Show migration dialog if needed
-        if !pendingMigrationPlans.isEmpty {
+        if !state.pendingMigrationPlans.isEmpty {
             showMigrationDialog = true
         }
     }
@@ -619,12 +619,12 @@ extension BackupManager {
         ApplicationLogger.shared.debug("Checking for duplicate files", category: .backup)
 
         // Check for cancellation
-        guard !shouldCancel else {
+        guard !state.shouldCancel else {
             ApplicationLogger.shared.debug("Duplicate check cancelled", category: .backup)
             return
         }
 
-        statusMessage = "Analyzing for duplicates..."
+        state.statusMessage = "Analyzing for duplicates..."
 
         // Perform duplicate analysis for all destinations
         let analyses = await duplicateDetector.preflightDuplicateCheck(
@@ -638,11 +638,11 @@ extension BackupManager {
 
         if totalDuplicates > 0 {
             ApplicationLogger.shared.debug("Found \(totalDuplicates) duplicate files across destinations", category: .backup)
-            duplicateAnalyses = analyses
+            state.duplicateAnalyses = analyses
             showDuplicateWarning = true
         } else {
             ApplicationLogger.shared.debug("No duplicates found", category: .backup)
-            duplicateAnalyses = nil
+            state.duplicateAnalyses = nil
             showDuplicateWarning = false
         }
     }
@@ -652,8 +652,8 @@ extension BackupManager {
     func continueBackupAfterDuplicateDecision(skipExact: Bool, skipRenamed: Bool) async {
         ApplicationLogger.shared.debug("Continuing backup with duplicate preferences", category: .backup)
         showDuplicateWarning = false
-        skipExactDuplicates = skipExact
-        skipRenamedDuplicates = skipRenamed
+        state.skipExactDuplicates = skipExact
+        state.skipRenamedDuplicates = skipRenamed
 
         // Re-run the backup now that duplicate handling is decided
         if let source = sourceURL {
@@ -667,9 +667,9 @@ extension BackupManager {
     func cancelBackupFromDuplicateWarning() {
         ApplicationLogger.shared.debug("Backup cancelled by user from duplicate warning", category: .backup)
         showDuplicateWarning = false
-        duplicateAnalyses = nil
-        isProcessing = false
-        statusMessage = "Backup cancelled"
+        state.duplicateAnalyses = nil
+        state.isProcessing = false
+        state.statusMessage = "Backup cancelled"
     }
 
     // MARK: - Large Backup Confirmation
@@ -697,9 +697,9 @@ extension BackupManager {
         }
 
         // Check for cancellation
-        guard !shouldCancel else { return false }
+        guard !state.shouldCancel else { return false }
 
-        statusMessage = "Analyzing backup size..."
+        state.statusMessage = "Analyzing backup size..."
 
         let fileThreshold = preferences.largeBackupFileThreshold
         let sizeThresholdBytes = Int64(
@@ -721,7 +721,7 @@ extension BackupManager {
         let seconds = Double(totalBytes) / (estimatedSpeed * 1_000_000)
         let timeString = TimeFormatter.formatDuration(seconds)
 
-        largeBackupInfo = LargeBackupInfo(
+        state.largeBackupInfo = BackupState.LargeBackupInfo(
             fileCount: manifest.count,
             totalBytes: totalBytes,
             destinationCount: destinations.count,
@@ -731,7 +731,7 @@ extension BackupManager {
 
         // Wait for user response using CheckedContinuation
         let result = await withCheckedContinuation { continuation in
-            largeBackupContinuation = continuation
+            state.largeBackupContinuation = continuation
         }
 
         return result
@@ -741,16 +741,16 @@ extension BackupManager {
     @MainActor
     func respondToLargeBackupConfirmation(shouldContinue: Bool, dontShowAgain: Bool) {
         showLargeBackupConfirmation = false
-        largeBackupInfo = nil
+        state.largeBackupInfo = nil
 
         if dontShowAgain {
             preferences.skipLargeBackupWarning = true
         }
 
         // Resume the waiting backup process
-        if let continuation = largeBackupContinuation {
+        if let continuation = state.largeBackupContinuation {
             continuation.resume(returning: shouldContinue)
-            largeBackupContinuation = nil
+            state.largeBackupContinuation = nil
         } else {
             ApplicationLogger.shared.debug("No continuation to resume for large backup confirmation", category: .backup)
         }

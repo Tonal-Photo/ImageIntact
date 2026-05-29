@@ -46,7 +46,7 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
 
     /// Populate failedFiles with a synthetic entry for assertions.
     private func addFailedFile(to bm: BackupManager) {
-        bm.failedFiles.append((
+        bm.state.failedFiles.append((
             file: "/Volumes/Source/test.jpg",
             destination: "/Volumes/BackupDrive",
             error: "test error"
@@ -67,23 +67,23 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
             deferredCleanupDelayNanos: 50_000_000  // 50ms
         )
 
-        bm.sessionID = "test-session-abc"
+        bm.state.sessionID = "test-session-abc"
         addFailedFile(to: bm)
-        XCTAssertFalse(bm.failedFiles.isEmpty, "Precondition: failedFiles should have an entry")
+        XCTAssertFalse(bm.state.failedFiles.isEmpty, "Precondition: failedFiles should have an entry")
 
         bm.cleanupMemory()
 
         // Synchronous check: failedFiles must NOT be cleared immediately.
         // Without this assertion, the test would pass even if cleanupMemory()
         // mistakenly cleared the array synchronously rather than via the deferred task.
-        XCTAssertFalse(bm.failedFiles.isEmpty,
+        XCTAssertFalse(bm.state.failedFiles.isEmpty,
                        "failedFiles must not be cleared synchronously — only by the deferred task")
 
         // Poll for up to 2s for the deferred task to clear failedFiles.
         // Task.sleep(150ms) is not reliable on loaded CI runners; a 150ms window
         // can easily be exceeded by the scheduler, causing false failures.
         let deadline = Date().addingTimeInterval(2.0)
-        while !bm.failedFiles.isEmpty {
+        while !bm.state.failedFiles.isEmpty {
             if Date() > deadline {
                 XCTFail("Deferred cleanup didn't run within 2s")
                 return
@@ -91,7 +91,7 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
             try? await Task.sleep(for: .milliseconds(10))
         }
 
-        XCTAssertTrue(bm.failedFiles.isEmpty,
+        XCTAssertTrue(bm.state.failedFiles.isEmpty,
                       "failedFiles must be cleared by deferred cleanup when sessionID is unchanged")
     }
 
@@ -105,13 +105,13 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
             deferredCleanupDelayNanos: 50_000_000  // 50ms
         )
 
-        bm.sessionID = "session-1"
+        bm.state.sessionID = "session-1"
         addFailedFile(to: bm)
 
         bm.cleanupMemory()
 
         // Simulate a new backup starting (sessionID changes) before the delay fires.
-        bm.sessionID = "session-2"
+        bm.state.sessionID = "session-2"
 
         // Wait 1s — long enough that on a loaded CI runner where thread scheduling
         // is delayed, the deferred task would still have plenty of time to run if
@@ -119,7 +119,7 @@ final class BackupManagerCleanupTests: BaseBackupManagerTestCase {
         // high confidence the guard bailed.
         try await Task.sleep(for: .seconds(1))
 
-        XCTAssertFalse(bm.failedFiles.isEmpty,
+        XCTAssertFalse(bm.state.failedFiles.isEmpty,
                        "failedFiles must NOT be cleared when sessionID changed (deferred task should bail)")
     }
 
