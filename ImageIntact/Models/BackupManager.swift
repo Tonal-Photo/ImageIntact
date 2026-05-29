@@ -59,8 +59,12 @@ class BackupManager {
     var destinationItems: [DestinationItem] { destinationManager.destinationItems }
     var destinationDriveInfo: [UUID: DriveAnalyzer.DriveInfo] { destinationManager.destinationDriveInfo }
 
-    // Progress tracking delegated to ProgressTracker
-    let progressTracker = ProgressTracker()
+    // Progress tracking delegated to ProgressTracker.
+    // AMUX-206: `var` (not `let`) so runBackup can swap in a fresh instance per
+    // session. A cancelled run's orchestrator may still be spinning down and
+    // writing late; pointing the new run at a fresh tracker routes those writes
+    // to an orphaned instance instead of corrupting the new run's state.
+    var progressTracker = ProgressTracker()
 
     // Statistics tracking for completion report
     let statistics = BackupStatistics()
@@ -363,7 +367,11 @@ class BackupManager {
         state.statusMessage = "Preparing backup..."
         state.failedFiles = []
         statistics.reset()
-        progressTracker.resetAll()
+        // AMUX-206: assign a FRESH tracker rather than resetAll() the shared one,
+        // so a cancelled run's still-spinning-down orchestrator writes to an
+        // orphaned instance and never this new run's state. A fresh instance is
+        // already in reset state, so this subsumes the prior resetAll() call.
+        progressTracker = ProgressTracker()
         state.logEntries = []
         state.sessionID = UUID().uuidString
         state.shouldCancel = false
