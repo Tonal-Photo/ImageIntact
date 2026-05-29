@@ -29,13 +29,13 @@ class UIStateManagementTests: XCTestCase {
         XCTAssertFalse(backupManager.isProcessing)
         XCTAssertFalse(backupManager.shouldCancel)
         XCTAssertEqual(backupManager.currentPhase, .idle)
-        XCTAssertEqual(backupManager.totalFiles, 0)
-        XCTAssertEqual(backupManager.processedFiles, 0)
-        XCTAssertEqual(backupManager.currentFileIndex, 0)
+        XCTAssertEqual(backupManager.progressTracker.totalFiles, 0)
+        XCTAssertEqual(backupManager.progressTracker.processedFiles, 0)
+        XCTAssertEqual(backupManager.progressTracker.currentFileIndex, 0)
         XCTAssertTrue(backupManager.failedFiles.isEmpty)
         XCTAssertTrue(backupManager.statusMessage.isEmpty)
         XCTAssertNil(backupManager.sourceURL)
-        XCTAssertTrue(backupManager.destinationProgress.isEmpty)
+        XCTAssertTrue(backupManager.progressTracker.destinationProgress.isEmpty)
     }
 
 
@@ -48,9 +48,9 @@ class UIStateManagementTests: XCTestCase {
 
         await backupManager.initializeDestinations(destinations)
 
-        XCTAssertEqual(backupManager.destinationProgress["dest1"], 0)
-        XCTAssertEqual(backupManager.destinationProgress["dest2"], 0)
-        XCTAssertEqual(backupManager.destinationProgress["dest3"], 0)
+        XCTAssertEqual(backupManager.progressTracker.destinationProgress["dest1"], 0)
+        XCTAssertEqual(backupManager.progressTracker.destinationProgress["dest2"], 0)
+        XCTAssertEqual(backupManager.progressTracker.destinationProgress["dest3"], 0)
     }
 
     func testDestinationProgressIncrement() async {
@@ -64,7 +64,7 @@ class UIStateManagementTests: XCTestCase {
         }
         // Wait for async update
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
-        XCTAssertEqual(backupManager.destinationProgress["dest1"], 1)
+        XCTAssertEqual(backupManager.progressTracker.destinationProgress["dest1"], 1)
 
         // Increment again
         for _ in 0 ..< 5 {
@@ -74,7 +74,7 @@ class UIStateManagementTests: XCTestCase {
         }
         // Wait for async updates
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
-        XCTAssertEqual(backupManager.destinationProgress["dest1"], 6)
+        XCTAssertEqual(backupManager.progressTracker.destinationProgress["dest1"], 6)
     }
 
     // MARK: - Phase Tests

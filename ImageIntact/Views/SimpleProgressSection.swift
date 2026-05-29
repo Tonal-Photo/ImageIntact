@@ -9,7 +9,7 @@ struct SimpleProgressSection: View {
         Divider()
           .padding(.horizontal, 20)
 
-        if backupManager.isProcessing && backupManager.totalFiles > 0 {
+        if backupManager.isProcessing && backupManager.progressTracker.totalFiles > 0 {
           // Simple overall progress
           VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -35,11 +35,11 @@ struct SimpleProgressSection: View {
                 // Show appropriate counter based on phase
                 if backupManager.currentPhase == .verifyingDestinations {
                   Text(
-                    "Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.totalFiles)"
+                    "Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.progressTracker.totalFiles)"
                   )
                   .font(.subheadline)
                 } else {
-                  Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
+                  Text("Files: \(backupManager.progressTracker.processedFiles)/\(backupManager.progressTracker.totalFiles)")
                     .font(.subheadline)
                 }
 
@@ -53,19 +53,19 @@ struct SimpleProgressSection: View {
                     .foregroundColor(.secondary)
                 }
 
-                if backupManager.copySpeed > 0 {
-                  Text("\(String(format: "%.1f", backupManager.copySpeed)) MB/s")
+                if backupManager.progressTracker.copySpeed > 0 {
+                  Text("\(String(format: "%.1f", backupManager.progressTracker.copySpeed)) MB/s")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 }
               }
 
-              ProgressView(value: backupManager.overallProgress)
+              ProgressView(value: backupManager.progressTracker.overallProgress)
                 .progressViewStyle(.linear)
 
               HStack {
-                if !backupManager.currentFileName.isEmpty {
-                  Text("Current: \(backupManager.currentFileName)")
+                if !backupManager.progressTracker.currentFileName.isEmpty {
+                  Text("Current: \(backupManager.progressTracker.currentFileName)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -74,8 +74,8 @@ struct SimpleProgressSection: View {
 
                 Spacer()
 
-                if !backupManager.currentDestinationName.isEmpty {
-                  Text("→ \(backupManager.currentDestinationName)")
+                if !backupManager.progressTracker.currentDestinationName.isEmpty {
+                  Text("→ \(backupManager.progressTracker.currentDestinationName)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 }

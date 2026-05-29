@@ -96,10 +96,10 @@ struct DestinationSection: View {
                                     .foregroundColor(.secondary)
 
                                 // Show disk space status if we have backup size info
-                                if let url = item.url, backupManager.totalBytesToCopy > 0 {
+                                if let url = item.url, backupManager.progressTracker.totalBytesToCopy > 0 {
                                     let spaceCheck = DiskSpaceChecker.checkDestinationSpace(
                                         destination: url,
-                                        requiredBytes: backupManager.totalBytesToCopy
+                                        requiredBytes: backupManager.progressTracker.totalBytesToCopy
                                     )
 
                                     if spaceCheck.error != nil {
