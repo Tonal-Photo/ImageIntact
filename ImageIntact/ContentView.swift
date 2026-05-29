@@ -381,8 +381,8 @@ struct ContentView: View {
 
     var logContent = "ImageIntact Debug Log - \(timestamp)\n"
     logContent += "Session ID: \(backupManager.sessionID)\n"
-    logContent += "Total Files: \(backupManager.totalFiles)\n"
-    logContent += "Processed Files: \(backupManager.processedFiles)\n"
+    logContent += "Total Files: \(backupManager.progressTracker.totalFiles)\n"
+    logContent += "Processed Files: \(backupManager.progressTracker.processedFiles)\n"
     logContent += "Failed Files: \(backupManager.failedFiles.count)\n"
     logContent += "Was Cancelled: \(backupManager.shouldCancel)\n\n"
 
