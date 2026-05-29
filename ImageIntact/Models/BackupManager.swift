@@ -59,14 +59,10 @@ class BackupManager {
     // Statistics tracking for completion report
     let statistics = BackupStatistics()
 
-    // Progress state (totalFiles, processedFiles, currentFile, copySpeed,
-    // byte counts, per-destination progress/states, phase/overall progress,
-    // ETA) lives on `progressTracker` and is read directly as
-    // `progressTracker.X` by views and callers — see AMUX-202 (#103). The old
-    // forwarding computed properties were removed; ProgressTracker is
-    // @Observable, so SwiftUI re-render behavior is unchanged.
+    // Progress state lives on `progressTracker` — read `progressTracker.X`
+    // directly (see #103).
 
-    // Current backup phase is BackupManager's own state (not progress data).
+    // Backup phase is BackupManager's own state, not progress data.
     var currentPhase: BackupPhase = .idle
 
     // Resource management

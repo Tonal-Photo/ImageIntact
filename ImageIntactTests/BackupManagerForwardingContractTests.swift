@@ -41,6 +41,14 @@ final class BackupManagerForwardingContractTests: XCTestCase {
             .appendingPathComponent("ImageIntact")
             .appendingPathComponent("Models")
             .appendingPathComponent("BackupManager.swift")
+        // `#filePath` is the compile-time path. If the build and test phases run
+        // on different machines (separate CI runners, device farms), the source
+        // won't be on the test runner — skip rather than fail, since in that
+        // configuration the contract is already enforced at compile time.
+        guard FileManager.default.fileExists(atPath: bmURL.path) else {
+            throw XCTSkip("BackupManager.swift not present on the test runner; "
+                + "forwarding contract is enforced at compile time here.")
+        }
         return try String(contentsOf: bmURL, encoding: .utf8)
     }
 
