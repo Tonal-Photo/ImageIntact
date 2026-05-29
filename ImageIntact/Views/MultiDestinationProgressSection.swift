@@ -37,7 +37,7 @@ struct MultiDestinationProgressSection: View {
         Divider()
           .padding(.horizontal, 20)
 
-        if backupManager.state.isProcessing && backupManager.totalFiles > 0 {
+        if backupManager.state.isProcessing && backupManager.progressTracker.totalFiles > 0 {
           // Show different UI based on destination count
           if destinations.count <= 1 {
             // Single destination - show simple progress
@@ -149,8 +149,8 @@ struct SimpleBackupProgress: View {
   @Bindable var backupManager: BackupManager
 
   private func formatDataProgress() -> String {
-    let copiedMB = Double(backupManager.totalBytesCopied) / (1024 * 1024)
-    let totalMB = Double(backupManager.totalBytesToCopy) / (1024 * 1024)
+    let copiedMB = Double(backupManager.progressTracker.totalBytesCopied) / (1024 * 1024)
+    let totalMB = Double(backupManager.progressTracker.totalBytesToCopy) / (1024 * 1024)
 
     if totalMB > 1024 {
       // Show in GB if over 1GB
@@ -203,24 +203,24 @@ struct SimpleBackupProgress: View {
           // Show appropriate counter based on phase
           if backupManager.state.currentPhase == .verifyingDestinations {
             Text(
-              "Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.totalFiles)"
+              "Verifying: \(backupManager.progressTracker.verifiedFiles)/\(backupManager.progressTracker.totalFiles)"
             )
             .font(.subheadline)
           } else {
-            Text("Files: \(backupManager.processedFiles)/\(backupManager.totalFiles)")
+            Text("Files: \(backupManager.progressTracker.processedFiles)/\(backupManager.progressTracker.totalFiles)")
               .font(.subheadline)
           }
 
           Spacer()
 
           // Data processed display
-          if backupManager.totalBytesCopied > 0 {
-            let processedMB = Double(backupManager.totalBytesCopied) / (1024 * 1024)
+          if backupManager.progressTracker.totalBytesCopied > 0 {
+            let processedMB = Double(backupManager.progressTracker.totalBytesCopied) / (1024 * 1024)
             Text(
               String(
                 format: "%.1f MB/s",
-                backupManager.copySpeed > 0
-                  ? backupManager.copySpeed
+                backupManager.progressTracker.copySpeed > 0
+                  ? backupManager.progressTracker.copySpeed
                   : processedMB
                     / max(1, Date().timeIntervalSince(backupManager.progressTracker.copyStartTime)))
             )
@@ -240,11 +240,11 @@ struct SimpleBackupProgress: View {
 
         // Overall progress across all phases
         HStack(spacing: 8) {
-          ProgressView(value: backupManager.overallProgress)
+          ProgressView(value: backupManager.progressTracker.overallProgress)
             .progressViewStyle(.linear)
 
           // Data progress indicator
-          if backupManager.totalBytesToCopy > 0 {
+          if backupManager.progressTracker.totalBytesToCopy > 0 {
             Text(formatDataProgress())
               .font(.caption2)
               .foregroundColor(.secondary)
@@ -253,8 +253,8 @@ struct SimpleBackupProgress: View {
         }
 
         HStack {
-          if !backupManager.currentFileName.isEmpty {
-            Text("Current: \(backupManager.currentFileName)")
+          if !backupManager.progressTracker.currentFileName.isEmpty {
+            Text("Current: \(backupManager.progressTracker.currentFileName)")
               .font(.caption2)
               .foregroundColor(.secondary)
               .lineLimit(1)
@@ -263,8 +263,8 @@ struct SimpleBackupProgress: View {
 
           Spacer()
 
-          if !backupManager.currentDestinationName.isEmpty {
-            Text("→ \(backupManager.currentDestinationName)")
+          if !backupManager.progressTracker.currentDestinationName.isEmpty {
+            Text("→ \(backupManager.progressTracker.currentDestinationName)")
               .font(.caption2)
               .foregroundColor(.secondary)
           }
@@ -316,8 +316,8 @@ struct MultiDestinationProgress: View {
         Spacer()
 
         // Show aggregate progress
-        if backupManager.overallProgress > 0 {
-          Text("\(Int(backupManager.overallProgress * 100))% Complete")
+        if backupManager.progressTracker.overallProgress > 0 {
+          Text("\(Int(backupManager.progressTracker.overallProgress * 100))% Complete")
             .font(.subheadline)
             .foregroundColor(.secondary)
         }
@@ -354,7 +354,7 @@ struct MultiDestinationProgress: View {
               .foregroundColor(.green)
           }
         }
-        ProgressView(value: backupManager.overallProgress)
+        ProgressView(value: backupManager.progressTracker.overallProgress)
           .progressViewStyle(.linear)
       }
 
@@ -365,7 +365,7 @@ struct MultiDestinationProgress: View {
           Text("Building source manifest for all destinations...")
             .font(.caption)
             .foregroundColor(.secondary)
-          ProgressView(value: backupManager.phaseProgress)
+          ProgressView(value: backupManager.progressTracker.phaseProgress)
             .progressViewStyle(.linear)
         }
       } else if backupManager.state.currentPhase != .idle
@@ -375,21 +375,21 @@ struct MultiDestinationProgress: View {
         ForEach(destinations, id: \.lastPathComponent) { destination in
           DestinationProgressRow(
             destinationName: destination.lastPathComponent,
-            completedFiles: backupManager.destinationProgress[destination.lastPathComponent] ?? 0,
+            completedFiles: backupManager.progressTracker.destinationProgress[destination.lastPathComponent] ?? 0,
             totalFiles: backupManager.progressTracker.destinationTotalFiles[
-              destination.lastPathComponent] ?? backupManager.totalFiles,
-            isActive: backupManager.currentDestinationName == destination.lastPathComponent,
+              destination.lastPathComponent] ?? backupManager.progressTracker.totalFiles,
+            isActive: backupManager.progressTracker.currentDestinationName == destination.lastPathComponent,
             phase: backupManager.state.currentPhase,
-            state: backupManager.destinationStates[destination.lastPathComponent] ?? "copying",
+            state: backupManager.progressTracker.destinationStates[destination.lastPathComponent] ?? "copying",
             isNetworkDrive: networkDrives.contains(destination.lastPathComponent)
           )
         }
       }
 
       // Current file info
-      if !backupManager.currentFileName.isEmpty {
+      if !backupManager.progressTracker.currentFileName.isEmpty {
         HStack {
-          Text("Current: \(backupManager.currentFileName)")
+          Text("Current: \(backupManager.progressTracker.currentFileName)")
             .font(.caption2)
             .foregroundColor(.secondary)
             .lineLimit(1)
@@ -397,8 +397,8 @@ struct MultiDestinationProgress: View {
 
           Spacer()
 
-          if !backupManager.currentDestinationName.isEmpty {
-            Text("→ \(backupManager.currentDestinationName)")
+          if !backupManager.progressTracker.currentDestinationName.isEmpty {
+            Text("→ \(backupManager.progressTracker.currentDestinationName)")
               .font(.caption2)
               .foregroundColor(.secondary)
           }

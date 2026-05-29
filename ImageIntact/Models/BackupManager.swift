@@ -65,68 +65,8 @@ class BackupManager {
     // Statistics tracking for completion report
     let statistics = BackupStatistics()
 
-    // Expose progress properties for compatibility
-    var totalFiles: Int {
-        get { progressTracker.totalFiles }
-        set { progressTracker.totalFiles = newValue }
-    }
-
-    var processedFiles: Int {
-        get { progressTracker.processedFiles }
-        set { progressTracker.processedFiles = newValue }
-    }
-
-    var currentFile: String {
-        get { progressTracker.currentFile }
-        set { progressTracker.currentFile = newValue }
-    }
-
-    var currentFileIndex: Int {
-        get { progressTracker.currentFileIndex }
-        set { progressTracker.currentFileIndex = newValue }
-    }
-
-    var currentFileName: String {
-        get { progressTracker.currentFileName }
-        set { progressTracker.currentFileName = newValue }
-    }
-
-    var currentDestinationName: String {
-        get { progressTracker.currentDestinationName }
-        set { progressTracker.currentDestinationName = newValue }
-    }
-
-    var copySpeed: Double {
-        get { progressTracker.copySpeed }
-        set { progressTracker.copySpeed = newValue }
-    }
-
-    var totalBytesCopied: Int64 {
-        get { progressTracker.totalBytesCopied }
-        set { progressTracker.totalBytesCopied = newValue }
-    }
-
-    var totalBytesToCopy: Int64 {
-        get { progressTracker.totalBytesToCopy }
-        set { progressTracker.totalBytesToCopy = newValue }
-    }
-
-    var estimatedSecondsRemaining: TimeInterval? { progressTracker.estimatedSecondsRemaining }
-    var destinationProgress: [String: Int] {
-        return progressTracker.destinationProgress
-    }
-
-    var destinationStates: [String: String] {
-        return progressTracker.destinationStates
-    }
-
-    var phaseProgress: Double {
-        return progressTracker.phaseProgress
-    }
-
-    var overallProgress: Double {
-        return progressTracker.overallProgress
-    }
+    // Progress state lives on `progressTracker` — read `progressTracker.X`
+    // directly (see #103).
 
     // Resource management
     let resourceManager = ResourceManager() // Made internal for extension access
@@ -284,7 +224,7 @@ class BackupManager {
                 url, at: index,
                 sourceURL: sourceManager.sourceURL,
                 hasSourceTag: hasSourceTag,
-                totalBytesToCopy: totalBytesToCopy
+                totalBytesToCopy: progressTracker.totalBytesToCopy
             )
         } catch DestinationError.sameAsSource {
             destinationAlertPresenter.presentSameAsSourceAlert()
@@ -298,7 +238,7 @@ class BackupManager {
                     url, at: index,
                     sourceURL: sourceManager.sourceURL,
                     hasSourceTag: false,
-                    totalBytesToCopy: totalBytesToCopy
+                    totalBytesToCopy: progressTracker.totalBytesToCopy
                 )
             } catch {
                 logWarning("Failed to set destination after source tag removal: \(error)")
@@ -509,8 +449,8 @@ class BackupManager {
             progressTracker.setDestinationProgress(0, for: name)
             progressTracker.setDestinationState("cancelled", for: name)
         }
-        currentFileName = ""
-        currentDestinationName = ""
+        progressTracker.currentFileName = ""
+        progressTracker.currentDestinationName = ""
         state.overallStatusText = ""
         state.currentPhase = .idle
         state.statusMessage = "Backup cancelled"
