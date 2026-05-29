@@ -29,9 +29,9 @@ class MemoryOptimizationTests: XCTestCase {
     @MainActor
     func testMemoryCleanupAfterBackup() async throws {
         // Setup
-        backupManager.failedFiles = [(file: "test.jpg", destination: "dest1", error: "test error")]
-        backupManager.logEntries = [
-            BackupManager.LogEntry(
+        backupManager.state.failedFiles = [(file: "test.jpg", destination: "dest1", error: "test error")]
+        backupManager.state.logEntries = [
+            BackupState.LogEntry(
                 timestamp: Date(),
                 sessionID: "test",
                 action: "copy",
@@ -43,27 +43,27 @@ class MemoryOptimizationTests: XCTestCase {
                 reason: "test"
             ),
         ]
-        backupManager.debugLog = ["Line 1", "Line 2", "Line 3"]
+        backupManager.state.debugLog = ["Line 1", "Line 2", "Line 3"]
         backupManager.sourceFileTypes = [.jpeg: 10, .raw: 5]
 
         // Initial state verification
-        XCTAssertFalse(backupManager.failedFiles.isEmpty)
-        XCTAssertFalse(backupManager.logEntries.isEmpty)
-        XCTAssertFalse(backupManager.debugLog.isEmpty)
+        XCTAssertFalse(backupManager.state.failedFiles.isEmpty)
+        XCTAssertFalse(backupManager.state.logEntries.isEmpty)
+        XCTAssertFalse(backupManager.state.debugLog.isEmpty)
         XCTAssertFalse(backupManager.sourceFileTypes.isEmpty)
 
         // Perform cleanup
         backupManager.cleanupMemory()
 
         // Verify immediate cleanup (things that should be cleared right away)
-        XCTAssertTrue(backupManager.logEntries.isEmpty, "Log entries should be cleared immediately")
-        XCTAssertTrue(backupManager.debugLog.isEmpty, "Debug log should be cleared immediately")
+        XCTAssertTrue(backupManager.state.logEntries.isEmpty, "Log entries should be cleared immediately")
+        XCTAssertTrue(backupManager.state.debugLog.isEmpty, "Debug log should be cleared immediately")
 
         // sourceFileTypes and failedFiles are preserved for UI display initially
         // They get cleared after a delay in production, but we don't test that here
         // because it relies on timing and spawned Tasks which are flaky in parallel tests
         XCTAssertFalse(backupManager.sourceFileTypes.isEmpty, "Source file types should be preserved for UI")
-        XCTAssertFalse(backupManager.failedFiles.isEmpty, "Failed files should be preserved for UI")
+        XCTAssertFalse(backupManager.state.failedFiles.isEmpty, "Failed files should be preserved for UI")
 
         // Note: Deep cleanup (clearing failedFiles after 10s) is tested by the implementation
         // but we skip testing the timer-based behavior here to avoid flaky tests

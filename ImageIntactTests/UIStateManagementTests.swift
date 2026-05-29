@@ -26,14 +26,14 @@ class UIStateManagementTests: XCTestCase {
     // MARK: - Initial State Tests
 
     func testInitialBackupManagerState() {
-        XCTAssertFalse(backupManager.isProcessing)
-        XCTAssertFalse(backupManager.shouldCancel)
-        XCTAssertEqual(backupManager.currentPhase, .idle)
+        XCTAssertFalse(backupManager.state.isProcessing)
+        XCTAssertFalse(backupManager.state.shouldCancel)
+        XCTAssertEqual(backupManager.state.currentPhase, .idle)
         XCTAssertEqual(backupManager.progressTracker.totalFiles, 0)
         XCTAssertEqual(backupManager.progressTracker.processedFiles, 0)
         XCTAssertEqual(backupManager.progressTracker.currentFileIndex, 0)
-        XCTAssertTrue(backupManager.failedFiles.isEmpty)
-        XCTAssertTrue(backupManager.statusMessage.isEmpty)
+        XCTAssertTrue(backupManager.state.failedFiles.isEmpty)
+        XCTAssertTrue(backupManager.state.statusMessage.isEmpty)
         XCTAssertNil(backupManager.sourceURL)
         XCTAssertTrue(backupManager.progressTracker.destinationProgress.isEmpty)
     }
@@ -91,52 +91,52 @@ class UIStateManagementTests: XCTestCase {
     // MARK: - Cancellation Tests
 
     func testCancellationFlow() {
-        XCTAssertFalse(backupManager.shouldCancel)
+        XCTAssertFalse(backupManager.state.shouldCancel)
 
         // Cancel operation
         backupManager.cancelOperation()
 
-        XCTAssertTrue(backupManager.shouldCancel)
+        XCTAssertTrue(backupManager.state.shouldCancel)
         // After AMUX-15, state mutations in cancelOperation are synchronous (formerly
         // wrapped in an async Task). By the time cancelOperation returns, the status
         // has already advanced from "Cancelling backup..." to "Backup cancelled".
-        XCTAssertEqual(backupManager.statusMessage, "Backup cancelled")
+        XCTAssertEqual(backupManager.state.statusMessage, "Backup cancelled")
     }
 
     // MARK: - Failed Files Tracking
 
     func testFailedFileTracking() {
-        XCTAssertTrue(backupManager.failedFiles.isEmpty)
+        XCTAssertTrue(backupManager.state.failedFiles.isEmpty)
 
         // Add failed files
-        backupManager.failedFiles.append((file: "photo1.jpg", destination: "dest1", error: "Checksum mismatch"))
-        backupManager.failedFiles.append((file: "photo2.jpg", destination: "dest2", error: "Permission denied"))
+        backupManager.state.failedFiles.append((file: "photo1.jpg", destination: "dest1", error: "Checksum mismatch"))
+        backupManager.state.failedFiles.append((file: "photo2.jpg", destination: "dest2", error: "Permission denied"))
 
-        XCTAssertEqual(backupManager.failedFiles.count, 2)
-        XCTAssertEqual(backupManager.failedFiles[0].file, "photo1.jpg")
-        XCTAssertEqual(backupManager.failedFiles[1].error, "Permission denied")
+        XCTAssertEqual(backupManager.state.failedFiles.count, 2)
+        XCTAssertEqual(backupManager.state.failedFiles[0].file, "photo1.jpg")
+        XCTAssertEqual(backupManager.state.failedFiles[1].error, "Permission denied")
     }
 
     // MARK: - Status Message Tests
 
     func testStatusMessageUpdates() {
-        backupManager.statusMessage = "Starting backup..."
-        XCTAssertEqual(backupManager.statusMessage, "Starting backup...")
+        backupManager.state.statusMessage = "Starting backup..."
+        XCTAssertEqual(backupManager.state.statusMessage, "Starting backup...")
 
-        backupManager.statusMessage = "Copying files..."
-        XCTAssertEqual(backupManager.statusMessage, "Copying files...")
+        backupManager.state.statusMessage = "Copying files..."
+        XCTAssertEqual(backupManager.state.statusMessage, "Copying files...")
 
-        backupManager.statusMessage = "Backup complete!"
-        XCTAssertEqual(backupManager.statusMessage, "Backup complete!")
+        backupManager.state.statusMessage = "Backup complete!"
+        XCTAssertEqual(backupManager.state.statusMessage, "Backup complete!")
     }
 
 
     // MARK: - Session ID Tests
 
     func testSessionIDUniqueness() {
-        let session1 = backupManager.sessionID
+        let session1 = backupManager.state.sessionID
         let backupManager2 = BackupManager()
-        let session2 = backupManager2.sessionID
+        let session2 = backupManager2.state.sessionID
 
         XCTAssertNotEqual(session1, session2)
         XCTAssertEqual(session1.count, 36) // UUID format
@@ -146,7 +146,7 @@ class UIStateManagementTests: XCTestCase {
     // MARK: - Log Entry Tests
 
     func testLogEntryCreation() {
-        let entry = BackupManager.LogEntry(
+        let entry = BackupState.LogEntry(
             timestamp: Date(),
             sessionID: "test-session",
             action: "COPIED",
@@ -200,17 +200,17 @@ class UIStateManagementTests: XCTestCase {
     // MARK: - Error State Tests
 
     func testErrorStateDisplay() async {
-        backupManager.failedFiles = [
+        backupManager.state.failedFiles = [
             (file: "photo1.jpg", destination: "dest1", error: "Checksum mismatch"),
             (file: "photo2.jpg", destination: "dest1", error: "Permission denied"),
             (file: "photo3.jpg", destination: "dest2", error: "Disk full"),
         ]
 
         await MainActor.run {
-            backupManager.statusMessage = "⚠️ Backup completed with 3 errors"
+            backupManager.state.statusMessage = "⚠️ Backup completed with 3 errors"
         }
 
-        XCTAssertEqual(backupManager.failedFiles.count, 3)
-        XCTAssertTrue(backupManager.statusMessage.contains("error"))
+        XCTAssertEqual(backupManager.state.failedFiles.count, 3)
+        XCTAssertTrue(backupManager.state.statusMessage.contains("error"))
     }
 }

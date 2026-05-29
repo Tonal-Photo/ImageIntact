@@ -41,17 +41,23 @@ class BackupManager {
     let sourceManager: SourceManager
     let destinationManager: DestinationManager
 
+    // MARK: - Transient Run State (AMUX-201)
+
+    // Transient per-run backup state extracted into BackupState (#103 decomposition).
+    let state = BackupState()
+
+    // Modal-presentation flags forwarded to state so $backupManager.showX bindings keep working.
+    var showCompletionReport: Bool { get { state.showCompletionReport } set { state.showCompletionReport = newValue } }
+    var showMigrationDialog: Bool { get { state.showMigrationDialog } set { state.showMigrationDialog = newValue } }
+    var showDuplicateWarning: Bool { get { state.showDuplicateWarning } set { state.showDuplicateWarning = newValue } }
+    var showTrashConfirmation: Bool { get { state.showTrashConfirmation } set { state.showTrashConfirmation = newValue } }
+    var showLargeBackupConfirmation: Bool { get { state.showLargeBackupConfirmation } set { state.showLargeBackupConfirmation = newValue } }
+
     // MARK: - Destination Forwarding (read-only)
 
     var destinationURLs: [URL?] { destinationManager.destinationURLs }
     var destinationItems: [DestinationItem] { destinationManager.destinationItems }
     var destinationDriveInfo: [UUID: DriveAnalyzer.DriveInfo] { destinationManager.destinationDriveInfo }
-    var isProcessing = false
-    var statusMessage = ""
-    var failedFiles: [(file: String, destination: String, error: String)] = []
-    var sessionID = UUID().uuidString
-    var shouldCancel = false
-    var debugLog: [String] = []
 
     // Progress tracking delegated to ProgressTracker
     let progressTracker = ProgressTracker()
@@ -62,14 +68,8 @@ class BackupManager {
     // Progress state lives on `progressTracker` — read `progressTracker.X`
     // directly (see #103).
 
-    // Backup phase is BackupManager's own state, not progress data.
-    var currentPhase: BackupPhase = .idle
-
     // Resource management
     let resourceManager = ResourceManager() // Made internal for extension access
-
-    // Other UI state
-    var overallStatusText: String = "" // For showing mixed states like "1 copying, 1 verifying"
 
     // Source-related properties are now on sourceManager
     // Convenience accessors for code that still reads these directly
@@ -113,60 +113,16 @@ class BackupManager {
         }
     }
 
-    // UI state for completion report
-    var showCompletionReport = false
-
-    // Migration state
-    var showMigrationDialog = false
-    var pendingMigrationPlans: [BackupMigrationDetector.MigrationPlan] = []
-
     // Duplicate detection state
     var enableDuplicateDetection: Bool {
         preferences.enableSmartDuplicateDetection
     }
 
-    var showDuplicateWarning = false
-    var duplicateAnalyses: [URL: DuplicateDetector.DuplicateAnalysis]?
     let duplicateDetector: DuplicateDetectorProtocol
     let destinationAlertPresenter: DestinationAlertPresenting
     let backupAlertPresenter: BackupAlertPresenting
     private let deferredCleanupDelayNanos: UInt64
     internal var deferredCleanupTask: Task<Void, Never>?
-    var skipExactDuplicates = true
-    var skipRenamedDuplicates = false
-
-    // Trash source state
-    var showTrashConfirmation = false
-    var trashSourceResult: String? = nil
-
-    // Large backup confirmation state
-    var showLargeBackupConfirmation = false
-    var largeBackupInfo: LargeBackupInfo?
-    var largeBackupContinuation: CheckedContinuation<Bool, Never>?
-
-    struct LargeBackupInfo {
-        let fileCount: Int
-        let totalBytes: Int64
-        let destinationCount: Int
-        let estimatedTimePerDestination: String
-    }
-
-    // MARK: - Constants (bookmark keys live in BookmarkManager)
-
-    struct LogEntry {
-        let timestamp: Date
-        let sessionID: String
-        let action: String
-        let source: String
-        let destination: String
-        let checksum: String
-        let algorithm: String
-        let fileSize: Int64
-        let reason: String
-    }
-
-    var logEntries: [LogEntry] = []
-    var currentOrchestrator: BackupOrchestrating?
 
     // MARK: - Initialization
 
@@ -247,7 +203,7 @@ class BackupManager {
     /// UI-bound forwarder. Trash logic + state clear lives in `SourceManager`;
     /// BackupManager just stores the result string for its alert binding.
     func trashSourceFolder() {
-        trashSourceResult = sourceManager.trashCurrentSource()
+        state.trashSourceResult = sourceManager.trashCurrentSource()
     }
 
     func addDestination() {
@@ -340,13 +296,13 @@ class BackupManager {
     func canRunBackup() -> Bool {
         return sourceURL != nil
             && !destinationURLs.compactMap { $0 }.isEmpty
-            && !isProcessing
+            && !state.isProcessing
             && !sourceManager.isScanning
     }
 
     func runBackup() {
         // Low fix: isProcessing guard — prevent re-entrant runBackup.
-        guard !isProcessing else {
+        guard !state.isProcessing else {
             logWarning("runBackup called while already processing — ignoring")
             return
         }
@@ -403,15 +359,15 @@ class BackupManager {
 
         // State setup — reset everything cleanupMemory's deferred task would have
         // cleared so we don't depend on its timing (High fix: state leak on rapid restart).
-        isProcessing = true
-        statusMessage = "Preparing backup..."
-        failedFiles = []
+        state.isProcessing = true
+        state.statusMessage = "Preparing backup..."
+        state.failedFiles = []
         statistics.reset()
         progressTracker.resetAll()
-        logEntries = []
-        sessionID = UUID().uuidString
-        shouldCancel = false
-        debugLog = []
+        state.logEntries = []
+        state.sessionID = UUID().uuidString
+        state.shouldCancel = false
+        state.debugLog = []
 
         // Save organization folder name to recent list and as last used
         if !organizationName.isEmpty {
@@ -469,22 +425,22 @@ class BackupManager {
     }
 
     func cancelOperation() {
-        guard !shouldCancel else { return } // Prevent multiple cancellations
+        guard !state.shouldCancel else { return } // Prevent multiple cancellations
 
         // Local strong ref keeps orchestrator alive through end of this function
         // even after cleanupMemory nils currentOrchestrator. (Medium fix: deallocation race)
-        let orchestratorRef = currentOrchestrator
-        shouldCancel = true
-        statusMessage = "Cancelling backup..."
+        let orchestratorRef = state.currentOrchestrator
+        state.shouldCancel = true
+        state.statusMessage = "Cancelling backup..."
 
         // Clean up any pending large backup confirmation.
         // Resumes the continuation with false to unblock the waiting backup.
-        if let continuation = largeBackupContinuation {
+        if let continuation = state.largeBackupContinuation {
             ApplicationLogger.shared.warning("Cleaning up pending large backup continuation due to cancellation", category: .backup)
             continuation.resume(returning: false)
-            largeBackupContinuation = nil
+            state.largeBackupContinuation = nil
             showLargeBackupConfirmation = false
-            largeBackupInfo = nil
+            state.largeBackupInfo = nil
         }
 
         // Synchronous immediate state clear (was inside a Task; the deferral broke the
@@ -495,9 +451,9 @@ class BackupManager {
         }
         progressTracker.currentFileName = ""
         progressTracker.currentDestinationName = ""
-        overallStatusText = ""
-        currentPhase = .idle
-        statusMessage = "Backup cancelled"
+        state.overallStatusText = ""
+        state.currentPhase = .idle
+        state.statusMessage = "Backup cancelled"
         // AMUX-210: use markAsCancelled() instead of resetAll(). resetAll wipes
         // destinationStates, which would flash-and-disappear the "cancelled" badges
         // we just set above. markAsCancelled clears transient metrics (counts,
@@ -511,7 +467,7 @@ class BackupManager {
         orchestratorRef?.cancel()
 
         // Flip the gating flag AFTER orchestrator cancel propagates. (Medium fix: ordering)
-        isProcessing = false
+        state.isProcessing = false
 
         // Resource cleanup can stay async — not on the rapid-restart path.
         Task { [weak self] in
@@ -524,8 +480,8 @@ class BackupManager {
     /// Force memory cleanup after backup completion or cancellation.
     func cleanupMemory() {
         // Immediate cleanup — clear large data structures.
-        logEntries.removeAll(keepingCapacity: false)
-        debugLog.removeAll(keepingCapacity: false)
+        state.logEntries.removeAll(keepingCapacity: false)
+        state.debugLog.removeAll(keepingCapacity: false)
 
         // DON'T clear failedFiles - needed for completion report
         // DON'T clear statistics - needed for completion report
@@ -533,7 +489,7 @@ class BackupManager {
         // DON'T clear sourceFileTypes - needed for UI display
 
         // Clear orchestrator reference.
-        currentOrchestrator = nil
+        state.currentOrchestrator = nil
 
         // Note: Core Data will manage its own memory.
         EventLogger.shared.resetContexts()
@@ -545,7 +501,7 @@ class BackupManager {
         // High fix: cancel any prior deferred task; capture session id; bail on mismatch.
         // Prevents a prior backup's deferred cleanup from wiping a new backup's state.
         deferredCleanupTask?.cancel()
-        let capturedSessionID = sessionID
+        let capturedSessionID = state.sessionID
         let capturedDelayNanos = deferredCleanupDelayNanos
         deferredCleanupTask = Task { @MainActor [weak self] in
             // Bail early if self is already gone — no point sleeping for 10s
@@ -554,18 +510,18 @@ class BackupManager {
             try? await Task.sleep(for: .nanoseconds(Int(capturedDelayNanos)))
             guard !Task.isCancelled else { return }
             guard let self = self else { return }
-            guard self.sessionID == capturedSessionID else {
+            guard self.state.sessionID == capturedSessionID else {
                 logInfo("Deferred cleanup bailed: session changed", category: .performance)
                 return
             }
 
-            self.failedFiles.removeAll(keepingCapacity: false)
+            self.state.failedFiles.removeAll(keepingCapacity: false)
             self.progressTracker.resetAll()
             self.progressTracker.destinationProgress.removeAll(keepingCapacity: false)
             self.progressTracker.destinationStates.removeAll(keepingCapacity: false)
             self.statistics.reset()
-            self.statusMessage = ""
-            self.overallStatusText = ""
+            self.state.statusMessage = ""
+            self.state.overallStatusText = ""
             // Keep scanProgress - it shows the file type summary
 
             ChecksumBufferPool.shared.cleanupUnusedBuffers()
