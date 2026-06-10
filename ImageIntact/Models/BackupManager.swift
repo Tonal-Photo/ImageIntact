@@ -46,18 +46,8 @@ class BackupManager {
     // Transient per-run backup state extracted into BackupState (#103 decomposition).
     let state = BackupState()
 
-    // Modal-presentation flags forwarded to state so $backupManager.showX bindings keep working.
-    var showCompletionReport: Bool { get { state.showCompletionReport } set { state.showCompletionReport = newValue } }
-    var showMigrationDialog: Bool { get { state.showMigrationDialog } set { state.showMigrationDialog = newValue } }
-    var showDuplicateWarning: Bool { get { state.showDuplicateWarning } set { state.showDuplicateWarning = newValue } }
-    var showTrashConfirmation: Bool { get { state.showTrashConfirmation } set { state.showTrashConfirmation = newValue } }
-    var showLargeBackupConfirmation: Bool { get { state.showLargeBackupConfirmation } set { state.showLargeBackupConfirmation = newValue } }
-
-    // MARK: - Destination Forwarding (read-only)
-
-    var destinationURLs: [URL?] { destinationManager.destinationURLs }
-    var destinationItems: [DestinationItem] { destinationManager.destinationItems }
-    var destinationDriveInfo: [UUID: DriveAnalyzer.DriveInfo] { destinationManager.destinationDriveInfo }
+    // Modal-presentation flags, destination/source forwarding, and delegated
+    // scanning/progress accessors live in BackupManager+Forwarding.swift (AMUX-230).
 
     // Progress tracking delegated to ProgressTracker.
     // AMUX-206: `var` (not `let`) so runBackup can swap in a fresh instance per
@@ -74,35 +64,6 @@ class BackupManager {
 
     // Resource management
     let resourceManager = ResourceManager() // Made internal for extension access
-
-    // Source-related properties are now on sourceManager
-    // Convenience accessors for code that still reads these directly
-    var sourceURL: URL? {
-        get { sourceManager.sourceURL }
-        set { sourceManager.sourceURL = newValue }
-    }
-    var sourceFileTypes: [ImageFileType: Int] {
-        get { sourceManager.sourceFileTypes }
-        set { sourceManager.sourceFileTypes = newValue }
-    }
-    var isScanning: Bool { sourceManager.isScanning }
-    var scanProgress: String {
-        get { sourceManager.scanProgress }
-        set { sourceManager.scanProgress = newValue }
-    }
-    var sourceTotalBytes: Int64 { sourceManager.sourceTotalBytes }
-    var fileTypeFilter: FileTypeFilter {
-        get { sourceManager.fileTypeFilter }
-        set { sourceManager.fileTypeFilter = newValue }
-    }
-    var includeSubdirectories: Bool {
-        get { sourceManager.includeSubdirectories }
-        set { sourceManager.includeSubdirectories = newValue }
-    }
-    var excludeCacheFiles: Bool {
-        get { sourceManager.excludeCacheFiles }
-        set { sourceManager.excludeCacheFiles = newValue }
-    }
 
     // Backup organization
     // Custom folder name for organizing backups.
@@ -262,40 +223,7 @@ class BackupManager {
         destinationManager.removeDestination(at: index)
     }
 
-    // MARK: - UI Test Support
-
-    private func loadUITestPaths() {
-        // The TestSourcePath / TestOrganizationName UserDefaults overrides are
-        // for UI testing only. Wrap in #if DEBUG so a malicious local process
-        // can't `defaults write` an arbitrary path into a Full-Disk-Access-
-        // granted release build to coerce the app into reading protected files.
-        #if DEBUG
-        logInfo("Loading UI test paths")
-
-        // Load test source path
-        if let testSourcePath = UserDefaults.standard.string(forKey: "TestSourcePath") {
-            let sourceURL = URL(fileURLWithPath: testSourcePath)
-            self.sourceManager.sourceURL = sourceURL
-            organizationName = SmartFolderName.from(url: sourceURL)
-            logInfo("UI Test: Set source to \(testSourcePath)")
-        }
-
-        destinationManager.loadUITestDestinations()
-
-        // Load test organization name if provided
-        if let testOrgName = UserDefaults.standard.string(forKey: "TestOrganizationName") {
-            organizationName = testOrgName
-            logInfo("UI Test: Set organization name to \(testOrgName)")
-        }
-
-        // Clear source test values (destination keys cleared by DestinationManager)
-        UserDefaults.standard.removeObject(forKey: "TestSourcePath")
-        UserDefaults.standard.removeObject(forKey: "TestOrganizationName")
-        #else
-        // Release builds: never honor UI-test UserDefaults overrides.
-        destinationManager.initializeEmpty()
-        #endif
-    }
+    // loadUITestPaths lives in BackupManager+UITestSupport.swift (AMUX-230).
 
     func canRunBackup() -> Bool {
         return sourceURL != nil
@@ -393,44 +321,7 @@ class BackupManager {
         }
     }
 
-    /// Build the data snapshot the preflight presenter needs.
-    /// Pure data construction — no UI. Pulled out so runBackup is easy to read
-    /// and the summary construction is testable in isolation.
-    private func buildPreflightSummary(source: URL, destinations: [URL]) -> PreflightSummary {
-        // Filtered summary (when a file-type filter is active).
-        let filteredSummary = getFilteredFilesSummary()
-
-        // Non-filtered file count and type summary (used when no filter is active).
-        let nonFilteredTotalFiles = sourceFileTypes.values.reduce(0, +)
-        let nonFilteredTypeSummary: String? = sourceFileTypes.isEmpty ? nil : getFormattedFileTypeSummary()
-
-        // Build destination tuples with optional drive device names.
-        // Zip the raw parallel arrays before filtering nils so indices stay aligned:
-        // compactMap on destinationURLs alone would shift the index into
-        // destinationItems if any earlier slot is nil.
-        let validPairs: [(URL, DestinationItem)] = zip(destinationURLs, destinationItems).compactMap { url, item in
-            guard let url = url else { return nil }
-            return (url, item)
-        }
-        let destTuples: [(name: String, deviceName: String?)] = validPairs.map { url, item in
-            let deviceName = destinationDriveInfo[item.id]?.deviceName
-            let resolvedDeviceName = (deviceName?.isEmpty == false) ? deviceName : nil
-            return (name: url.lastPathComponent, deviceName: resolvedDeviceName)
-        }
-
-        return PreflightSummary(
-            sourceName: source.lastPathComponent,
-            sourcePath: source.path,
-            filteredSummary: filteredSummary,
-            fileTypeSummary: nonFilteredTypeSummary,
-            totalFiles: nonFilteredTotalFiles,
-            totalBytes: sourceTotalBytes,
-            destinations: destTuples,
-            excludeCacheFiles: preferences.excludeCacheFiles,
-            skipHiddenFiles: preferences.skipHiddenFiles,
-            fileTypeFilterActive: !fileTypeFilter.includedExtensions.isEmpty
-        )
-    }
+    // buildPreflightSummary lives in BackupManager+Preflight.swift (AMUX-230).
 
     func cancelOperation() {
         guard !state.shouldCancel else { return } // Prevent multiple cancellations
@@ -537,44 +428,6 @@ class BackupManager {
         }
     }
 
-    // MARK: - Source Tag Delegation
-
-    func checkForSourceTag(at url: URL) -> Bool {
-        sourceManager.checkForSourceTag(at: url)
-    }
-
-    // MARK: - Progress Forwarding
-
-    func formattedETA() -> String {
-        return progressTracker.formattedETA()
-    }
-
-    @MainActor
-    func initializeDestinations(_ destinations: [URL]) async {
-        progressTracker.initializeDestinations(destinations)
-    }
-
-    @MainActor
-    func incrementDestinationProgress(_ destinationName: String) {
-        _ = progressTracker.incrementDestinationProgress(destinationName)
-    }
-
-    // MARK: - File Scanning (delegated to SourceManager)
-
-    func getFormattedFileTypeSummary(groupRaw: Bool = false) -> String {
-        sourceManager.getFormattedFileTypeSummary(groupRaw: groupRaw)
-    }
-
-    func getFilteredFilesSummary() -> (summary: String, willCopy: Int, total: Int)? {
-        sourceManager.getFilteredFilesSummary()
-    }
-
-    func getDestinationEstimate(at index: Int) -> String? {
-        destinationManager.getDestinationEstimate(at: index, sourceState: SourceEstimateState(
-            sourceURL: sourceManager.sourceURL,
-            sourceTotalBytes: sourceManager.sourceTotalBytes,
-            sourceFileTypes: sourceManager.sourceFileTypes,
-            isScanning: sourceManager.isScanning
-        ))
-    }
+    // Source-tag, progress, and file-scanning delegation live in
+    // BackupManager+Forwarding.swift (AMUX-230).
 }
