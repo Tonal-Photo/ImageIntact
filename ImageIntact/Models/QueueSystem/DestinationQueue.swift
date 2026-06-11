@@ -576,6 +576,13 @@ actor DestinationQueue {
             await callback(true, 0)
         }
 
+        // One best-effort hardware-cache flush for the whole batch: F_FULLFSYNC
+        // is device-wide, so flushing once here covers every file the copy
+        // phase wrote. Per-file full-syncs would thrash the drive (gh#134,
+        // PR #136 review). Per-file fsync+F_NOCACHE happens inside the
+        // .verification read path.
+        OptimizedChecksum.flushVolumeToMedium(containing: destination)
+
         // Verify only files that were successfully copied to THIS destination
         for task in assignedTasks {
             guard !shouldCancel else { break }

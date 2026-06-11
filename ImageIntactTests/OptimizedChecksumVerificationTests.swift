@@ -96,6 +96,21 @@ final class OptimizedChecksumVerificationTests: XCTestCase {
         XCTAssertEqual(hash, "empty-file-0-bytes")
     }
 
+    // MARK: - Batch volume flush (one F_FULLFSYNC per destination)
+
+    func testFlushVolumeToMediumAcceptsFileAndDirectoryPaths() throws {
+        let (url, _) = try writeRandomFile(named: "flush.bin", bytes: 10_000)
+        // Best-effort by contract: must not throw, crash, or leak descriptors
+        // for either descriptor kind.
+        OptimizedChecksum.flushVolumeToMedium(containing: url)
+        OptimizedChecksum.flushVolumeToMedium(containing: tempDir)
+    }
+
+    func testFlushVolumeToMediumOnMissingPathIsNoop() {
+        OptimizedChecksum.flushVolumeToMedium(
+            containing: tempDir.appendingPathComponent("nope/missing.bin"))
+    }
+
     func testVerificationPolicyHonorsCancellation() throws {
         let (url, _) = try writeRandomFile(named: "cancel.bin", bytes: 12_000_000)
         XCTAssertThrowsError(

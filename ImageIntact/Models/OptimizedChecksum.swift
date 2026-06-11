@@ -162,19 +162,40 @@ public struct OptimizedChecksum {
     return hash.hexString
   }
 
-  /// Verification reads must attest bytes on the medium (gh#134):
-  /// 1. `F_FULLFSYNC` pushes the just-written file through the kernel AND the
-  ///    drive's own cache; plain `fsync` is the fallback where the filesystem
-  ///    doesn't support full sync (some network/USB volumes).
-  /// 2. `F_NOCACHE` makes subsequent reads on this descriptor bypass the
-  ///    unified buffer cache.
-  /// Both are best-effort by design: on volumes supporting neither, a cached
-  /// verify is still preferable to failing the whole backup.
+  /// Verification reads must attest bytes that reached the destination device
+  /// (gh#134):
+  /// 1. `fsync` pushes this file's dirty pages out of the kernel to the drive,
+  ///    so the read below cannot be satisfied by pages the copy left behind.
+  ///    The heavier `F_FULLFSYNC` is deliberately NOT issued per file — a
+  ///    hardware-cache flush is device-wide, so per-file flushes only add
+  ///    write amplification (PR #136 review, High). Callers issue one
+  ///    `flushVolumeToMedium(containing:)` per destination before the verify
+  ///    pass instead.
+  /// 2. `F_NOCACHE` makes reads on this descriptor bypass the unified buffer
+  ///    cache, so the hash reads from the device, not the OS page cache.
+  /// Both are best-effort: on volumes supporting neither, a cached verify is
+  /// still preferable to failing the whole backup. No userspace API can force
+  /// a drive past its own read cache, so the honest guarantee is "the data
+  /// traversed the bus and the drive acknowledged it" — not "read from the
+  /// NAND/platter".
   private static func configureNoCacheRead(on fd: Int32) {
-    if fcntl(fd, F_FULLFSYNC) == -1 {
+    _ = fsync(fd)
+    _ = fcntl(fd, F_NOCACHE, 1)
+  }
+
+  /// One-shot, best-effort flush of the drive's volatile write cache for the
+  /// volume containing `url`. `F_FULLFSYNC` is device-wide, so calling this
+  /// once per destination covers every file the copy phase wrote, at a single
+  /// flush's cost. Call before a verification pass; per-file full-syncs are
+  /// deliberately avoided (gh#134, PR #136 review). Works on file and
+  /// directory descriptors alike; silently a no-op where unsupported.
+  static func flushVolumeToMedium(containing url: URL) {
+    let fd = open(url.path, O_RDONLY)
+    guard fd >= 0 else { return }
+    defer { close(fd) }
+    if fcntl(fd, F_FULLFSYNC, 0) == -1 {
       _ = fsync(fd)
     }
-    _ = fcntl(fd, F_NOCACHE, 1)
   }
 
   /// Optimized streaming checksum for large files (and all verification reads)
