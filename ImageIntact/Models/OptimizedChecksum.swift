@@ -205,6 +205,12 @@ public struct OptimizedChecksum {
   /// block for seconds on spinning media; running it inline on an actor would
   /// pin a cooperative-pool thread (PR #136 round 2). Same GCD pattern as
   /// `ChecksumService.sha256Async`.
+  ///
+  /// Deliberately NOT cancellation-aware (PR #136 round 3): an in-flight
+  /// F_FULLFSYNC syscall cannot be interrupted, so resuming the continuation
+  /// early would only detach a still-running flush. A backup cancelled during
+  /// this final flush therefore waits it out — bounded at one flush per
+  /// destination, at the very end of verification.
   static func flushVolumeToMediumAsync(containing url: URL) async {
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       DispatchQueue.global(qos: .utility).async {
