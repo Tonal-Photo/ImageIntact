@@ -163,21 +163,24 @@ public struct OptimizedChecksum {
   }
 
   /// Verification reads must attest bytes that reached the destination device
-  /// (gh#134):
-  /// 1. `fsync` pushes this file's dirty pages out of the kernel to the drive,
-  ///    so the read below cannot be satisfied by pages the copy left behind.
-  ///    The heavier `F_FULLFSYNC` is deliberately NOT issued per file — a
-  ///    hardware-cache flush is device-wide, so per-file flushes only add
-  ///    write amplification (PR #136 review, High). Callers issue one
-  ///    `flushVolumeToMedium(containing:)` per destination before the verify
-  ///    pass instead.
-  /// 2. `F_NOCACHE` makes reads on this descriptor bypass the unified buffer
-  ///    cache, so the hash reads from the device, not the OS page cache.
-  /// Both are best-effort: on volumes supporting neither, a cached verify is
-  /// still preferable to failing the whole backup. No userspace API can force
-  /// a drive past its own read cache, so the honest guarantee is "the data
-  /// traversed the bus and the drive acknowledged it" — not "read from the
-  /// NAND/platter".
+  /// (gh#134). Two distinct guarantees, split across two mechanisms:
+  /// 1. Per-file, here: `fsync` pushes this file's dirty pages out of the
+  ///    kernel to the drive, so the read below cannot be satisfied by pages
+  ///    the copy left behind, and `F_NOCACHE` makes reads on this descriptor
+  ///    bypass the unified buffer cache. The read therefore attests "the data
+  ///    traversed the bus and the drive acknowledged it". No userspace API
+  ///    can force a drive past its own read cache, so media-level readback
+  ///    cannot be promised. `fsync` on a read-only descriptor is permitted on
+  ///    Darwin (non-POSIX but long-standing); it is best-effort by design.
+  /// 2. Per-destination, after the verify loop: one device-wide `F_FULLFSYNC`
+  ///    (`flushVolumeToMedium`) lands the whole batch on permanent storage.
+  ///    Ordered after every per-file fsync — flushing before them would leave
+  ///    late-fsynced data in the drive's volatile cache (PR #136 round 2).
+  ///    Per-file full-syncs are deliberately avoided: the flush is
+  ///    device-wide, so repeating it per file only adds write amplification
+  ///    (PR #136 round 1).
+  /// All calls are best-effort: on volumes supporting neither, a cached
+  /// verify is still preferable to failing the whole backup.
   private static func configureNoCacheRead(on fd: Int32) {
     _ = fsync(fd)
     _ = fcntl(fd, F_NOCACHE, 1)
@@ -186,15 +189,28 @@ public struct OptimizedChecksum {
   /// One-shot, best-effort flush of the drive's volatile write cache for the
   /// volume containing `url`. `F_FULLFSYNC` is device-wide, so calling this
   /// once per destination covers every file the copy phase wrote, at a single
-  /// flush's cost. Call before a verification pass; per-file full-syncs are
-  /// deliberately avoided (gh#134, PR #136 review). Works on file and
-  /// directory descriptors alike; silently a no-op where unsupported.
+  /// flush's cost. Call AFTER the per-file fsyncs of a verification pass (see
+  /// `configureNoCacheRead`). Works on file and directory descriptors alike;
+  /// silently a no-op where unsupported.
   static func flushVolumeToMedium(containing url: URL) {
     let fd = open(url.path, O_RDONLY)
     guard fd >= 0 else { return }
     defer { close(fd) }
     if fcntl(fd, F_FULLFSYNC, 0) == -1 {
       _ = fsync(fd)
+    }
+  }
+
+  /// Async bridge for `flushVolumeToMedium(containing:)`. F_FULLFSYNC can
+  /// block for seconds on spinning media; running it inline on an actor would
+  /// pin a cooperative-pool thread (PR #136 round 2). Same GCD pattern as
+  /// `ChecksumService.sha256Async`.
+  static func flushVolumeToMediumAsync(containing url: URL) async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      DispatchQueue.global(qos: .utility).async {
+        flushVolumeToMedium(containing: url)
+        continuation.resume()
+      }
     }
   }
 

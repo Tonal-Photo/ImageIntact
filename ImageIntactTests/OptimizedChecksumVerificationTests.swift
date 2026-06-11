@@ -111,6 +111,11 @@ final class OptimizedChecksumVerificationTests: XCTestCase {
             containing: tempDir.appendingPathComponent("nope/missing.bin"))
     }
 
+    func testFlushVolumeToMediumAsyncBridgeCompletes() async throws {
+        let (url, _) = try writeRandomFile(named: "flush-async.bin", bytes: 10_000)
+        await OptimizedChecksum.flushVolumeToMediumAsync(containing: url)
+    }
+
     func testVerificationPolicyHonorsCancellation() throws {
         let (url, _) = try writeRandomFile(named: "cancel.bin", bytes: 12_000_000)
         XCTAssertThrowsError(
