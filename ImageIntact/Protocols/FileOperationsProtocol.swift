@@ -47,6 +47,22 @@ protocol FileOperationsProtocol {
   /// - Throws: Error if checksum calculation fails
   func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String
 
+  /// Calculate SHA256 checksum for a file with an explicit cache policy.
+  /// `.verification` requests no-cache reads so the hash attests bytes on the
+  /// destination medium (AMUX-352 / gh#134); `.standard` keeps cached reads.
+  /// A protocol-extension default forwards to the legacy 2-argument method, so
+  /// conformers written before `ChecksumReadPolicy` existed keep compiling
+  /// (the policy is then best-effort dropped).
+  /// - Parameters:
+  ///   - url: File URL to checksum
+  ///   - policy: cache behavior for the read
+  ///   - shouldCancel: Closure to check if operation should be cancelled
+  /// - Returns: SHA256 checksum as hex string
+  /// - Throws: Error if checksum calculation fails
+  func calculateChecksum(
+    for url: URL, policy: ChecksumReadPolicy, shouldCancel: @Sendable @escaping () -> Bool
+  ) async throws -> String
+
   /// Start accessing a security-scoped resource
   /// - Parameter url: Resource URL
   /// - Returns: true if access was granted
@@ -101,6 +117,16 @@ protocol FileOperationsProtocol {
 
 /// Extension to provide convenience methods
 extension FileOperationsProtocol {
+  /// Compat shim: conformers that predate `ChecksumReadPolicy` fall back to
+  /// their legacy implementation; the policy is dropped. Production conformers
+  /// (`DefaultFileOperations`, `CancellableFileOperations`) override this to
+  /// forward the policy for real.
+  func calculateChecksum(
+    for url: URL, policy: ChecksumReadPolicy, shouldCancel: @Sendable @escaping () -> Bool
+  ) async throws -> String {
+    try await calculateChecksum(for: url, shouldCancel: shouldCancel)
+  }
+
   /// Check if a directory exists at the given URL
   func directoryExists(at url: URL) -> Bool {
     var isDirectory: ObjCBool = false

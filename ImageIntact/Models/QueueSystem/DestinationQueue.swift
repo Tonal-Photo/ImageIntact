@@ -605,10 +605,13 @@ actor DestinationQueue {
                     continue
                 }
 
-                // Verify checksum
+                // Verify checksum — .verification flushes the written file to
+                // the medium and bypasses the page cache so the receipt
+                // attests bytes on the destination device (gh#134).
                 let verifyStartTime = Date()
                 let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
+                    policy: .verification,
                     shouldCancel: { self.shouldCancel }
                 )
 
@@ -676,6 +679,14 @@ actor DestinationQueue {
             // The progress callback is for copying progress only
             // Verification happens after copying is complete (at 100%)
         }
+
+        // Durability flush, once per destination: every per-file fsync above
+        // has pushed OS pages to the drive, so a single device-wide
+        // F_FULLFSYNC now lands the whole batch on permanent storage before
+        // we declare this destination verified. Ordered AFTER the per-file
+        // fsyncs (PR #136 round 2) and bridged off the actor because
+        // F_FULLFSYNC can block for seconds (gh#134).
+        await OptimizedChecksum.flushVolumeToMediumAsync(containing: destination)
 
         isVerifying = false
 
