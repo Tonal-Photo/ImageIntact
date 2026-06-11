@@ -605,10 +605,13 @@ actor DestinationQueue {
                     continue
                 }
 
-                // Verify checksum
+                // Verify checksum — .verification flushes the written file to
+                // the medium and bypasses the page cache so the receipt
+                // attests bytes on the destination device (gh#134).
                 let verifyStartTime = Date()
                 let actualChecksum = try await fileOperations.calculateChecksum(
                     for: destPath,
+                    policy: .verification,
                     shouldCancel: { self.shouldCancel }
                 )
 

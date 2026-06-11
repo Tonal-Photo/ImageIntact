@@ -128,6 +128,12 @@ class DefaultFileOperations: FileOperationsProtocol {
     try await ChecksumService.sha256Async(for: url, shouldCancel: shouldCancel)
   }
 
+  func calculateChecksum(
+    for url: URL, policy: ChecksumReadPolicy, shouldCancel: @Sendable @escaping () -> Bool
+  ) async throws -> String {
+    try await ChecksumService.sha256Async(for: url, policy: policy, shouldCancel: shouldCancel)
+  }
+
   func startAccessingSecurityScopedResource(for url: URL) -> Bool {
     return url.startAccessingSecurityScopedResource()
   }

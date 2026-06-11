@@ -80,9 +80,14 @@ enum ChecksumService {
     ///
     /// - Parameters:
     ///   - fileURL: file to hash
+    ///   - policy: cache policy for the read — `.verification` flushes the file
+    ///     to the medium and bypasses the page cache so the hash attests bytes
+    ///     on the destination device (AMUX-352 / gh#134); `.standard` (default)
+    ///     keeps the cached fast paths for manifest/copy-phase work
     ///   - shouldCancel: cooperative cancellation predicate, polled by the inner reader
     static func sha256(
-        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
+        for fileURL: URL, policy: ChecksumReadPolicy = .standard,
+        shouldCancel: @Sendable @escaping () -> Bool
     ) throws -> String {
         // iCloud-not-downloaded check kept explicit because
         // `ubiquitousItemDownloadingStatus` isn't reliably surfaced through a CryptoKit
@@ -98,16 +103,17 @@ enum ChecksumService {
             throw ChecksumServiceError.iCloudNotDownloaded(fileURL)
         }
 
-        return try calculateNative(for: fileURL, shouldCancel: shouldCancel)
+        return try calculateNative(for: fileURL, policy: policy, shouldCancel: shouldCancel)
     }
 
     /// Native Swift checksum via `OptimizedChecksum`. Maps Cocoa file errors to
     /// `ChecksumServiceError`; rethrows cancellation as `ChecksumError.cancelled`.
     private static func calculateNative(
-        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
+        for fileURL: URL, policy: ChecksumReadPolicy,
+        shouldCancel: @Sendable @escaping () -> Bool
     ) throws -> String {
         do {
-            return try OptimizedChecksum.sha256(for: fileURL, shouldCancel: shouldCancel)
+            return try OptimizedChecksum.sha256(for: fileURL, policy: policy, shouldCancel: shouldCancel)
         } catch let checksumError as ChecksumError {
             // Never swallow ChecksumError (includes .cancelled) — rethrow immediately
             throw checksumError
@@ -174,7 +180,8 @@ enum ChecksumService {
     /// (e.g., `BatchFileProcessor`, which runs an entire batch inside a single
     /// `autoreleasepool` to bound peak memory).
     static func sha256Async(
-        for fileURL: URL, shouldCancel: @Sendable @escaping () -> Bool
+        for fileURL: URL, policy: ChecksumReadPolicy = .standard,
+        shouldCancel: @Sendable @escaping () -> Bool
     ) async throws -> String {
         let cancelFlag = CancelFlag()
         let qos = Self.dispatchQoS(for: Task.currentPriority)
@@ -188,7 +195,7 @@ enum ChecksumService {
                             shouldCancel() || cancelFlag.isSet
                         }
                         let result = try ChecksumService.sha256(
-                            for: fileURL, shouldCancel: composed
+                            for: fileURL, policy: policy, shouldCancel: composed
                         )
                         continuation.resume(returning: result)
                     } catch {

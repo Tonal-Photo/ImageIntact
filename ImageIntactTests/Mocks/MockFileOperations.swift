@@ -38,6 +38,8 @@ class MockFileOperations: FileOperationsProtocol {
     var removedItems: [URL] = []
     var trashedItems: [URL] = []
     var checksumCalculations: [URL] = []
+    /// AMUX-352: read policy of every policy-aware checksum call, in call order.
+    var checksumPolicies: [ChecksumReadPolicy] = []
     var securityScopedAccesses: [URL] = []
     var movedItems: [(source: URL, destination: URL)] = []
     var setAttributesCalls: [(attributes: [FileAttributeKey: Any], url: URL)] = []
@@ -135,6 +137,16 @@ class MockFileOperations: FileOperationsProtocol {
         }
     }
 
+    func calculateChecksum(
+        for url: URL, policy: ChecksumReadPolicy, shouldCancel: @Sendable @escaping () -> Bool
+    ) async throws -> String {
+        withLock { checksumPolicies.append(policy) }
+        // Delegate dynamically so subclass overrides of the 2-arg method
+        // (e.g. MockFileOperationsWithCorruption) keep affecting policy-aware
+        // callers like the DestinationQueue verify loop.
+        return try await calculateChecksum(for: url, shouldCancel: shouldCancel)
+    }
+
     func calculateChecksum(for url: URL, shouldCancel: @Sendable @escaping () -> Bool) async throws -> String {
         try withLock {
             checksumCalculations.append(url)
@@ -202,6 +214,7 @@ class MockFileOperations: FileOperationsProtocol {
             createdDirectories.removeAll()
             removedItems.removeAll()
             checksumCalculations.removeAll()
+            checksumPolicies.removeAll()
             securityScopedAccesses.removeAll()
 
             shouldFailCopy = false

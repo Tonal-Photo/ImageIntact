@@ -6,7 +6,25 @@
 //
 
 import CryptoKit
+import Darwin
 import Foundation
+
+/// How checksum reads interact with the OS caches (AMUX-352 / gh#134).
+public enum ChecksumReadPolicy: Sendable, Equatable {
+  /// Cached reads are fine (manifest building, pre-copy skip checks). Cache
+  /// warming here is harmless and sometimes helps the copy phase.
+  case standard
+  /// Post-copy verification: flush the file to the medium (F_FULLFSYNC) and
+  /// bypass the page cache (F_NOCACHE) so the hash attests bytes on the
+  /// destination device — never mmap, regardless of file size.
+  case verification
+}
+
+/// Concrete read strategy chosen for a (file size, policy) pair.
+enum ChecksumReadStrategy: Equatable {
+  case directMapped
+  case streaming(noCache: Bool)
+}
 
 /// Buffer pool for reusing memory allocations across checksum operations
 final class ChecksumBufferPool {
@@ -92,8 +110,25 @@ public struct OptimizedChecksum {
     return 4 * 1024 * 1024  // Default to 4MB for very large files
   }
 
+  /// Files below this size use the mmap fast path under `.standard` policy.
+  static let smallFileThreshold: Int64 = 10_000_000
+
+  /// Pure routing decision for a (file size, policy) pair. Verification must
+  /// never touch the page cache, so it always streams with no-cache reads.
+  static func readStrategy(forFileSize fileSize: Int64, policy: ChecksumReadPolicy)
+    -> ChecksumReadStrategy
+  {
+    if policy == .verification {
+      return .streaming(noCache: true)
+    }
+    return fileSize < smallFileThreshold ? .directMapped : .streaming(noCache: false)
+  }
+
   /// Calculate SHA256 checksum with optimized streaming
-  public static func sha256(for fileURL: URL, shouldCancel: @escaping () -> Bool = { false }) throws
+  public static func sha256(
+    for fileURL: URL, policy: ChecksumReadPolicy = .standard,
+    shouldCancel: @escaping () -> Bool = { false }
+  ) throws
     -> String
   {
     // Get file attributes
@@ -105,14 +140,13 @@ public struct OptimizedChecksum {
       return "empty-file-0-bytes"
     }
 
-    // For small files (<10MB), use direct loading (fastest)
-    if fileSize < 10_000_000 {
+    switch readStrategy(forFileSize: fileSize, policy: policy) {
+    case .directMapped:
       return try calculateDirectChecksum(for: fileURL, shouldCancel: shouldCancel)
+    case .streaming(let noCache):
+      return try calculateOptimizedStreamingChecksum(
+        for: fileURL, fileSize: fileSize, noCache: noCache, shouldCancel: shouldCancel)
     }
-
-    // For larger files, use optimized streaming
-    return try calculateOptimizedStreamingChecksum(
-      for: fileURL, fileSize: fileSize, shouldCancel: shouldCancel)
   }
 
   /// Direct checksum for small files
@@ -128,9 +162,25 @@ public struct OptimizedChecksum {
     return hash.hexString
   }
 
-  /// Optimized streaming checksum for large files
+  /// Verification reads must attest bytes on the medium (gh#134):
+  /// 1. `F_FULLFSYNC` pushes the just-written file through the kernel AND the
+  ///    drive's own cache; plain `fsync` is the fallback where the filesystem
+  ///    doesn't support full sync (some network/USB volumes).
+  /// 2. `F_NOCACHE` makes subsequent reads on this descriptor bypass the
+  ///    unified buffer cache.
+  /// Both are best-effort by design: on volumes supporting neither, a cached
+  /// verify is still preferable to failing the whole backup.
+  private static func configureNoCacheRead(on fd: Int32) {
+    if fcntl(fd, F_FULLFSYNC) == -1 {
+      _ = fsync(fd)
+    }
+    _ = fcntl(fd, F_NOCACHE, 1)
+  }
+
+  /// Optimized streaming checksum for large files (and all verification reads)
   private static func calculateOptimizedStreamingChecksum(
-    for fileURL: URL, fileSize: Int64, shouldCancel: @escaping () -> Bool
+    for fileURL: URL, fileSize: Int64, noCache: Bool = false,
+    shouldCancel: @escaping () -> Bool
   ) throws -> String {
     // Wrap in autoreleasepool for better memory management
     return try autoreleasepool {
@@ -144,6 +194,10 @@ public struct OptimizedChecksum {
       // Open file handle for reading
       let fileHandle = try FileHandle(forReadingFrom: fileURL)
       defer { try? fileHandle.close() }
+
+      if noCache {
+        configureNoCacheRead(on: fileHandle.fileDescriptor)
+      }
 
       var hasher = SHA256()
       var totalBytesRead: Int64 = 0
