@@ -16,6 +16,23 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+# --- Ignore case: .worktrees/ and .claude/ must be gitignored ---
+git -C "$repo_root" check-ignore -q .worktrees/ && {
+  echo "PASS: ignore case - .worktrees/ is gitignored"
+  PASS=$((PASS + 1))
+} || {
+  echo "FAIL: ignore case - .worktrees/ is NOT gitignored"
+  FAIL=$((FAIL + 1))
+}
+
+git -C "$repo_root" check-ignore -q .claude/ && {
+  echo "PASS: ignore case - .claude/ is gitignored"
+  PASS=$((PASS + 1))
+} || {
+  echo "FAIL: ignore case - .claude/ is NOT gitignored"
+  FAIL=$((FAIL + 1))
+}
+
 # --- Summary ---
 echo ""
 echo "Results: $((PASS + FAIL)) tests, $PASS passed, $FAIL failed"

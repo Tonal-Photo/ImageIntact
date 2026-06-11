@@ -31,3 +31,7 @@ comprehensive-test-results.txt
 # macOS
 .DS_Store
 *.xcresult
+
+# Multi-session safety: worktrees and local Claude config must never be committed
+.worktrees/
+.claude/
