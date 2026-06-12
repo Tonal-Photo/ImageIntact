@@ -70,8 +70,10 @@ final class MigrationUITests: ImageIntactUITestCase {
     XCTAssertTrue(stats.contains("failed=0"), "backup reported failures: \(stats)")
     XCTAssertTrue(stats.contains("inSource=6"), "expected 6 source files in stats: \(stats)")
     // All 6 files were just MOVED into the organization folder, so the copy
-    // layer finds every destination file already present with a matching
-    // checksum — nothing should be re-copied.
+    // layer skips the writes (matching checksums). The copied/skipped split
+    // is deliberately NOT pinned: copy-time skips are untallied today
+    // (gh#142), so the cN/sN values don't reflect what happened. Tighten to
+    // the exact dest1 string when gh#142 lands.
     XCTAssertTrue(stats.contains("dest1:"), "expected per-destination stats: \(stats)")
   }
 
