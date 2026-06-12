@@ -14,8 +14,21 @@ public struct FileManifestEntry {
 extension BackupManager {
     /// Performs backup using the new smart queue system with BackupOrchestrator
     /// Each destination runs independently at its own speed
+    ///
+    /// The skip flags are per-run decision memory (gh#141): decision
+    /// continuations re-enter this method after the user answers a preflight
+    /// dialog, and the answered check must not re-run — the detectors have no
+    /// decline-memory, so re-running re-presents the same sheet forever.
+    /// Passing the memory as parameters (not state) scopes it to the
+    /// re-entry chain by construction: a fresh Run Backup uses the defaults
+    /// and both checks run again.
     @MainActor
-    func performQueueBasedBackup(source: URL, destinations: [URL]) async {
+    func performQueueBasedBackup(
+        source: URL,
+        destinations: [URL],
+        skipMigrationCheck: Bool = false,
+        skipDuplicateCheck: Bool = false
+    ) async {
         let backupID = UUID().uuidString.prefix(8)
         ApplicationLogger.shared.debug(
             "Starting backup \(backupID): \(source.lastPathComponent) → \(destinations.count) destination(s)",
@@ -79,8 +92,9 @@ extension BackupManager {
         // Yield control to UI after manifest building
         await Task.yield()
 
-        // Check for migration if organization is enabled
-        if !organizationName.isEmpty {
+        // Check for migration if organization is enabled and the user hasn't
+        // already answered the offer this run
+        if !organizationName.isEmpty, !skipMigrationCheck {
             await checkForMigration(
                 source: source, destinations: destinations, manifest: preflightManifest
             )
@@ -98,8 +112,9 @@ extension BackupManager {
             }
         }
 
-        // Check for duplicates before proceeding
-        if enableDuplicateDetection {
+        // Check for duplicates before proceeding, unless the user has
+        // already made the call for this run
+        if enableDuplicateDetection, !skipDuplicateCheck {
             await checkForDuplicates(
                 source: source, destinations: destinations, manifest: preflightManifest
             )
@@ -363,125 +378,8 @@ extension BackupManager {
 
     // handleBackupCompletion lives in BackupManager+Completion.swift (AMUX-230).
 
-    // MARK: - Migration Support
-
-    /// Check if migration is needed for organizing existing files
-    @MainActor
-    private func checkForMigration(source: URL, destinations: [URL], manifest: [FileManifestEntry])
-        async
-    {
-        ApplicationLogger.shared.debug("Checking for migration opportunities", category: .backup)
-
-        // Check for cancellation
-        guard !state.shouldCancel else {
-            ApplicationLogger.shared.debug("Migration check cancelled", category: .backup)
-            return
-        }
-
-        state.pendingMigrationPlans.removeAll()
-
-        // Start security-scoped access for source
-        let sourceAccessGranted = source.startAccessingSecurityScopedResource()
-        defer {
-            if sourceAccessGranted {
-                source.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let detector = BackupMigrationDetector()
-
-        // Check each destination for migration needs
-        for (_, destination) in destinations.enumerated() {
-            if let plan = await detector.checkForMigrationNeeded(
-                source: source,
-                destination: destination,
-                organizationName: organizationName,
-                manifest: manifest
-            ) {
-                ApplicationLogger.shared.debug("Migration needed for \(destination.lastPathComponent): \(plan.fileCount) files", category: .backup)
-                state.pendingMigrationPlans.append(plan)
-            }
-        }
-
-        // Show migration dialog if needed
-        if !state.pendingMigrationPlans.isEmpty {
-            showMigrationDialog = true
-        }
-    }
-
-    /// Continue backup after migration decision
-    @MainActor
-    func continueBackupAfterMigration() async {
-        ApplicationLogger.shared.debug("Continuing backup after migration", category: .backup)
-        showMigrationDialog = false
-
-        // Re-run the backup now that migration is handled
-        if let source = sourceURL {
-            let destinations = destinationItems.compactMap { $0.url }
-            await performQueueBasedBackup(source: source, destinations: destinations)
-        }
-    }
-
-    /// Check for duplicate files at destinations
-    @MainActor
-    private func checkForDuplicates(source _: URL, destinations: [URL], manifest: [FileManifestEntry])
-        async
-    {
-        ApplicationLogger.shared.debug("Checking for duplicate files", category: .backup)
-
-        // Check for cancellation
-        guard !state.shouldCancel else {
-            ApplicationLogger.shared.debug("Duplicate check cancelled", category: .backup)
-            return
-        }
-
-        state.statusMessage = "Analyzing for duplicates..."
-
-        // Perform duplicate analysis for all destinations
-        let analyses = await duplicateDetector.preflightDuplicateCheck(
-            manifest: manifest,
-            destinations: destinations,
-            organizationName: organizationName
-        )
-
-        // Check if any duplicates were found
-        let totalDuplicates = analyses.values.reduce(0) { $0 + $1.totalDuplicates }
-
-        if totalDuplicates > 0 {
-            ApplicationLogger.shared.debug("Found \(totalDuplicates) duplicate files across destinations", category: .backup)
-            state.duplicateAnalyses = analyses
-            showDuplicateWarning = true
-        } else {
-            ApplicationLogger.shared.debug("No duplicates found", category: .backup)
-            state.duplicateAnalyses = nil
-            showDuplicateWarning = false
-        }
-    }
-
-    /// Continue backup after duplicate handling decision
-    @MainActor
-    func continueBackupAfterDuplicateDecision(skipExact: Bool, skipRenamed: Bool) async {
-        ApplicationLogger.shared.debug("Continuing backup with duplicate preferences", category: .backup)
-        showDuplicateWarning = false
-        state.skipExactDuplicates = skipExact
-        state.skipRenamedDuplicates = skipRenamed
-
-        // Re-run the backup now that duplicate handling is decided
-        if let source = sourceURL {
-            let destinations = destinationItems.compactMap { $0.url }
-            await performQueueBasedBackup(source: source, destinations: destinations)
-        }
-    }
-
-    /// Cancel backup from duplicate warning
-    @MainActor
-    func cancelBackupFromDuplicateWarning() {
-        ApplicationLogger.shared.debug("Backup cancelled by user from duplicate warning", category: .backup)
-        showDuplicateWarning = false
-        state.duplicateAnalyses = nil
-        state.isProcessing = false
-        state.statusMessage = "Backup cancelled"
-    }
+    // checkForMigration / checkForDuplicates and their decision continuations
+    // live in BackupManagerDecisionContinuation.swift (gh#141, 500-line limit).
 
     // checkForLargeBackupAndWait + respondToLargeBackupConfirmation live in
     // BackupManager+LargeBackup.swift (AMUX-230).

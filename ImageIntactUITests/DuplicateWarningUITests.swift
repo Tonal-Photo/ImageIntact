@@ -66,19 +66,14 @@ final class DuplicateWarningUITests: ImageIntactUITestCase {
     // INTENDED: the backup proceeds honoring the selection and the
     // completion stats report all 6 exact duplicates as skipped.
     //
-    // ACTUAL (gh#141): continueBackupAfterDuplicateDecision re-enters the
-    // preflight, which re-detects the same duplicates without consulting
-    // the just-made decision and re-presents the dialog forever; with
-    // detection enabled, Cancel is the only working exit. Verified
-    // 2026-06-12: the element dump at timeout shows sheet.duplicate present
-    // again. Once gh#141 is fixed, the stats assertions additionally
-    // require gh#142 (skipped counts never reach completion stats:
-    // recordFileSkipped has no production callers and filesSkipped is
-    // hard-coded to 0). This strict XCTExpectFailure fails loudly when
-    // BOTH are fixed — delete the wrapper then; the intended assertions
-    // below take over unchanged.
+    // The dialog loop (gh#141) is fixed — the backup now proceeds and the
+    // sheet does not re-present — but the stats assertions still require
+    // gh#142 (skipped counts never reach completion stats: recordFileSkipped
+    // has no production callers and filesSkipped is hard-coded to 0). This
+    // strict XCTExpectFailure fails loudly when gh#142 is fixed — delete the
+    // wrapper then; the intended assertions below take over unchanged.
     XCTExpectFailure(
-      "gh#141: Continue re-presents the dialog; gh#142: skip counts never reach stats"
+      "gh#142: skip counts never reach completion stats"
     ) {
       let completion = CompletionSheet(app: a)
       guard completion.marker.waitForExistence(timeout: 45) else {
@@ -106,25 +101,21 @@ final class DuplicateWarningUITests: ImageIntactUITestCase {
 
     duplicate.button("Copy All Anyway").click()
 
-    // INTENDED: the backup proceeds with no duplicate filtering and
-    // completes without failures. (The copied/skipped split is left to the
-    // gh#142 fix — copy-time skips of identical files are untallied today.)
-    //
-    // ACTUAL (gh#141): same continuation loop as Continue with Selection —
-    // the dialog re-presents forever and the backup never runs. Delete this
-    // wrapper when gh#141 is fixed.
-    XCTExpectFailure(
-      "gh#141: Copy All Anyway re-presents the dialog; backup never continues"
-    ) {
-      let completion = CompletionSheet(app: a)
-      guard completion.marker.waitForExistence(timeout: 45) else {
-        XCTFail("backup did not complete after Copy All Anyway")
-        return
-      }
-      let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
-      XCTAssertTrue(stats.contains("failed=0"), "backup reported failures: \(stats)")
-      XCTAssertTrue(stats.contains("inSource=6"), "expected 6 source files in stats: \(stats)")
+    // The backup proceeds with no duplicate filtering and completes without
+    // failures (gh#141). The copied/skipped split is left to the gh#142 fix —
+    // copy-time skips of identical files are untallied today.
+    let completion = CompletionSheet(app: a)
+    guard completion.marker.waitForExistence(timeout: 45) else {
+      dumpElementTree(a, label: "duplicate-copyall-no-completion")
+      XCTFail("backup did not complete after Copy All Anyway; element tree dumped")
+      return
     }
+    XCTAssertTrue(
+      duplicate.marker.waitForNonExistence(timeout: 10),
+      "duplicate sheet still present after completion")
+    let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
+    XCTAssertTrue(stats.contains("failed=0"), "backup reported failures: \(stats)")
+    XCTAssertTrue(stats.contains("inSource=6"), "expected 6 source files in stats: \(stats)")
   }
 
   func testCancelBackup_PerformsNoCopy() throws {
