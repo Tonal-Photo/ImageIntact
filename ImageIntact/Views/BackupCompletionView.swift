@@ -94,8 +94,10 @@ struct HeaderSection: View {
     let statistics: BackupStatistics
 
     /// Machine-readable summary consumed by ImageIntactUITests through the
-    /// accessibilityValue of the "Backup Complete" title leaf.
+    /// accessibilityValue of the "Backup Complete" title leaf. Empty outside
+    /// --uitest launches so VoiceOver users never hear the payload.
     private var uiTestStatsValue: String {
+        guard UITestSeam.isActive else { return "" }
         let dests = statistics.destinationStats
             .sorted { $0.key < $1.key }
             .map { "\($0.key):c\($0.value.filesCopied)/s\($0.value.filesSkipped)/f\($0.value.filesFailed)" }

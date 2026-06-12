@@ -101,6 +101,32 @@ final class DuplicateWarningUITests: ImageIntactUITestCase {
     }
   }
 
+  func testCopyAllAnyway_ProceedsCopyingEverything() throws {
+    let (a, duplicate) = launchToDuplicateSheet()
+
+    duplicate.button("Copy All Anyway").click()
+
+    // INTENDED: the backup proceeds with no duplicate filtering and
+    // completes without failures. (The copied/skipped split is left to the
+    // gh#142 fix — copy-time skips of identical files are untallied today.)
+    //
+    // ACTUAL (gh#141): same continuation loop as Continue with Selection —
+    // the dialog re-presents forever and the backup never runs. Delete this
+    // wrapper when gh#141 is fixed.
+    XCTExpectFailure(
+      "gh#141: Copy All Anyway re-presents the dialog; backup never continues"
+    ) {
+      let completion = CompletionSheet(app: a)
+      guard completion.marker.waitForExistence(timeout: 45) else {
+        XCTFail("backup did not complete after Copy All Anyway")
+        return
+      }
+      let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
+      XCTAssertTrue(stats.contains("failed=0"), "backup reported failures: \(stats)")
+      XCTAssertTrue(stats.contains("inSource=6"), "expected 6 source files in stats: \(stats)")
+    }
+  }
+
   func testCancelBackup_PerformsNoCopy() throws {
     let (a, duplicate) = launchToDuplicateSheet()
 

@@ -79,6 +79,13 @@ struct MigrationConfirmationView: View {
         }
     }
 
+    /// Empty outside --uitest launches so VoiceOver users never hear the
+    /// machine-readable payload (panel finding, PR #143 round 1).
+    private var uiTestMarkerValue: String {
+        guard UITestSeam.isActive else { return "" }
+        return "files=\(plan.fileCount);dest=\(destinationName)"
+    }
+
     private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -225,7 +232,7 @@ struct MigrationConfirmationView: View {
                 // every descendant's id, and values only surface from leaves
                 // (same pattern as sheet.completion in BackupCompletionView).
                 .accessibilityIdentifier("sheet.migration")
-                .accessibilityValue("files=\(plan.fileCount);dest=\(destinationName)")
+                .accessibilityValue(uiTestMarkerValue)
 
             Text("Found existing files that match your source")
                 .font(.subheadline)

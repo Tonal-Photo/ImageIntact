@@ -26,6 +26,13 @@ struct DuplicateWarningView: View {
     analyses.values.reduce(0) { $0 + $1.renamedDuplicates.count }
   }
 
+  /// Empty outside --uitest launches so VoiceOver users never hear the
+  /// machine-readable payload (panel finding, PR #143 round 1).
+  private var uiTestMarkerValue: String {
+    guard UITestSeam.isActive else { return "" }
+    return "exact=\(totalExactDuplicates);renamed=\(totalRenamedDuplicates)"
+  }
+
   private var totalSpaceSaved: Int64 {
     var saved: Int64 = 0
     if skipExactDuplicates {
@@ -57,8 +64,7 @@ struct DuplicateWarningView: View {
           // every descendant's id, and values only surface from leaves
           // (same pattern as sheet.completion in BackupCompletionView).
           .accessibilityIdentifier("sheet.duplicate")
-          .accessibilityValue(
-            "exact=\(totalExactDuplicates);renamed=\(totalRenamedDuplicates)")
+          .accessibilityValue(uiTestMarkerValue)
 
         Text("Some files already exist at the destination(s)")
           .font(.subheadline)

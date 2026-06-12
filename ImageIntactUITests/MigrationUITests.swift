@@ -75,6 +75,29 @@ final class MigrationUITests: ImageIntactUITestCase {
     XCTAssertTrue(stats.contains("dest1:"), "expected per-destination stats: \(stats)")
   }
 
+  func testKeepInRoot_DismissesWithoutRunningBackup() throws {
+    let (a, migration) = launchToMigrationSheet()
+
+    migration.button("Keep in Root").click()
+
+    XCTAssertTrue(
+      migration.marker.waitForNonExistence(timeout: 10),
+      "migration sheet did not dismiss after Keep in Root")
+
+    // Keep in Root only declines the offer — nothing may be copied or
+    // moved. 6 tiny fixture files copy in ~2s, so 8s of silence is
+    // conclusive.
+    let completion = CompletionSheet(app: a)
+    XCTAssertFalse(
+      completion.marker.waitForExistence(timeout: 8),
+      "completion sheet appeared — backup ran despite Keep in Root")
+
+    let main = MainScreen(app: a)
+    XCTAssertTrue(
+      waitUntilHittable(main.runBackupButton), "Run Backup not clickable after Keep in Root")
+    XCTAssertTrue(main.runBackupButton.isEnabled, "Run Backup disabled after Keep in Root")
+  }
+
   func testSkipMigration_LeavesFilesInPlaceAndBackupCompletes() throws {
     let (a, migration) = launchToMigrationSheet()
 
