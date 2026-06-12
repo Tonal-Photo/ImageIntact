@@ -39,7 +39,9 @@ extension BackupManager {
         // Start security access for preflight manifest building
         // This will be stopped after preflight checks, before orchestrator starts
         let preflightAccess = source.startAccessingSecurityScopedResource()
-        guard preflightAccess else {
+        // UI-test fixture paths live in the app container: start() returns
+        // false (no bookmark scope) but access works. DEBUG-only escape.
+        guard preflightAccess || UITestSeam.allowsUnscopedAccess(source) else {
             ApplicationLogger.shared.debug("Failed to access source folder for preflight checks", category: .backup)
             state.isProcessing = false
             state.statusMessage = "Cannot access source folder - permission denied"
@@ -265,25 +267,29 @@ extension BackupManager {
     private func validateLocationsAccessible(source: URL, destinations: [URL]) -> Bool {
         // Validate source is still accessible
         let validationAccess = source.startAccessingSecurityScopedResource()
-        if !validationAccess {
+        if !validationAccess && !UITestSeam.allowsUnscopedAccess(source) {
             ApplicationLogger.shared.debug("Source folder is no longer accessible - permission revoked or drive removed", category: .backup)
             state.isProcessing = false
             state.statusMessage = "Cannot access source folder - please check permissions and try again"
             return false
         }
-        source.stopAccessingSecurityScopedResource()
+        if validationAccess {
+            source.stopAccessingSecurityScopedResource()
+        }
 
         // Also validate all destinations are accessible
         for destination in destinations {
             let destAccess = destination.startAccessingSecurityScopedResource()
-            if !destAccess {
+            if !destAccess && !UITestSeam.allowsUnscopedAccess(destination) {
                 ApplicationLogger.shared.debug("Destination \(destination.lastPathComponent) is no longer accessible", category: .backup)
                 state.isProcessing = false
                 state.statusMessage =
                     "Cannot access destination '\(destination.lastPathComponent)' - please check connection and try again"
                 return false
             }
-            destination.stopAccessingSecurityScopedResource()
+            if destAccess {
+                destination.stopAccessingSecurityScopedResource()
+            }
         }
 
         ApplicationLogger.shared.debug("Validated all locations accessible before starting orchestrator", category: .backup)

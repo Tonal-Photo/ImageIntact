@@ -93,6 +93,17 @@ struct BackupCompletionView: View {
 struct HeaderSection: View {
     let statistics: BackupStatistics
 
+    /// Machine-readable summary consumed by ImageIntactUITests through the
+    /// accessibilityValue of the "Backup Complete" title leaf.
+    private var uiTestStatsValue: String {
+        let dests = statistics.destinationStats
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key):c\($0.value.filesCopied)/s\($0.value.filesSkipped)/f\($0.value.filesFailed)" }
+            .joined(separator: ",")
+        return "processed=\(statistics.totalFilesProcessed);skipped=\(statistics.totalFilesSkipped);"
+            + "failed=\(statistics.totalFilesFailed);inSource=\(statistics.totalFilesInSource);dests=\(dests)"
+    }
+
     private var statusIcon: String {
         if statistics.totalFilesFailed == 0 {
             return "checkmark.circle.fill"
@@ -122,6 +133,11 @@ struct HeaderSection: View {
             Text("Backup Complete")
                 .font(.title2)
                 .fontWeight(.semibold)
+                // Machine-readable summary for the UI test suite. Id+value on
+                // a LEAF Text — container-level identifiers stomp every
+                // descendant's id, and values only surface from leaves.
+                .accessibilityIdentifier("sheet.completion")
+                .accessibilityValue(uiTestStatsValue)
 
             Text(statistics.formattedDuration)
                 .font(.subheadline)

@@ -130,11 +130,17 @@ class BackupManager {
             organizationName = SmartFolderName.sanitize(lastUsedName)
         }
 
-        // Check for UI test mode
-        if BackupManager.isRunningTests, ProcessInfo.processInfo.arguments.contains("--uitest") {
-            loadUITestPaths()
-            return
-        }
+        // Check for UI test mode. Gated on the argument alone (not
+        // isRunningTests): XCTestConfigurationFilePath exists in the XCUITest
+        // RUNNER process, never in the app process it launches, so requiring
+        // it meant this branch could never fire under UI tests. DEBUG-only —
+        // release builds never honor the seam.
+        #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--uitest") {
+                loadUITestPaths()
+                return
+            }
+        #endif
 
         // Restore last session if enabled
         if preferences.restoreLastSession {

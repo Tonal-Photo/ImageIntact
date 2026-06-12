@@ -122,6 +122,10 @@ struct WelcomeView: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        // Return dismisses the welcome sheet. On a 1050pt display the
+        // 650pt sheet's bottom row sits in the Dock zone, so the keyboard
+        // path matters (and the UI tests rely on it).
+        .keyboardShortcut(.defaultAction)
       }
       .padding(.horizontal, 20)
       .padding(.bottom, 20)

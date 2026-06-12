@@ -1,0 +1,1 @@
+XCUITest harness support files (base case, screen objects) are exercised by the UI suite itself; unit tests do not apply. See .planning/design/ui-test-suite.md
