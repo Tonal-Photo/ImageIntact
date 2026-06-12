@@ -174,8 +174,14 @@ final class ChecksumCancellationTests: XCTestCase {
                 XCTFail("Should throw ChecksumError.cancelled, got: \(error)")
                 return
             }
+        } catch is _Concurrency.CancellationError {
+            // Also acceptable (AMUX-353): if the cancel lands before sha256Async
+            // is entered, the fail-fast Task.checkCancellation() throws
+            // CancellationError instead. Both forms mean cooperative
+            // cancellation surfaced, which is what this test locks. Qualified:
+            // ImageIntact's own CancellationError shadows the stdlib type.
         } catch {
-            XCTFail("Expected ChecksumError.cancelled, got: \(type(of: error)) \(error)")
+            XCTFail("Expected a cancellation error, got: \(type(of: error)) \(error)")
         }
     }
 

@@ -117,7 +117,12 @@ enum ChecksumService {
         } catch let checksumError as ChecksumError {
             // Never swallow ChecksumError (includes .cancelled) — rethrow immediately
             throw checksumError
-        } catch let cancellation as CancellationError {
+        } catch let cancellation as _Concurrency.CancellationError {
+            // Qualified (AMUX-353): ImageIntact declares its own
+            // CancellationError (BatchFileProcessor.swift) which shadows the
+            // stdlib type in this scope — the unqualified name silently
+            // matched the wrong type, sending real task cancellation to the
+            // readFailed catch-all below.
             // Rethrow Swift's structured-concurrency cancellation as-is. Wrapping it
             // as ChecksumError.cancelled would cause a parent TaskGroup to treat it
             // as a regular failure rather than cooperative cancellation, which would
@@ -143,37 +148,45 @@ enum ChecksumService {
         // tool. Removed in PR #107.
     }
 
-    /// Async wrapper around `sha256(for:shouldCancel:)` that bridges the synchronous,
-    /// blocking SHA-256 read into an `async` context via GCD.
+    /// Shared, bounded queue for all blocking checksum reads (gh#111 item 1).
+    /// Encapsulating the limit here means an unbounded caller (e.g. a future
+    /// `TaskGroup` over an arbitrary file list) queues work instead of forcing
+    /// GCD to spawn a thread per blocking call. Trade-off, accepted in gh#111:
+    /// `ChecksumService` is no longer a stateless namespace — the queue is
+    /// module-scoped *scheduling* state, not data state. Internal (not
+    /// private) so tests can lock the bound and the name.
+    static let ioQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.imageintact.checksum.io"
+        queue.maxConcurrentOperationCount = ProcessInfo.processInfo.activeProcessorCount
+        return queue
+    }()
+
+    /// Async wrapper around `sha256(for:policy:shouldCancel:)` that bridges the
+    /// synchronous, blocking SHA-256 read into an `async` context via the shared
+    /// bounded `ioQueue`.
     ///
     /// `Task.detached` would *not* solve cooperative-pool starvation here — detached
     /// tasks still run on the cooperative thread pool (sized to active core count).
-    /// GCD's global queues spawn additional threads for blocking work, keeping the
-    /// cooperative pool free for other async tasks. See Apple WWDC 2021 — "Swift
-    /// concurrency: Behind the scenes".
+    /// The OperationQueue runs blocking work on its own threads, keeping the
+    /// cooperative pool free for other async tasks, and unlike `DispatchQueue.global`
+    /// it caps concurrent blocking reads at `activeProcessorCount` (gh#111 item 1).
     ///
-    /// Cancellation: this method honors *both* the explicit `shouldCancel` closure
-    /// (polled inside `OptimizedChecksum`) and Swift Task cancellation. A parent task
-    /// `cancel()` flips a thread-safe flag inside `withTaskCancellationHandler`, and
-    /// the flag is OR'd into the cancellation predicate handed to the underlying
-    /// reader. Either signal stops the work at the next poll; the resulting
-    /// `ChecksumError.cancelled` propagates back to the awaiting caller.
+    /// Fail-fast: an already-cancelled caller throws `CancellationError` before any
+    /// continuation allocation or queue hop (gh#111 item 2). Mid-flight cancellation
+    /// is unchanged: a parent task `cancel()` flips a thread-safe flag inside
+    /// `withTaskCancellationHandler`, the flag is OR'd into the cancellation
+    /// predicate handed to the underlying reader, and the work surfaces
+    /// `ChecksumError.cancelled` at the next poll.
     ///
-    /// QoS: the dispatched queue's QoS is mapped from `Task.currentPriority`, so a
-    /// background-priority caller doesn't artificially elevate the underlying I/O.
-    /// Note: GCD threads do *not* participate in Swift Concurrency's dynamic priority
-    /// escalation. If the calling task is later awaited by a higher-priority task,
-    /// this work continues at its initial QoS rather than being escalated. Acceptable
-    /// for ImageIntact's foreground/userInitiated workload; reconsider if this method
-    /// is ever called from low-priority contexts that may be escalated mid-flight.
-    ///
-    /// Concurrency note: `DispatchQueue.global` can spawn many threads under high
-    /// concurrent load. ImageIntact's backup pipeline bounds concurrent calls to
-    /// ≤ N destinations + 1 manifest builder (typically 2-5 concurrent), well under
-    /// any GCD thread-explosion threshold. If a future caller fires unbounded
-    /// concurrent checksums (e.g., a `TaskGroup` over an arbitrary file list), wrap
-    /// the call site in a `Semaphore` or migrate this method to a shared
-    /// `OperationQueue` with `maxConcurrentOperationCount`.
+    /// QoS: each `BlockOperation`'s `qualityOfService` is mapped from
+    /// `Task.currentPriority`, so a background-priority caller doesn't artificially
+    /// elevate the underlying I/O. Note: queue threads do *not* participate in Swift
+    /// Concurrency's dynamic priority escalation. If the calling task is later
+    /// awaited by a higher-priority task, this work continues at its initial QoS
+    /// rather than being escalated. Acceptable for ImageIntact's
+    /// foreground/userInitiated workload; reconsider if this method is ever called
+    /// from low-priority contexts that may be escalated mid-flight.
     ///
     /// Use this from any `async` caller. The synchronous `sha256(for:shouldCancel:)`
     /// remains available for callers that already manage their own thread bridging
@@ -183,11 +196,17 @@ enum ChecksumService {
         for fileURL: URL, policy: ChecksumReadPolicy = .standard,
         shouldCancel: @Sendable @escaping () -> Bool
     ) async throws -> String {
+        // Fail fast if the caller is already cancelled (gh#111 item 2): skips
+        // the continuation allocation, the queue hop, and a thread wake.
+        // CancellationError (not ChecksumError.cancelled) preserves
+        // structured-concurrency semantics for TaskGroup parents.
+        try Task.checkCancellation()
+
         let cancelFlag = CancelFlag()
-        let qos = Self.dispatchQoS(for: Task.currentPriority)
+        let qos = Self.operationQoS(for: Task.currentPriority)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: qos).async {
+                let operation = BlockOperation {
                     do {
                         // Compose the user's predicate with our task-cancel flag so
                         // either signal stops the work.
@@ -202,18 +221,24 @@ enum ChecksumService {
                         continuation.resume(throwing: error)
                     }
                 }
+                // Operations are never op.cancel()ed: a queued-but-cancelled
+                // call still runs, polls the flag, and throws quickly — so the
+                // continuation is resumed exactly once, never leaked.
+                operation.qualityOfService = qos
+                ioQueue.addOperation(operation)
             }
         } onCancel: {
             cancelFlag.set()
         }
     }
 
-    /// Map a Swift `_Concurrency.TaskPriority` to the closest `DispatchQoS.QoSClass`.
-    /// Preserves caller-context priority across the GCD bridge instead of artificially
+    /// Map a Swift `_Concurrency.TaskPriority` to the closest Foundation
+    /// `QualityOfService` for operations on the shared `ioQueue`. Preserves
+    /// caller-context priority across the queue hop instead of artificially
     /// elevating background work to `.userInitiated`. The fully-qualified type is
     /// required because ImageIntact has its own internal `TaskPriority` type that
     /// would otherwise shadow the standard library one in this scope.
-    private static func dispatchQoS(for priority: _Concurrency.TaskPriority) -> DispatchQoS.QoSClass {
+    private static func operationQoS(for priority: _Concurrency.TaskPriority) -> QualityOfService {
         switch priority {
         case .high: return .userInitiated
         case .userInitiated: return .userInitiated
