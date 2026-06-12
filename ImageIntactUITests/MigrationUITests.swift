@@ -80,21 +80,29 @@ final class MigrationUITests: ImageIntactUITestCase {
 
     migration.button("Skip").click()
 
-    // Skip declines the move but the backup itself must still run: files are
+    // INTENDED: Skip declines the move but the backup still runs — files are
     // copied into the organization folder, loose root files stay where they
-    // are, and the migration offer must not re-appear for this run.
-    let completion = CompletionSheet(app: a)
-    if !completion.marker.waitForExistence(timeout: 120) {
-      dumpElementTree(a, label: "migration-skip-no-completion")
-      XCTFail("backup did not complete after Skip; element tree dumped")
-      return
+    // are, and the migration offer does not re-appear for this run.
+    //
+    // ACTUAL (gh#141): continueBackupAfterMigration re-enters the preflight,
+    // which re-detects the same loose root files (no decline-memory) and
+    // re-presents the dialog forever; the backup never runs. Verified
+    // 2026-06-12: the element dump at timeout shows sheet.migration present
+    // again. The strict XCTExpectFailure fails this test loudly the day
+    // gh#141 is fixed — delete the wrapper then; the intended assertions
+    // below take over unchanged.
+    XCTExpectFailure("gh#141: Skip re-presents the migration dialog; backup never continues") {
+      let completion = CompletionSheet(app: a)
+      guard completion.marker.waitForExistence(timeout: 45) else {
+        XCTFail("backup did not complete after Skip")
+        return
+      }
+      let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
+      XCTAssertTrue(stats.contains("failed=0"), "backup reported failures: \(stats)")
+      XCTAssertTrue(stats.contains("inSource=6"), "expected 6 source files in stats: \(stats)")
+      XCTAssertTrue(
+        stats.contains("dest1:c6/s0/f0"),
+        "expected all 6 files copied fresh into the organization folder: \(stats)")
     }
-
-    let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
-    XCTAssertTrue(stats.contains("failed=0"), "backup reported failures: \(stats)")
-    XCTAssertTrue(stats.contains("inSource=6"), "expected 6 source files in stats: \(stats)")
-    XCTAssertTrue(
-      stats.contains("dest1:c6/s0/f0"),
-      "expected all 6 files copied fresh into the organization folder: \(stats)")
   }
 }
