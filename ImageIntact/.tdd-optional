@@ -1,0 +1,1 @@
+App-shell files (ContentView, ImageIntactApp) are covered by the e2e XCUITest suite (ImageIntactUITests), not unit tests. See .planning/design/ui-test-suite.md

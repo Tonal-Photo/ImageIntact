@@ -49,6 +49,9 @@
          <TestPlanReference
             reference = "container:TestPlans/FullE2E.xctestplan">
          </TestPlanReference>
+         <TestPlanReference
+            reference = "container:TestPlans/UI.xctestplan">
+         </TestPlanReference>
       </TestPlans>
       <Testables>
          <TestableReference
@@ -65,7 +68,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "71F5E3D22E3F85B800AD2DEC"
+               BlueprintIdentifier = "71AA10022E5F000000000002"
                BuildableName = "ImageIntactUITests.xctest"
                BlueprintName = "ImageIntactUITests"
                ReferencedContainer = "container:ImageIntact.xcodeproj">

@@ -1,0 +1,28 @@
+{
+  "configurations" : [
+    {
+      "id" : "A1B2C3D4-0001-4A00-8000-1234567890AB",
+      "name" : "UI",
+      "options" : {
+        "maximumTestExecutionTimeAllowance" : 300,
+        "uiTestingScreenshotsLifetime" : "deleteOnSuccess"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "maximumTestRepetitions" : 1,
+    "testExecutionOrdering" : "lexical",
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:ImageIntact.xcodeproj",
+        "identifier" : "ImageIntactUITests",
+        "name" : "ImageIntactUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

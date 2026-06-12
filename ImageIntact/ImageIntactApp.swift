@@ -15,15 +15,15 @@ struct ImageIntactApp: App {
     // Initialize logging system first
     _ = ApplicationLogger.shared
 
-    // Check for UI test mode
-    let arguments = ProcessInfo.processInfo.arguments
-    if arguments.contains("--uitest") {
-      ApplicationLogger.shared.info("🧪 UI Test mode detected", category: .app)
-      // Note: BackupManager.isRunningTests is automatically true when running tests
-
-      // Setup test environment if needed
-      setupTestEnvironment()
-    }
+    // Check for UI test mode (DEBUG-only; release builds never honor the seam)
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("--uitest") {
+        ApplicationLogger.shared.info("🧪 UI Test mode detected", category: .app)
+        // Reset-if-requested, then auto-fixtures or explicit-path passthrough.
+        // Must run before BackupManager init (ContentView) reads the seam keys.
+        UITestFixtures.bootstrap()
+      }
+    #endif
 
     // Initialize system capabilities detection on app launch
     _ = SystemCapabilities.shared
@@ -33,35 +33,6 @@ struct ImageIntactApp: App {
     // Start drive monitoring
     DriveMonitor.shared.startMonitoring()
     ApplicationLogger.shared.info("📱 Drive monitoring started", category: .app)
-  }
-
-  private func setupTestEnvironment() {
-    // Process test arguments for UI tests
-    let arguments = ProcessInfo.processInfo.arguments
-
-    // These will be processed by BackupManager when it initializes
-    for (index, arg) in arguments.enumerated() {
-      switch arg {
-      case "--testSource":
-        if index + 1 < arguments.count {
-          UserDefaults.standard.set(arguments[index + 1], forKey: "TestSourcePath")
-        }
-      case "--testDest1":
-        if index + 1 < arguments.count {
-          UserDefaults.standard.set(arguments[index + 1], forKey: "TestDest1Path")
-        }
-      case "--testDest2":
-        if index + 1 < arguments.count {
-          UserDefaults.standard.set(arguments[index + 1], forKey: "TestDest2Path")
-        }
-      case "--testOrganization":
-        if index + 1 < arguments.count {
-          UserDefaults.standard.set(arguments[index + 1], forKey: "TestOrganizationName")
-        }
-      default:
-        break
-      }
-    }
   }
 
   var body: some Scene {
