@@ -169,19 +169,14 @@ final class ChecksumCancellationTests: XCTestCase {
         do {
             _ = try await task.value
             XCTFail("Task.cancel() should have caused sha256Async to throw")
-        } catch let error as ChecksumError {
-            guard case .cancelled = error else {
-                XCTFail("Should throw ChecksumError.cancelled, got: \(error)")
-                return
-            }
         } catch is _Concurrency.CancellationError {
-            // Also acceptable (AMUX-353): if the cancel lands before sha256Async
-            // is entered, the fail-fast Task.checkCancellation() throws
-            // CancellationError instead. Both forms mean cooperative
-            // cancellation surfaced, which is what this test locks. Qualified:
+            // Expected (AMUX-353): every Task-initiated cancellation — pre-entry
+            // fail-fast, queued-then-cancelled, or mid-flight translation —
+            // surfaces the stdlib CancellationError so TaskGroup parents see
+            // cooperative cancellation, never a regular failure. Qualified:
             // ImageIntact's own CancellationError shadows the stdlib type.
         } catch {
-            XCTFail("Expected a cancellation error, got: \(type(of: error)) \(error)")
+            XCTFail("Task-initiated cancellation must surface _Concurrency.CancellationError, got: \(type(of: error)) \(error)")
         }
     }
 

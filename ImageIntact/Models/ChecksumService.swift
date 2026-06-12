@@ -173,11 +173,14 @@ enum ChecksumService {
     /// it caps concurrent blocking reads at `activeProcessorCount` (gh#111 item 1).
     ///
     /// Fail-fast: an already-cancelled caller throws `CancellationError` before any
-    /// continuation allocation or queue hop (gh#111 item 2). Mid-flight cancellation
-    /// is unchanged: a parent task `cancel()` flips a thread-safe flag inside
-    /// `withTaskCancellationHandler`, the flag is OR'd into the cancellation
-    /// predicate handed to the underlying reader, and the work surfaces
-    /// `ChecksumError.cancelled` at the next poll.
+    /// continuation allocation or queue hop (gh#111 item 2). Mid-flight, a parent
+    /// task `cancel()` flips a thread-safe flag inside `withTaskCancellationHandler`,
+    /// the flag is OR'd into the cancellation predicate handed to the underlying
+    /// reader, and the resulting `ChecksumError.cancelled` is translated back to
+    /// `CancellationError` — so every Task-initiated path surfaces cooperative
+    /// cancellation to TaskGroup parents (PR #137 round 1). Cancellation via the
+    /// caller's `shouldCancel` closure (no task cancel) still surfaces
+    /// `ChecksumError.cancelled`.
     ///
     /// QoS: each `BlockOperation`'s `qualityOfService` is mapped from
     /// `Task.currentPriority`, so a background-priority caller doesn't artificially
@@ -207,6 +210,14 @@ enum ChecksumService {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let operation = BlockOperation {
+                    // A task cancelled while this operation sat in the queue skips
+                    // the file open entirely — cancelled ops hold a queue slot
+                    // until they run, so keep that no-op as cheap as possible
+                    // (PR #137 round 1, Low).
+                    if cancelFlag.isSet {
+                        continuation.resume(throwing: _Concurrency.CancellationError())
+                        return
+                    }
                     do {
                         // Compose the user's predicate with our task-cancel flag so
                         // either signal stops the work.
@@ -217,6 +228,15 @@ enum ChecksumService {
                             for: fileURL, policy: policy, shouldCancel: composed
                         )
                         continuation.resume(returning: result)
+                    } catch ChecksumError.cancelled where cancelFlag.isSet {
+                        // Task-initiated cancellation must surface as the stdlib
+                        // CancellationError so TaskGroup parents see cooperative
+                        // cancellation, not a regular failure. The guard is
+                        // cancelFlag.isSet, NOT Task.isCancelled — operation-queue
+                        // threads have no current task, so Task.isCancelled is
+                        // always false here. Closure-initiated cancels (flag
+                        // unset) keep ChecksumError.cancelled.
+                        continuation.resume(throwing: _Concurrency.CancellationError())
                     } catch {
                         continuation.resume(throwing: error)
                     }
