@@ -310,6 +310,14 @@ class BackupManager {
         state.sessionID = UUID().uuidString
         state.shouldCancel = false
         state.debugLog = []
+        // A fresh run must not inherit the prior run's duplicate decision:
+        // the analyses describe the old run's manifest and the skip flags
+        // belong to a dialog not yet answered this run. Cleared here (not in
+        // resetBackupState) because continuation re-entries bypass runBackup
+        // and need both to survive (gh#141). Values are BackupState defaults.
+        state.duplicateAnalyses = nil
+        state.skipExactDuplicates = true
+        state.skipRenamedDuplicates = false
 
         // Save organization folder name to recent list and as last used
         if !organizationName.isEmpty {
