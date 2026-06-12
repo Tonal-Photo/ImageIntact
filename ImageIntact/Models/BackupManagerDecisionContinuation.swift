@@ -79,6 +79,14 @@ extension BackupManager {
                 destinations: destinations,
                 skipMigrationCheck: true
             )
+        } else {
+            // Should be unreachable (the dialog was armed by a run that had
+            // a source), but don't strand the just-dismissed dialog: land in
+            // a clean idle state instead of silently dropping the decision.
+            ApplicationLogger.shared.error(
+                "Migration continuation found no source URL - returning to idle", category: .backup)
+            state.isProcessing = false
+            state.statusMessage = "Backup cancelled"
         }
     }
 
@@ -144,6 +152,15 @@ extension BackupManager {
                 skipMigrationCheck: true,
                 skipDuplicateCheck: true
             )
+        } else {
+            // Should be unreachable (the dialog was armed by a run that had
+            // a source), but don't strand the just-dismissed dialog: land in
+            // a clean idle state instead of silently dropping the decision.
+            ApplicationLogger.shared.error(
+                "Duplicate continuation found no source URL - returning to idle", category: .backup)
+            state.duplicateAnalyses = nil
+            state.isProcessing = false
+            state.statusMessage = "Backup cancelled"
         }
     }
 

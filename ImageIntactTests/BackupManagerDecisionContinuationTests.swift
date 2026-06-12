@@ -249,4 +249,83 @@ final class BackupManagerDecisionContinuationTests: BaseBackupManagerTestCase {
         atPath: destDir.appendingPathComponent("TestOrg/two.jpg").path),
       "backup must run to completion after the chain of decisions")
   }
+
+  // MARK: - Fresh-run state hygiene
+
+  /// A fresh Run Backup must not inherit the prior run's duplicate decision:
+  /// the analyses describe the old run's manifest and the skip flags belong
+  /// to a dialog the user has not answered this run. The continuation
+  /// re-entry path must NOT clear them (it passes through resetBackupState
+  /// and the orchestrator needs both), so the reset belongs to runBackup,
+  /// the fresh entry point.
+  func testFreshRunBackup_ClearsPriorDuplicateDecisionState() throws {
+    // Fake (non-seam) paths: the spawned performQueueBasedBackup bails at its
+    // security-scope guard, so only runBackup's synchronous state setup runs
+    // (same pattern as BackupManagerReentryTests).
+    let manager = BackupManager(
+      diskSpaceChecker: MockDiskSpaceChecker(),
+      duplicateDetector: mockDuplicates,
+      backupAlertPresenter: MockBackupAlertPresenter(),
+      preferences: prefs
+    )
+    manager.setSource(URL(fileURLWithPath: "/Volumes/CardA/DCIM"))
+    manager.setDestination(URL(fileURLWithPath: "/Volumes/BackupDrive"), at: 0)
+    bm = manager
+
+    // Residue of a prior run's decision (non-default values throughout).
+    bm.state.duplicateAnalyses = [
+      destDir: DuplicateDetector.DuplicateAnalysis(
+        totalSourceFiles: 0,
+        exactDuplicates: [],
+        renamedDuplicates: [],
+        uniqueFiles: 0,
+        potentialSpaceSaved: 0,
+        destinationDriveUUID: nil
+      )
+    ]
+    bm.state.skipExactDuplicates = false
+    bm.state.skipRenamedDuplicates = true
+
+    bm.runBackup()
+
+    XCTAssertNil(
+      bm.state.duplicateAnalyses,
+      "a fresh run must not inherit the prior run's duplicate analyses")
+    XCTAssertTrue(
+      bm.state.skipExactDuplicates,
+      "a fresh run must restore the skip-exact default (true)")
+    XCTAssertFalse(
+      bm.state.skipRenamedDuplicates,
+      "a fresh run must restore the skip-renamed default (false)")
+  }
+
+  // MARK: - Defensive: continuation with no source
+
+  /// Should be unreachable (the dialog was armed by a run that had a source),
+  /// but a continuation finding no source must land in a clean idle state,
+  /// not silently strand the just-dismissed dialog.
+  func testDuplicateContinuationWithNoSource_LandsIdle() async throws {
+    let manager = BackupManager(
+      duplicateDetector: mockDuplicates,
+      backupAlertPresenter: MockBackupAlertPresenter(),
+      preferences: prefs
+    )
+    bm = manager  // no setSource — sourceURL is nil
+    bm.state.duplicateAnalyses = [
+      destDir: DuplicateDetector.DuplicateAnalysis(
+        totalSourceFiles: 0,
+        exactDuplicates: [],
+        renamedDuplicates: [],
+        uniqueFiles: 0,
+        potentialSpaceSaved: 0,
+        destinationDriveUUID: nil
+      )
+    ]
+
+    await bm.continueBackupAfterDuplicateDecision(skipExact: true, skipRenamed: false)
+
+    XCTAssertFalse(bm.state.isProcessing, "no-source continuation must land idle")
+    XCTAssertNil(bm.state.duplicateAnalyses, "stale analyses must not survive the dead end")
+    XCTAssertFalse(bm.showDuplicateWarning, "dialog must stay dismissed")
+  }
 }
