@@ -82,6 +82,53 @@ final class ChecksumServiceHardeningTests: XCTestCase {
         }
     }
 
+    func testCancellingQueuedOperationResumesPromptly() async throws {
+        let (url, _) = try writeRandomFile(named: "queued-cancel.bin", bytes: 100_000)
+
+        // Saturate every slot of the shared queue with operations blocked on a
+        // semaphore, so the checksum below must wait in the queue.
+        let gate = DispatchSemaphore(value: 0)
+        let slots = ChecksumService.ioQueue.maxConcurrentOperationCount
+        for _ in 0 ..< slots {
+            ChecksumService.ioQueue.addOperation { gate.wait() }
+        }
+        // Watchdog: if prompt cancellation regresses, drain the gate after 5s
+        // so this test FAILS on the elapsed-time assert instead of hanging the
+        // suite forever on `task.value`.
+        let watchdog = Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            for _ in 0 ..< slots { gate.signal() }
+        }
+        defer {
+            watchdog.cancel()
+            for _ in 0 ..< slots { gate.signal() }  // drain (extra signals are harmless)
+        }
+
+        let task = Task {
+            try await ChecksumService.sha256Async(for: url, shouldCancel: { false })
+        }
+        // Let the task enqueue its operation behind the blockers, then cancel
+        // while it is queued. (If cancel wins the race and lands pre-entry,
+        // the fail-fast path also yields a prompt CancellationError — the
+        // assertions below hold either way.)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let cancelledAt = Date()
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("queued-then-cancelled checksum must throw")
+        } catch is _Concurrency.CancellationError {
+            let elapsed = Date().timeIntervalSince(cancelledAt)
+            XCTAssertLessThan(
+                elapsed, 1.0,
+                "cancelling a queued operation must resume the caller promptly, "
+                    + "not wait for a queue slot (took \(elapsed)s)")
+        } catch {
+            XCTFail("Expected CancellationError, got \(type(of: error)): \(error)")
+        }
+    }
+
     // MARK: - Item 2: fail fast when already cancelled
 
     func testAlreadyCancelledCallerFailsFastWithCancellationError() async throws {

@@ -206,18 +206,23 @@ enum ChecksumService {
         try Task.checkCancellation()
 
         let cancelFlag = CancelFlag()
+        let box = ChecksumContinuationBox()
         let qos = Self.operationQoS(for: Task.currentPriority)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                box.store(continuation)
+                // Close the registration race: if cancellation landed between
+                // the checkCancellation above and the store, resume now rather
+                // than enqueue doomed work.
+                if cancelFlag.isSet, let racedContinuation = box.take() {
+                    racedContinuation.resume(throwing: _Concurrency.CancellationError())
+                    return
+                }
                 let operation = BlockOperation {
-                    // A task cancelled while this operation sat in the queue skips
-                    // the file open entirely — cancelled ops hold a queue slot
-                    // until they run, so keep that no-op as cheap as possible
-                    // (PR #137 round 1, Low).
-                    if cancelFlag.isSet {
-                        continuation.resume(throwing: _Concurrency.CancellationError())
-                        return
-                    }
+                    // Claim the continuation. If the cancellation handler beat
+                    // us to it (task cancelled while this operation sat in the
+                    // queue), the caller was already resumed — nothing to do.
+                    guard let continuation = box.take() else { return }
                     do {
                         // Compose the user's predicate with our task-cancel flag so
                         // either signal stops the work.
@@ -241,14 +246,23 @@ enum ChecksumService {
                         continuation.resume(throwing: error)
                     }
                 }
-                // Operations are never op.cancel()ed: a queued-but-cancelled
-                // call still runs, polls the flag, and throws quickly — so the
-                // continuation is resumed exactly once, never leaked.
+                // Operations are never op.cancel()ed — the box's take-once
+                // semantics guarantee the continuation is resumed exactly once
+                // whichever side (handler or operation) claims it.
                 operation.qualityOfService = qos
                 ioQueue.addOperation(operation)
             }
         } onCancel: {
             cancelFlag.set()
+            // Prompt cancellation for queued work (PR #137 round 2): if the
+            // operation hasn't claimed the continuation yet, resume the caller
+            // immediately instead of leaving it suspended until a queue slot
+            // frees. The operation later finds the box empty and no-ops.
+            // Mid-flight (operation owns the continuation), the flag-poll path
+            // translates at the next chunk read.
+            if let queuedContinuation = box.take() {
+                queuedContinuation.resume(throwing: _Concurrency.CancellationError())
+            }
         }
     }
 
@@ -267,6 +281,26 @@ enum ChecksumService {
         case .background: return .background
         default: return .default
         }
+    }
+}
+
+/// Take-once holder for the checksum continuation. Whichever side claims it
+/// first — the task-cancellation handler (prompt resume for queued work) or
+/// the queued operation (normal execution) — owns the single resume; the
+/// other side finds the box empty and no-ops. The lock makes the claim atomic.
+private final class ChecksumContinuationBox: @unchecked Sendable {
+    private var continuation: CheckedContinuation<String, Error>?
+    private let lock = NSLock()
+
+    func store(_ continuation: CheckedContinuation<String, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        self.continuation = continuation
+    }
+
+    func take() -> CheckedContinuation<String, Error>? {
+        lock.lock(); defer { lock.unlock() }
+        defer { continuation = nil }
+        return continuation
     }
 }
 
