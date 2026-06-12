@@ -52,6 +52,13 @@ struct DuplicateWarningView: View {
         Text("Duplicate Files Detected")
           .font(.title2)
           .fontWeight(.semibold)
+          // Machine-readable analysis summary for the UI test suite. Id +
+          // value live on a LEAF Text: container-level identifiers stomp
+          // every descendant's id, and values only surface from leaves
+          // (same pattern as sheet.completion in BackupCompletionView).
+          .accessibilityIdentifier("sheet.duplicate")
+          .accessibilityValue(
+            "exact=\(totalExactDuplicates);renamed=\(totalRenamedDuplicates)")
 
         Text("Some files already exist at the destination(s)")
           .font(.subheadline)

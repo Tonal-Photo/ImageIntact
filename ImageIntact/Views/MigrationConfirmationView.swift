@@ -220,6 +220,12 @@ struct MigrationConfirmationView: View {
             Text("Organize Existing Backup?")
                 .font(.title2)
                 .fontWeight(.semibold)
+                // Machine-readable plan summary for the UI test suite. Id +
+                // value live on a LEAF Text: container-level identifiers stomp
+                // every descendant's id, and values only surface from leaves
+                // (same pattern as sheet.completion in BackupCompletionView).
+                .accessibilityIdentifier("sheet.migration")
+                .accessibilityValue("files=\(plan.fileCount);dest=\(destinationName)")
 
             Text("Found existing files that match your source")
                 .font(.subheadline)
