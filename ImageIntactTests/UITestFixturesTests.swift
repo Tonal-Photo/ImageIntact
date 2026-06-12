@@ -28,6 +28,17 @@ final class UITestFixturesTests: XCTestCase {
     defaults.removePersistentDomain(forName: suiteName)
   }
 
+  // MARK: - Seam activation
+
+  func testSeamIsActive_requiresExactUITestArgument() {
+    XCTAssertTrue(UITestSeam.isActive(arguments: ["--uitest"]))
+    XCTAssertTrue(UITestSeam.isActive(arguments: ["-hasSeenWelcome", "YES", "--uitest"]))
+    XCTAssertFalse(UITestSeam.isActive(arguments: []))
+    // Exact element match only: a flag that merely contains the prefix
+    // (e.g. --uitest-reset alone) must not arm the seam.
+    XCTAssertFalse(UITestSeam.isActive(arguments: ["--uitest-reset"]))
+  }
+
   // MARK: - Spec parsing
 
   func testParseSpec_fullForm() {

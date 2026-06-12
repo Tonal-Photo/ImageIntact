@@ -57,8 +57,10 @@ struct WelcomeSheet {
 struct MigrationSheet {
   let app: XCUIApplication
 
-  /// The migration sheet is identified by its decision buttons; matching on
-  /// title text is brittle (sheet text can land in value, not label).
+  /// Leaf Text "Organize Existing Backup?" carrying the machine-readable
+  /// plan summary: files=N;dest=<name>
+  var marker: XCUIElement { app.staticTexts["sheet.migration"].firstMatch }
+
   var sheet: XCUIElement { app.sheets.firstMatch }
   func button(_ label: String) -> XCUIElement { app.sheets.buttons[label].firstMatch }
 }
@@ -66,6 +68,9 @@ struct MigrationSheet {
 struct DuplicateSheet {
   let app: XCUIApplication
 
-  var title: XCUIElement { app.staticTexts["Duplicate Files Detected"].firstMatch }
+  /// Leaf Text "Duplicate Files Detected" carrying the machine-readable
+  /// analysis summary: exact=N;renamed=N
+  var marker: XCUIElement { app.staticTexts["sheet.duplicate"].firstMatch }
+
   func button(_ label: String) -> XCUIElement { app.sheets.buttons[label].firstMatch }
 }

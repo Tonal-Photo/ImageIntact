@@ -23,6 +23,22 @@ enum UITestSeam {
       return false
     #endif
   }
+
+  /// True only for DEBUG builds launched by the UI suite (`--uitest`).
+  /// Views consult this before attaching machine-readable a11y payloads
+  /// (sheet.completion / sheet.migration / sheet.duplicate values) so
+  /// VoiceOver users never hear test syntax in production.
+  static var isActive: Bool {
+    isActive(arguments: ProcessInfo.processInfo.arguments)
+  }
+
+  static func isActive(arguments: [String]) -> Bool {
+    #if DEBUG
+      return arguments.contains("--uitest")
+    #else
+      return false
+    #endif
+  }
 }
 
 #if DEBUG

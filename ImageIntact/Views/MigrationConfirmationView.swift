@@ -79,6 +79,13 @@ struct MigrationConfirmationView: View {
         }
     }
 
+    /// Empty outside --uitest launches so VoiceOver users never hear the
+    /// machine-readable payload (panel finding, PR #143 round 1).
+    private var uiTestMarkerValue: String {
+        guard UITestSeam.isActive else { return "" }
+        return "files=\(plan.fileCount);dest=\(destinationName)"
+    }
+
     private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -220,6 +227,12 @@ struct MigrationConfirmationView: View {
             Text("Organize Existing Backup?")
                 .font(.title2)
                 .fontWeight(.semibold)
+                // Machine-readable plan summary for the UI test suite. Id +
+                // value live on a LEAF Text: container-level identifiers stomp
+                // every descendant's id, and values only surface from leaves
+                // (same pattern as sheet.completion in BackupCompletionView).
+                .accessibilityIdentifier("sheet.migration")
+                .accessibilityValue(uiTestMarkerValue)
 
             Text("Found existing files that match your source")
                 .font(.subheadline)
