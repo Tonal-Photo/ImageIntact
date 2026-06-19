@@ -22,8 +22,9 @@ class ImageIntactTests: IsolatedDefaultsTestCase {
         // Bookmark isolation is handled by IsolatedDefaultsTestCase.
         // The inherited `defaults` suite is fresh and empty for each test.
 
-        // Add a small delay to prevent timeout issues
-        Thread.sleep(forTimeInterval: 0.1)
+        // Small delay to prevent timeout issues. setUp() is async on the
+        // @MainActor, so suspend cooperatively rather than blocking the thread.
+        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
     }
 
     override func tearDown() async throws {
