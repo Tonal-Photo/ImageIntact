@@ -54,12 +54,14 @@ enum FixtureFactory {
         let fm = FileManager.default
         if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
         try fm.createDirectory(at: target, withIntermediateDirectories: true)
-        return try (1...count).map { i in
-            let url = target.appendingPathComponent(String(format: "fix-%02d.jpg", i))
+        // Half-open range so count == 0 yields an empty dir instead of a fatal
+        // 1...0 range error.
+        return try (0..<count).map { i in
+            let url = target.appendingPathComponent(String(format: "fix-%02d.jpg", i + 1))
             try writeJPEG(
                 to: url,
-                hue: CGFloat(i - 1) / CGFloat(count),
-                exifDate: String(format: "2026:01:01 12:%02d:00", min(i, 59)))
+                hue: CGFloat(i) / CGFloat(count),
+                exifDate: String(format: "2026:01:01 12:%02d:00", min(i + 1, 59)))
             return url
         }
     }

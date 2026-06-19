@@ -134,8 +134,10 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
         field.typeKey("v", modifierFlags: .command)
         // Confirm the Go-To-Folder sheet, which navigates the panel to the path.
         panel.typeKey(.return, modifierFlags: [])
-        // The navigation has no observable completion signal; give it a moment to
-        // settle so Open selects the navigated folder rather than the prior one.
+        // Wait for the sheet to actually dismiss before confirming, so Open is not
+        // clicked through a still-animating sheet. The folder navigation itself
+        // has no observable signal, so let it settle briefly afterward.
+        _ = gotoSheet.waitForNonExistence(timeout: 5)
         Thread.sleep(forTimeInterval: 1)
 
         // Confirm the panel via the Open button once it is present (waiting for it
