@@ -312,7 +312,7 @@ actor DestinationQueue {
         let copyThrottleNanos = UITestSeam.perFileCopyDelayNanos
         if copyThrottleNanos > 0 {
             do {
-                try await Task.sleep(nanoseconds: copyThrottleNanos)
+                try await Task.sleep(for: .nanoseconds(Int(copyThrottleNanos)))
             } catch {
                 return .cancelled
             }

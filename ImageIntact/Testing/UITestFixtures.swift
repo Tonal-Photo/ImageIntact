@@ -284,9 +284,13 @@ enum UITestSeam {
           fixturesRoot: defaultRoot)
       }
       // Stored AFTER reset so the hermetic wipe doesn't clear it. Read per-file
-      // by UITestSeam.perFileCopyDelayNanos to throttle the copy phase.
+      // by UITestSeam.perFileCopyDelayNanos to throttle the copy phase. The
+      // explicit clear is belt-and-suspenders: a launch that doesn't ask for a
+      // throttle never inherits a stale one, independent of the reset above.
       if let delayMs = parseCopyDelayMs(arguments: arguments) {
         UserDefaults.standard.set(delayMs, forKey: "TestCopyDelayMs")
+      } else {
+        UserDefaults.standard.removeObject(forKey: "TestCopyDelayMs")
       }
       do {
         let applied = try applyLaunchSeam(
