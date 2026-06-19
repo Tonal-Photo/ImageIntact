@@ -14,6 +14,7 @@
 //  char-by-char typing) with the clipboard saved and restored.
 //
 
+import AppKit
 import XCTest
 
 final class OpenPanelBackupUITests: ImageIntactUITestCase {
@@ -35,7 +36,6 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
 
         let a = launchApp(fixtures: nil, hasSeenWelcome: true)
         let main = MainScreen(app: a)
-        dumpElementTree(a, label: "powerbox-initial")
 
         // Source: drive the real open panel from the unselected picker row.
         let sourcePicker = main.folderRow("Select Source Folder")
@@ -94,7 +94,40 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
     /// (the out-of-process panel drops char-by-char typing), confirm the sheet,
     /// then Open. Saves and restores the clipboard.
     private func selectFolderViaOpenPanel(opening button: XCUIElement, to path: String) {
-        XCTFail("open-panel driving not implemented")
+        let savedClipboard = NSPasteboard.general.string(forType: .string)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+        defer {
+            NSPasteboard.general.clearContents()
+            if let savedClipboard { NSPasteboard.general.setString(savedClipboard, forType: .string) }
+        }
+
+        button.click()
+
+        let panel = app.windows["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 15), "open panel did not appear")
+
+        // Go-To-Folder is a sheet ON the panel. The panel runs out of process
+        // and drops char-by-char typing, so paste the path from the pasteboard.
+        panel.typeKey("g", modifierFlags: [.command, .shift])
+        let gotoSheet = panel.sheets.firstMatch
+        XCTAssertTrue(gotoSheet.waitForExistence(timeout: 5), "Go-to-Folder sheet did not appear")
+        let field = gotoSheet.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 3), "Go-to-Folder field did not appear")
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeKey("v", modifierFlags: .command)
+        panel.typeKey(.return, modifierFlags: [])
+        Thread.sleep(forTimeInterval: 1)
+
+        // Confirm the open panel itself, then let it dismiss before the caller
+        // drives the next selection.
+        if panel.exists && panel.buttons["Open"].exists {
+            panel.buttons["Open"].click()
+        } else {
+            panel.typeKey(.return, modifierFlags: [])
+        }
+        _ = panel.waitForNonExistence(timeout: 10)
     }
 
     // MARK: - Runner-side byte verification
