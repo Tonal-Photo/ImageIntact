@@ -33,11 +33,16 @@ enum FixtureFactory {
         case unmarkedPath(String)
     }
 
-    /// True if `url` (or its immediate parent) is name-marked as ours. The
-    /// parent case covers the nested layout the test builds:
-    /// `<...imageintact-uitest-powerbox-UUID>/source`.
+    /// True if `url` is inside the process temporary directory AND `url` (or its
+    /// immediate parent) is name-marked as ours. The parent case covers the
+    /// nested layout the test builds: `<...imageintact-uitest-powerbox-UUID>/source`.
+    /// The temp-directory requirement is defense in depth for the
+    /// delete-then-regenerate contract: a real user folder whose name merely
+    /// contains the marker substring must never be eligible for deletion.
     static func isFixturePath(_ url: URL) -> Bool {
         let dir = url.standardizedFileURL
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).standardizedFileURL
+        guard dir.path == tmp.path || dir.path.hasPrefix(tmp.path + "/") else { return false }
         return dir.lastPathComponent.contains(pathMarker)
             || dir.deletingLastPathComponent().lastPathComponent.contains(pathMarker)
     }

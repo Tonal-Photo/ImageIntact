@@ -31,13 +31,15 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
         let sourceDir = root.appendingPathComponent("source")
         let destDir = root.appendingPathComponent("dest1")
 
-        let sourceFiles = try FixtureFactory.generateImages(into: sourceDir, count: 6)
-        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-        // Clean up through a teardown block, not defer: with continueAfterFailure
-        // false a failed assertion halts the test via an Objective-C exception
-        // that bypasses Swift defer, which would leak the fixture tree. Teardown
+        // Register cleanup BEFORE creating anything, so a throw during fixture
+        // generation still removes the partial tree. A teardown block (not defer)
+        // because continueAfterFailure is false: a failed assertion halts the
+        // test via an Objective-C exception that bypasses Swift defer; teardown
         // blocks still run. Only ever remove the marked root.
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        let sourceFiles = try FixtureFactory.generateImages(into: sourceDir, count: 6)
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
 
         // Save and restore the clipboard at the test level (same reason: a defer
         // in the paste helper would be skipped on a mid-helper failure). The UI
