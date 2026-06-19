@@ -4,7 +4,7 @@ import XCTest
 
 /// Tests for DestinationManager: getDestinationEstimate, session persistence, validation.
 @MainActor
-class DestinationManagerEstimateSessionTests: XCTestCase {
+class DestinationManagerEstimateSessionTests: IsolatedDefaultsTestCase {
 
     var mockFileOps: MockFileOperations!
     var mockDriveAnalyzer: MockDriveAnalyzer!
@@ -24,9 +24,8 @@ class DestinationManagerEstimateSessionTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        // Bookmark keys are isolated per-test by IsolatedDefaultsTestCase.
+        // Non-bookmark preference keys are still on .standard — clean those up.
         UserDefaults.standard.removeObject(forKey: "TestDest1Path")
         UserDefaults.standard.removeObject(forKey: "TestDest2Path")
         sut = nil

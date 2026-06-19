@@ -4,7 +4,7 @@ import XCTest
 
 /// Tests for DestinationManager: clearDestination, removeDestination, clearAll.
 @MainActor
-class DestinationManagerMutationTests: XCTestCase {
+class DestinationManagerMutationTests: IsolatedDefaultsTestCase {
 
     var mockFileOps: MockFileOperations!
     var mockDriveAnalyzer: MockDriveAnalyzer!
@@ -24,9 +24,6 @@ class DestinationManagerMutationTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
         sut = nil
         mockFileOps = nil
         mockDriveAnalyzer = nil
@@ -77,7 +74,7 @@ class DestinationManagerMutationTests: XCTestCase {
 
         sut.clearDestination(at: 0)
 
-        XCTAssertNil(UserDefaults.standard.data(forKey: BookmarkManager.destinationKeys[0]))
+        XCTAssertNil(defaults.data(forKey: BookmarkManager.destinationKeys[0]))
     }
 
     func testClearDestination_indexOutOfRange_noOp() {
@@ -151,7 +148,7 @@ class DestinationManagerMutationTests: XCTestCase {
 
         // 3 items -> 2 items. dest3Bookmark (index 2) should be cleared.
         XCTAssertNil(
-            UserDefaults.standard.data(forKey: BookmarkManager.destinationKeys[2]),
+            defaults.data(forKey: BookmarkManager.destinationKeys[2]),
             "Trailing bookmark key should be cleared after shift"
         )
     }
@@ -221,7 +218,7 @@ class DestinationManagerMutationTests: XCTestCase {
 
         for key in BookmarkManager.destinationKeys {
             XCTAssertNil(
-                UserDefaults.standard.data(forKey: key),
+                defaults.data(forKey: key),
                 "Bookmark key \(key) should be cleared"
             )
         }

@@ -32,7 +32,7 @@ struct SourceFolderSection: View {
                         backupManager.sourceURL = nil
                         backupManager.sourceFileTypes = [:]
                         backupManager.scanProgress = ""
-                        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+                        BookmarkManager.clearBookmark(forKey: BookmarkManager.sourceKey)
                     },
                     onSelect: { _ in
                         // Already handled in backupManager.setSource()

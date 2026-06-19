@@ -81,7 +81,7 @@ class SourceManager {
             return savedSourceURL
         } else {
             logWarning("Saved source bookmark is invalid, clearing...")
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+            BookmarkManager.clearBookmark(forKey: BookmarkManager.sourceKey)
             return nil
         }
     }
@@ -117,7 +117,7 @@ class SourceManager {
             // Clear the invalid bookmark
             if sourceURL == url {
                 sourceURL = nil
-                UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+                BookmarkManager.clearBookmark(forKey: BookmarkManager.sourceKey)
             }
             return
         }
@@ -279,7 +279,7 @@ class SourceManager {
             sourceURL = nil
             sourceFileTypes = [:]
             scanProgress = ""
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+            BookmarkManager.clearBookmark(forKey: BookmarkManager.sourceKey)
 
             return "Moved \"\(name)\" to Trash"
         } catch {

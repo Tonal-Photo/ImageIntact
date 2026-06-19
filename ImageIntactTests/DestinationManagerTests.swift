@@ -5,7 +5,7 @@ import XCTest
 /// Tests for DestinationManager: initialization, addDestination, and setDestination.
 /// See also: DestinationManagerMutationTests, DestinationManagerEstimateSessionTests.
 @MainActor
-class DestinationManagerTests: XCTestCase {
+class DestinationManagerTests: IsolatedDefaultsTestCase {
 
     var mockFileOps: MockFileOperations!
     var mockDriveAnalyzer: MockDriveAnalyzer!
@@ -25,9 +25,6 @@ class DestinationManagerTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
         sut = nil
         mockFileOps = nil
         mockDriveAnalyzer = nil

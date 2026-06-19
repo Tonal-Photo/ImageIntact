@@ -1,72 +1,44 @@
-// IMPORTANT: These tests mutate `UserDefaults.standard` and `PreferencesManager.shared`.
-// They are NOT parallel-safe. If parallel test execution is enabled in the
-// Xcode scheme, these tests will overwrite each other's state and fail
-// nondeterministically.
+// IMPORTANT: These tests mutate `PreferencesManager.shared`.
+// They are NOT parallel-safe for PreferencesManager state. If parallel test
+// execution is enabled in the Xcode scheme, pref mutations will overwrite each
+// other's state nondeterministically.
 //
-// Until `PreferencesManager` is refactored behind a protocol with per-test
-// in-memory storage (deferred follow-up), keep parallel execution disabled
-// in the Xcode test plan for `ImageIntactTests`.
+// Bookmark isolation is handled by IsolatedDefaultsTestCase (the base class).
+// Keep parallel execution disabled in the Xcode test plan for `ImageIntactTests`.
 
 import XCTest
 @testable import ImageIntact
 
-/// Shared base class for BackupManager test cases. Centralizes:
-/// - `BookmarkManager.sourceKey` / `destinationKeys` capture+restore (prevents
-///   the test suite from wiping a developer's saved bookmarks).
-/// - Cancellation of any in-flight backup before pref restoration (prevents
-///   orphaned Tasks if a test exits early or fails mid-flight).
+/// Shared base class for BackupManager test cases. Inherits per-test
+/// UserDefaults isolation from `IsolatedDefaultsTestCase` (bookmark keys are
+/// in a fresh suite for each test; `BookmarkManager.store` is pointed there
+/// automatically). Centralizes:
+/// - Cancellation of any in-flight backup before teardown (prevents orphaned
+///   Tasks if a test exits early or fails mid-flight).
 ///
 /// Per-test files are still responsible for capturing/restoring any
 /// `PreferencesManager.shared.X` values they specifically mutate (e.g.
-/// `showPreflightSummary`, `lastUsedOrganizationFolderName`). The base class
-/// just handles bookmarks because those are universal.
+/// `showPreflightSummary`, `lastUsedOrganizationFolderName`).
 ///
 /// Subclasses MUST set `bm` to the BackupManager under test in their setUp
 /// (after calling `super.setUp()`) so the teardown cancellation check works.
 @MainActor
-class BaseBackupManagerTestCase: XCTestCase {
+class BaseBackupManagerTestCase: IsolatedDefaultsTestCase {
     /// The BackupManager under test. Subclass setUp assigns this so the
     /// base tearDown can cancel any in-flight backup.
     var bm: BackupManager!
 
-    private var savedSourceBookmark: Any?
-    private var savedDestinationBookmarks: [String: Any] = [:]
-
     override func setUp() async throws {
         try await super.setUp()
-        // Capture bookmark state BEFORE clearing so we can restore in tearDown.
-        savedSourceBookmark = UserDefaults.standard.object(forKey: BookmarkManager.sourceKey)
-        savedDestinationBookmarks = [:]
-        for key in BookmarkManager.destinationKeys {
-            if let v = UserDefaults.standard.object(forKey: key) {
-                savedDestinationBookmarks[key] = v
-            }
-        }
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        // Bookmark isolation is handled by IsolatedDefaultsTestCase.
+        // Subclasses add their own setup after this call.
     }
 
     override func tearDown() async throws {
-        // Cancel any in-flight backup before pref restoration, so spawned
+        // Cancel any in-flight backup before isolation teardown, so spawned
         // Tasks (e.g. `performQueueBasedBackup`) don't leak past this test.
         if bm?.state.isProcessing == true {
             bm.cancelOperation()
-        }
-
-        // Restore bookmarks. Conditional set-or-remove so absent keys stay absent.
-        if let v = savedSourceBookmark {
-            UserDefaults.standard.set(v, forKey: BookmarkManager.sourceKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        }
-        for key in BookmarkManager.destinationKeys {
-            if let v = savedDestinationBookmarks[key] {
-                UserDefaults.standard.set(v, forKey: key)
-            } else {
-                UserDefaults.standard.removeObject(forKey: key)
-            }
         }
 
         // Release the BackupManager so its dependency graph deinits between

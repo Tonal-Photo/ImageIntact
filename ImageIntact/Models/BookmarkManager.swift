@@ -8,6 +8,16 @@ struct BookmarkManager {
     static let sourceKey = "sourceBookmark"
     static let destinationKeys = ["dest1Bookmark", "dest2Bookmark", "dest3Bookmark", "dest4Bookmark"]
 
+    // MARK: - Storage seam
+
+    /// Backing store for bookmark persistence. Defaults to `.standard` (the
+    /// shipping app's domain). Tests point this at a per-test
+    /// `UserDefaults(suiteName:)` via `IsolatedDefaultsTestCase`, so each test's
+    /// bookmark state is hermetic and a developer's real bookmarks are never
+    /// touched. `nonisolated(unsafe)`: production only reads it; the sole writer
+    /// is test setUp/tearDown on the main actor (and the test plan runs serially).
+    nonisolated(unsafe) static var store: UserDefaults = .standard
+
     // MARK: - Save
 
     static func saveBookmark(url: URL, key: String) {
@@ -23,7 +33,7 @@ struct BookmarkManager {
             let bookmark = try url.bookmarkData(
                 options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil
             )
-            UserDefaults.standard.set(bookmark, forKey: key)
+            store.set(bookmark, forKey: key)
             // UserDefaults auto-saves; synchronize() is a deprecated no-op
             logInfo("Successfully saved bookmark for \(key): \(url.lastPathComponent)")
         } catch {
@@ -34,7 +44,7 @@ struct BookmarkManager {
     // MARK: - Load
 
     static func loadBookmark(forKey key: String) -> URL? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        guard let data = store.data(forKey: key) else { return nil }
         return loadBookmark(from: data, forKey: key)
     }
 
@@ -66,12 +76,21 @@ struct BookmarkManager {
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             ) {
-                UserDefaults.standard.set(refreshed, forKey: key)
+                store.set(refreshed, forKey: key)
                 ApplicationLogger.shared.debug("Refreshed stale bookmark for \(key)", category: .fileSystem)
             }
         }
 
         return url
+    }
+
+    // MARK: - Clear
+
+    /// Removes a persisted bookmark from the backing store. Centralizes the
+    /// `removeObject(forKey:)` calls that were scattered across SourceManager /
+    /// DestinationManager so all bookmark persistence flows through `store`.
+    static func clearBookmark(forKey key: String) {
+        store.removeObject(forKey: key)
     }
 
     // MARK: - Create
