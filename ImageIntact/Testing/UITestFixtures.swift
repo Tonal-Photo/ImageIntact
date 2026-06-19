@@ -210,9 +210,15 @@ enum UITestSeam {
     /// defensive so a leftover can never wedge the next regenerate or reset.
     private static func restorePermissions(at root: URL) {
       let fm = FileManager.default
-      guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil)
+      guard
+        let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey])
       else { return }
       for case let url as URL in enumerator {
+        // Skip symlinks: setAttributes(ofItemAtPath:) resolves them, so a
+        // symlink planted in the fixture tree could chmod a file outside it.
+        if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+          continue
+        }
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
       }
     }
