@@ -58,6 +58,10 @@ enum UITestSeam {
       var sourceCount: Int
       var destCount: Int
       var prefill: Prefill
+      /// Number of source files to make unreadable (chmod 000) so the backup
+      /// hits real per-file read failures. Defaulted so existing positional
+      /// call sites and the synthesized memberwise init keep compiling.
+      var failureCount: Int = 0
     }
 
     enum Prefill: String {
@@ -103,11 +107,12 @@ enum UITestSeam {
 
     // MARK: - Spec parsing
 
-    /// Grammar: `src=<1...999>[,dests=<1...8>][,prefill=none|exact|loose]`
+    /// Grammar: `src=<1...999>[,dests=<1...8>][,prefill=none|exact|loose][,failures=<0...src>]`
     static func parseSpec(_ raw: String) -> Spec? {
       var sourceCount: Int?
       var destCount = 1
       var prefill = Prefill.none
+      var failureCount = 0
 
       for field in raw.split(separator: ",") {
         let pair = field.split(separator: "=", maxSplits: 1)
@@ -123,12 +128,20 @@ enum UITestSeam {
         case "prefill":
           guard let p = Prefill(rawValue: value) else { return nil }
           prefill = p
+        case "failures":
+          guard let n = Int(value), (0...999).contains(n) else { return nil }
+          failureCount = n
         default:
           return nil
         }
       }
       guard let sourceCount else { return nil }
-      return Spec(sourceCount: sourceCount, destCount: destCount, prefill: prefill)
+      // Can't fail more files than exist (validated here, where src is known
+      // regardless of field order).
+      guard (0...sourceCount).contains(failureCount) else { return nil }
+      return Spec(
+        sourceCount: sourceCount, destCount: destCount, prefill: prefill,
+        failureCount: failureCount)
     }
 
     // MARK: - Generation
@@ -141,7 +154,10 @@ enum UITestSeam {
       guard isUITestPath(dir) else { throw SeamError.unmarkedPath(dir.path) }
 
       let fm = FileManager.default
-      if fm.fileExists(atPath: dir.path) { try fm.removeItem(at: dir) }
+      if fm.fileExists(atPath: dir.path) {
+        restorePermissions(at: dir)
+        try fm.removeItem(at: dir)
+      }
 
       let source = dir.appendingPathComponent("source")
       try fm.createDirectory(at: source, withIntermediateDirectories: true)
@@ -175,7 +191,30 @@ enum UITestSeam {
         }
         dests.append(dest)
       }
+
+      // Make the first `failureCount` source files unreadable. Done AFTER the
+      // prefill copies above so those copies are made from readable originals;
+      // only the source the backup reads is poisoned. The owner (non-root test
+      // runner) gets EACCES on open() for read, a genuine per-file failure.
+      if spec.failureCount > 0 {
+        for file in sourceFiles.prefix(spec.failureCount) {
+          try fm.setAttributes([.posixPermissions: 0], ofItemAtPath: file.path)
+        }
+      }
       return GeneratedPaths(source: source, dests: dests)
+    }
+
+    /// Reset traversable permissions across a fixture tree before deletion.
+    /// `failures=N` leaves mode-000 files behind; POSIX still lets the owner
+    /// unlink a 000 *file* (deletion is a parent-dir operation), but be
+    /// defensive so a leftover can never wedge the next regenerate or reset.
+    private static func restorePermissions(at root: URL) {
+      let fm = FileManager.default
+      guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil)
+      else { return }
+      for case let url as URL in enumerator {
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+      }
     }
 
     private static func writeJPEG(to url: URL, hue: CGFloat, exifDate: String) throws {
@@ -281,6 +320,7 @@ enum UITestSeam {
     static func reset(defaults: UserDefaults, domainName: String, fixturesRoot: URL) {
       defaults.removePersistentDomain(forName: domainName)
       if isUITestPath(fixturesRoot) {
+        restorePermissions(at: fixturesRoot)
         try? FileManager.default.removeItem(at: fixturesRoot)
       }
     }
