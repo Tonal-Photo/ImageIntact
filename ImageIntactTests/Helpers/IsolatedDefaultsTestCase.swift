@@ -12,6 +12,11 @@ import XCTest
 /// touched, and parallel XCTest worker processes never collide on the bookmark
 /// domain.
 ///
+/// NOTE: This isolates the bookmark domain only. The `Fast` test plan still runs
+/// serially (`parallelizable: false`) because `PreferencesManager`/`@AppStorage`
+/// state remains on `.standard` and is not yet isolated. Applying the same seam
+/// to preferences and re-enabling parallel execution is tracked as AMUX-456.
+///
 /// Subclasses MUST call `try await super.setUp()` / `try await super.tearDown()`.
 /// Bookmark-key reads/writes inside a test MUST use `defaults` (the injected
 /// suite), NOT `UserDefaults.standard`, so production `BookmarkManager` — which
