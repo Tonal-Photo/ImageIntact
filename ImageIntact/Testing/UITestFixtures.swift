@@ -39,6 +39,28 @@ enum UITestSeam {
       return false
     #endif
   }
+
+  /// DEBUG-only per-file artificial delay (nanoseconds) applied after each
+  /// copied file and each verified file, so the live-progress UI stays on
+  /// screen long enough for the UI suite to sample it. Driven by
+  /// `--testPerFileDelayMs <N>` (clamped 0…5000ms). Always 0 in Release, and 0
+  /// whenever the flag is absent or the suite is not active.
+  static var perFileDelayNanos: UInt64 {
+    perFileDelayNanos(arguments: ProcessInfo.processInfo.arguments)
+  }
+
+  static func perFileDelayNanos(arguments: [String]) -> UInt64 {
+    #if DEBUG
+      guard isActive(arguments: arguments),
+        let idx = arguments.firstIndex(of: "--testPerFileDelayMs"),
+        idx + 1 < arguments.count,
+        let ms = Int(arguments[idx + 1]), ms > 0
+      else { return 0 }
+      return UInt64(min(ms, 5000)) * 1_000_000
+    #else
+      return 0
+    #endif
+  }
 }
 
 #if DEBUG

@@ -63,6 +63,12 @@ actor DestinationQueue {
     private let maxWorkers = 4 // Reduced from 8 to prevent resource exhaustion
     private let maxMemoryUsageMB = 750 // Increased from 500MB - more appropriate for modern systems
 
+    // DEBUG-only per-file delay that keeps the live-progress UI on screen long
+    // enough for the UI test suite to sample it. Driven by --testPerFileDelayMs
+    // and gated on UITestSeam.isActive; resolves to 0 in Release and in every
+    // normal run, so the copy/verify hot paths are untouched outside UI tests.
+    private let perFileDelayNanos: UInt64 = UITestSeam.perFileDelayNanos
+
     init(
         destination: URL, organizationName: String = "",
         fileOperations: FileOperationsProtocol = DefaultFileOperations.shared
@@ -258,6 +264,12 @@ actor DestinationQueue {
                     // Call callback asynchronously to respect actor boundaries
                     await progressCallback(currentCompleted, currentTotal)
                 }
+            }
+
+            // UI-test slow seam: pause per copied file so the live copy phase
+            // stays observable. No-op (0ns) outside UI tests. See UITestSeam.
+            if perFileDelayNanos > 0 {
+                try? await Task.sleep(nanoseconds: perFileDelayNanos)
             }
         }
 
@@ -643,6 +655,12 @@ actor DestinationQueue {
                     if let callback = onVerificationStateChange {
                         let currentVerified = verifiedFiles
                         await callback(true, currentVerified)
+                    }
+
+                    // UI-test slow seam: pause per verified file so the live
+                    // verify phase stays observable. No-op outside UI tests.
+                    if perFileDelayNanos > 0 {
+                        try? await Task.sleep(nanoseconds: perFileDelayNanos)
                     }
                 } else {
                     ApplicationLogger.shared.debug("Checksum mismatch: \(task.relativePath) at \(destination.lastPathComponent)", category: .backup)
