@@ -48,7 +48,7 @@ final class FailurePathUITests: ImageIntactUITestCase {
       stats.contains("inSource=6"),
       "expected all 6 source files accounted for: \(stats)")
     XCTAssertTrue(
-      stats.contains("dest1:c4"),
-      "expected the 4 readable files to still copy to dest1: \(stats)")
+      stats.contains("dest1:c4/s0/f2"),
+      "expected dest1 to copy the 4 readable files and report the 2 unreadable as failed: \(stats)")
   }
 }

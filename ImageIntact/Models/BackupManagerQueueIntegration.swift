@@ -80,6 +80,20 @@ extension BackupManager {
             return
         }
 
+        // Source files that couldn't be read (e.g. permission-denied) fail at
+        // manifest-build time and are excluded from preflightManifest. They
+        // reach no destination, so the copy phase never sees them — record them
+        // here so the completion report and stats surface them as failed
+        // instead of silently dropping the files (S4-11).
+        let sourceReadFailures = await manifestBuilder.buildFailures
+        for failure in sourceReadFailures
+        where !state.failedFiles.contains(where: {
+            $0.file == failure.file && $0.destination == "source"
+        }) {
+            state.failedFiles.append(
+                (file: failure.file, destination: "source", error: failure.error))
+        }
+
         ApplicationLogger.shared.debug("Preflight manifest built: \(preflightManifest.count) files", category: .backup)
         if preflightManifest.count > 0 {
             let totalBytes = preflightManifest.reduce(0) { $0 + $1.size }
@@ -259,7 +273,9 @@ extension BackupManager {
         }
 
         // Populate statistics and handle completion
-        populateStatistics(failures: failures, destinations: destinations)
+        populateStatistics(
+            failures: failures, sourceReadFailures: sourceReadFailures.count,
+            destinations: destinations)
         await handleBackupCompletion(destinations: destinations)
     }
 
@@ -315,17 +331,22 @@ extension BackupManager {
     @MainActor
     private func populateStatistics(
         failures: [(file: String, destination: String, error: String)],
+        sourceReadFailures: Int = 0,
         destinations _: [URL]
     ) {
         let totalFiles = progressTracker.totalFiles
         let processedFiles = progressTracker.processedFiles
-        let failedCount = failures.count
+        // Source-read failures were dropped from the manifest before the copy
+        // phase, so they're absent from both `failures` and `totalFiles`. Count
+        // them once toward the global failed + in-source totals so the sheet
+        // doesn't claim a smaller source that fully succeeded (S4-11).
+        let failedCount = failures.count + sourceReadFailures
 
         // Update overall stats from progress tracker
         // Use the actual manifest count for files processed, not the sum across destinations
         statistics.totalFilesProcessed = min(processedFiles, totalFiles)
         statistics.totalFilesFailed = failedCount
-        statistics.totalFilesInSource = totalFiles
+        statistics.totalFilesInSource = totalFiles + sourceReadFailures
 
         // Debug logging to diagnose the issue
         ApplicationLogger.shared.debug(
@@ -361,11 +382,14 @@ extension BackupManager {
                 sourceManager.sourceTotalBytes > 0
                     ? sourceManager.sourceTotalBytes
                     : (progressTracker.totalBytesCopied / Int64(max(1, destinationItems.count)))
+            // A source-read failure means the file reached no destination, so
+            // every destination is missing it — surface it in each dest's
+            // failed column too (global total already counts it once).
             statistics.destinationStats[destName] = DestinationStatistics(
                 destinationName: destName,
                 filesCopied: progress - destFailures,
                 filesSkipped: 0,
-                filesFailed: destFailures,
+                filesFailed: destFailures + sourceReadFailures,
                 bytesWritten: bytesPerDest,
                 timeElapsed: statistics.duration ?? 0,
                 averageSpeed: progressTracker.copySpeed

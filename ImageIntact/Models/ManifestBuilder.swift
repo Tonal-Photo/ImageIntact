@@ -11,6 +11,13 @@ actor ManifestBuilder {
     /// Callback for failed files
     private var onFileError: ((String, String, String) -> Void)?
 
+    /// Files that failed checksum during the most recent `build` (e.g.
+    /// unreadable source files). Collected synchronously inside `build` so a
+    /// caller can read it deterministically after `await build(...)` — unlike
+    /// `onFileError`, which is dispatched asynchronously to the main actor and
+    /// may not have fired by the time `build` returns.
+    private(set) var buildFailures: [(file: String, error: String)] = []
+
     /// Batch processor for optimized file operations
     private let batchProcessor = BatchFileProcessor()
 
@@ -189,6 +196,10 @@ actor ManifestBuilder {
         filter: FileTypeFilter = FileTypeFilter(),
         includeSubdirectories: Bool = true
     ) async -> [FileManifestEntry]? {
+        // Reset per-build failure collection (fresh builder per backup in
+        // production; defensive for reused instances in tests).
+        buildFailures = []
+
         // Phase 1: Collect all files
         var filesToProcess: [(url: URL, relativePath: String, size: Int64)] = []
 
@@ -386,6 +397,7 @@ actor ManifestBuilder {
                     "No checksum for \(url.lastPathComponent): \(error.localizedDescription)",
                     category: .fileSystem
                 )
+                buildFailures.append((file: url.lastPathComponent, error: error.localizedDescription))
                 if let callback = onFileError {
                     Task { @MainActor in
                         callback(url.lastPathComponent, "manifest", error.localizedDescription)
@@ -401,6 +413,7 @@ actor ManifestBuilder {
                     "Missing checksum result for \(url.lastPathComponent) — BatchFileProcessor returned no entry for this URL despite no cancellation",
                     category: .fileSystem
                 )
+                buildFailures.append((file: url.lastPathComponent, error: "Missing checksum result"))
                 if let callback = onFileError {
                     Task { @MainActor in
                         callback(url.lastPathComponent, "manifest", "Missing checksum result")
