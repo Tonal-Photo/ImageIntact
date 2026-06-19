@@ -8,10 +8,12 @@
 //  byte-verify the copied destination after the backup completes - ground
 //  truth instead of trusting the app's own completion stats. AMUX-371.
 //
-//  Driving patterns ported verbatim from Palomino (FolderTests): the panel is
-//  app.windows (not dialogs), Go-To-Folder is a sheet ON the panel, and the
-//  path is typed via the pasteboard + Cmd-V (the out-of-process panel drops
-//  char-by-char typing) with the clipboard saved and restored.
+//  Driving patterns ported from Palomino (FolderTests): Go-To-Folder is a sheet
+//  ON the panel, and the path is pasted via the pasteboard + Cmd-V (the
+//  out-of-process panel drops char-by-char typing) with the clipboard saved and
+//  restored. The one departure: ImageIntact opens the picker app-modally, so it
+//  surfaces as app.dialogs["open-panel"], not the app.windows["open-panel"] that
+//  Palomino's modeless begin{} picker produces.
 //
 
 import AppKit
@@ -31,8 +33,21 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
 
         let sourceFiles = try FixtureFactory.generateImages(into: sourceDir, count: 6)
         try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-        // Only ever remove the marked root, and only after verification.
-        defer { try? FileManager.default.removeItem(at: root) }
+        // Clean up through a teardown block, not defer: with continueAfterFailure
+        // false a failed assertion halts the test via an Objective-C exception
+        // that bypasses Swift defer, which would leak the fixture tree. Teardown
+        // blocks still run. Only ever remove the marked root.
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        // Save and restore the clipboard at the test level (same reason: a defer
+        // in the paste helper would be skipped on a mid-helper failure). The UI
+        // plan is serial (TestPlans/UI.xctestplan), so there is no parallel-test
+        // race on the global pasteboard.
+        let savedClipboard = NSPasteboard.general.string(forType: .string)
+        addTeardownBlock {
+            NSPasteboard.general.clearContents()
+            if let savedClipboard { NSPasteboard.general.setString(savedClipboard, forType: .string) }
+        }
 
         let a = launchApp(fixtures: nil, hasSeenWelcome: true)
         let main = MainScreen(app: a)
@@ -94,13 +109,10 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
     /// (the out-of-process panel drops char-by-char typing), confirm the sheet,
     /// then Open. Saves and restores the clipboard.
     private func selectFolderViaOpenPanel(opening button: XCUIElement, to path: String) {
-        let savedClipboard = NSPasteboard.general.string(forType: .string)
+        // The path is pasted from the pasteboard (the out-of-process panel drops
+        // char-by-char typing); the caller saves and restores the clipboard.
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(path, forType: .string)
-        defer {
-            NSPasteboard.general.clearContents()
-            if let savedClipboard { NSPasteboard.general.setString(savedClipboard, forType: .string) }
-        }
 
         button.click()
 
@@ -111,8 +123,7 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
         let panel = app.dialogs["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 15), "open panel did not appear")
 
-        // Go-To-Folder is a sheet ON the panel. The panel runs out of process
-        // and drops char-by-char typing, so paste the path from the pasteboard.
+        // Go-To-Folder is a sheet ON the panel.
         panel.typeKey("g", modifierFlags: [.command, .shift])
         let gotoSheet = panel.sheets.firstMatch
         XCTAssertTrue(gotoSheet.waitForExistence(timeout: 5), "Go-to-Folder sheet did not appear")
@@ -121,13 +132,19 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
         field.click()
         field.typeKey("a", modifierFlags: .command)
         field.typeKey("v", modifierFlags: .command)
+        // Confirm the Go-To-Folder sheet, which navigates the panel to the path.
         panel.typeKey(.return, modifierFlags: [])
+        // The navigation has no observable completion signal; give it a moment to
+        // settle so Open selects the navigated folder rather than the prior one.
         Thread.sleep(forTimeInterval: 1)
 
-        // Confirm the open panel itself, then let it dismiss before the caller
-        // drives the next selection.
-        if panel.exists && panel.buttons["Open"].exists {
-            panel.buttons["Open"].click()
+        // Confirm the panel via the Open button once it is present (waiting for it
+        // rather than checking immediately avoids a swallowed Return if the sheet
+        // is still animating out). Match on existence, not hittability: modal
+        // panel buttons misreport isHittable on macOS.
+        let openButton = panel.buttons["Open"]
+        if openButton.waitForExistence(timeout: 5) {
+            openButton.click()
         } else {
             panel.typeKey(.return, modifierFlags: [])
         }
