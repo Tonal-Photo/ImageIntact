@@ -62,14 +62,14 @@ extension BackupManager {
         }
 
         let manifestBuilder = ManifestBuilder()
-        let preflightManifest = await manifestBuilder.build(
+        let preflightResult = await manifestBuilder.buildReportingFailures(
             source: source,
             shouldCancel: { [weak self] in self?.state.shouldCancel ?? true },
             filter: fileTypeFilter,
             includeSubdirectories: includeSubdirectories
         )
 
-        guard let preflightManifest = preflightManifest else {
+        guard let preflightResult = preflightResult else {
             // Stop access before returning
             if preflightAccess {
                 source.stopAccessingSecurityScopedResource()
@@ -79,17 +79,16 @@ extension BackupManager {
             state.statusMessage = "Backup cancelled or failed"
             return
         }
+        let preflightManifest = preflightResult.entries
 
         // Source files that couldn't be read (e.g. permission-denied) fail at
-        // manifest-build time and are excluded from preflightManifest. They
-        // reach no destination, so the copy phase never sees them — record them
-        // here so the completion report and stats surface them as failed
-        // instead of silently dropping the files (S4-11).
-        let sourceReadFailures = await manifestBuilder.buildFailures
-        for failure in sourceReadFailures
-        where !state.failedFiles.contains(where: {
-            $0.file == failure.file && $0.destination == "source"
-        }) {
+        // manifest-build time and are excluded from the manifest. They reach no
+        // destination, so the copy phase never sees them — record them here so
+        // the completion report and stats surface them as failed instead of
+        // silently dropping the files (S4-11). This runs once per backup, so no
+        // dedup against state.failedFiles is needed.
+        let sourceReadFailures = preflightResult.failures
+        for failure in sourceReadFailures {
             state.failedFiles.append(
                 (file: failure.file, destination: "source", error: failure.error))
         }

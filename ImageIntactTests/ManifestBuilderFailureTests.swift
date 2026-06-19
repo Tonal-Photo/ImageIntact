@@ -2,9 +2,9 @@
 //  ManifestBuilderFailureTests.swift
 //  ImageIntactTests
 //
-//  An unreadable source file must be reported in `buildFailures` and excluded
-//  from the manifest — so the backup pipeline can surface it as failed>0
-//  instead of silently dropping it. AMUX-375 / S4-11.
+//  An unreadable source file must be reported in the build result's failures
+//  and excluded from the manifest — so the backup pipeline can surface it as
+//  failed>0 instead of silently dropping it. AMUX-375 / S4-11.
 //
 
 import XCTest
@@ -45,22 +45,25 @@ final class ManifestBuilderFailureTests: XCTestCase {
     try Data("nope".utf8).write(to: locked)
     try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
 
-    let manifest = await manifestBuilder.build(source: testDirectory, shouldCancel: { false })
-    let failures = await manifestBuilder.buildFailures
+    let result = await manifestBuilder.buildReportingFailures(
+      source: testDirectory, shouldCancel: { false })
 
-    let names = (manifest ?? []).map { URL(fileURLWithPath: $0.relativePath).lastPathComponent }
+    let names = (result?.entries ?? []).map {
+      URL(fileURLWithPath: $0.relativePath).lastPathComponent
+    }
     XCTAssertEqual(names, ["ok.jpg"], "unreadable file must be excluded from the manifest")
-    XCTAssertEqual(failures.map(\.file), ["locked.jpg"], "unreadable file must be in buildFailures")
+    XCTAssertEqual(
+      result?.failures.map(\.file), ["locked.jpg"], "unreadable file must be reported in failures")
   }
 
   func testBuild_noFailures_leavesBuildFailuresEmpty() async throws {
     try Data("a".utf8).write(to: testDirectory.appendingPathComponent("a.jpg"))
     try Data("b".utf8).write(to: testDirectory.appendingPathComponent("b.jpg"))
 
-    let manifest = await manifestBuilder.build(source: testDirectory, shouldCancel: { false })
-    let failures = await manifestBuilder.buildFailures
+    let result = await manifestBuilder.buildReportingFailures(
+      source: testDirectory, shouldCancel: { false })
 
-    XCTAssertEqual(manifest?.count, 2)
-    XCTAssertTrue(failures.isEmpty, "a clean build must report no failures")
+    XCTAssertEqual(result?.entries.count, 2)
+    XCTAssertEqual(result?.failures.isEmpty, true, "a clean build must report no failures")
   }
 }

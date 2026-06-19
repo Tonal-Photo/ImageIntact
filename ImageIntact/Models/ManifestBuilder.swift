@@ -11,12 +11,15 @@ actor ManifestBuilder {
     /// Callback for failed files
     private var onFileError: ((String, String, String) -> Void)?
 
-    /// Files that failed checksum during the most recent `build` (e.g.
-    /// unreadable source files). Collected synchronously inside `build` so a
-    /// caller can read it deterministically after `await build(...)` — unlike
-    /// `onFileError`, which is dispatched asynchronously to the main actor and
-    /// may not have fired by the time `build` returns.
-    private(set) var buildFailures: [(file: String, error: String)] = []
+    /// Manifest entries plus the per-file failures (e.g. unreadable source
+    /// files) collected during the same build. Returned as a value so the
+    /// failures travel with the result — no shared instance state to corrupt
+    /// under actor re-entrancy, and deterministically available to the caller
+    /// (unlike `onFileError`, which is dispatched asynchronously to MainActor).
+    struct Result {
+        let entries: [FileManifestEntry]
+        let failures: [(file: String, error: String)]
+    }
 
     /// Batch processor for optimized file operations
     private let batchProcessor = BatchFileProcessor()
@@ -196,9 +199,24 @@ actor ManifestBuilder {
         filter: FileTypeFilter = FileTypeFilter(),
         includeSubdirectories: Bool = true
     ) async -> [FileManifestEntry]? {
-        // Reset per-build failure collection (fresh builder per backup in
-        // production; defensive for reused instances in tests).
-        buildFailures = []
+        await buildReportingFailures(
+            source: source, shouldCancel: shouldCancel, filter: filter,
+            includeSubdirectories: includeSubdirectories)?.entries
+    }
+
+    /// Build the manifest and also return the per-file failures collected during
+    /// the build (e.g. unreadable source files dropped from the manifest), so a
+    /// caller can surface them instead of silently losing the files.
+    func buildReportingFailures(
+        source: URL,
+        shouldCancel: @escaping () -> Bool,
+        filter: FileTypeFilter = FileTypeFilter(),
+        includeSubdirectories: Bool = true
+    ) async -> Result? {
+        // Per-build failure accumulator. Local (not instance state) so a
+        // concurrent call on the same actor instance cannot clobber this
+        // build's result across an await suspension.
+        var buildFailures: [(file: String, error: String)] = []
 
         // Phase 1: Collect all files
         var filesToProcess: [(url: URL, relativePath: String, size: Int64)] = []
@@ -423,7 +441,7 @@ actor ManifestBuilder {
         }
 
         ApplicationLogger.shared.debug("Manifest built with \(manifest.count) files", category: .fileSystem)
-        return manifest
+        return Result(entries: manifest, failures: buildFailures)
     }
 
     // MARK: - Private Methods
