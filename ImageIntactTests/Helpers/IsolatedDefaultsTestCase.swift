@@ -9,8 +9,9 @@ import XCTest
 /// (the production bookmark-persistence seam) is pointed at that suite for the
 /// duration of the test and reset to `.standard` in tearDown. The suite is then
 /// removed entirely. A developer's real saved bookmarks in `.standard` are never
-/// touched, and parallel XCTest worker processes never collide on the bookmark
-/// domain.
+/// touched. Isolating each test's bookmark state in its own suite is the
+/// prerequisite for parallel-safe execution of the bookmark tests (verified
+/// serially here; the parallel re-enable + verification is tracked in AMUX-456).
 ///
 /// NOTE: This isolates the bookmark domain only. The `Fast` test plan still runs
 /// serially (`parallelizable: false`) because `PreferencesManager`/`@AppStorage`

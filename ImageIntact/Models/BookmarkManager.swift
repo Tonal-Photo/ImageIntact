@@ -12,8 +12,8 @@ struct BookmarkManager {
 
     /// Backing store for bookmark persistence. Defaults to `.standard` (the
     /// shipping app's domain). Tests point this at a per-test
-    /// `UserDefaults(suiteName:)` via `IsolatedDefaultsTestCase`, so the suite is
-    /// hermetic and parallel-safe and a developer's real bookmarks are never
+    /// `UserDefaults(suiteName:)` via `IsolatedDefaultsTestCase`, so each test's
+    /// bookmark state is hermetic and a developer's real bookmarks are never
     /// touched. `nonisolated(unsafe)`: production only reads it; the sole writer
     /// is test setUp/tearDown on the main actor (and the test plan runs serially).
     nonisolated(unsafe) static var store: UserDefaults = .standard
