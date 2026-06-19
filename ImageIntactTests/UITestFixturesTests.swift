@@ -65,6 +65,27 @@ final class UITestFixturesTests: XCTestCase {
     XCTAssertNil(UITestFixtures.parseSpec("src=6,dests=9"))
   }
 
+  // MARK: - Copy-delay throttle parsing (--testCopyDelayMs)
+
+  func testParseCopyDelayMs_validValue() {
+    XCTAssertEqual(
+      UITestFixtures.parseCopyDelayMs(arguments: ["--testCopyDelayMs", "2500"]), 2500)
+    // Zero is in range (throttle off) and parses.
+    XCTAssertEqual(
+      UITestFixtures.parseCopyDelayMs(arguments: ["--testCopyDelayMs", "0"]), 0)
+  }
+
+  func testParseCopyDelayMs_absentOrMalformed_returnsNil() {
+    XCTAssertNil(UITestFixtures.parseCopyDelayMs(arguments: []))
+    XCTAssertNil(UITestFixtures.parseCopyDelayMs(arguments: ["--testCopyDelayMs"]))  // no value
+    XCTAssertNil(UITestFixtures.parseCopyDelayMs(arguments: ["--testCopyDelayMs", "soon"]))
+  }
+
+  func testParseCopyDelayMs_outOfRange_returnsNil() {
+    XCTAssertNil(UITestFixtures.parseCopyDelayMs(arguments: ["--testCopyDelayMs", "-1"]))
+    XCTAssertNil(UITestFixtures.parseCopyDelayMs(arguments: ["--testCopyDelayMs", "60001"]))
+  }
+
   // MARK: - Path guard
 
   func testIsUITestPath_requiresMarker() {

@@ -304,6 +304,21 @@ actor DestinationQueue {
     private func processFileTask(_ task: FileTask) async -> CopyResult {
         guard !shouldCancel else { return .cancelled }
 
+        // DEBUG-only UI-test throttle: slow each file so the suite can cancel a
+        // backup mid-copy. UITestSeam.perFileCopyDelayNanos is a compile-time 0
+        // in release, so this branch is dead and the production copy path is
+        // unchanged. Cancellation-aware: stop() cancels the worker Task, so
+        // Task.sleep throws and we exit cleanly as cancelled.
+        let copyThrottleNanos = UITestSeam.perFileCopyDelayNanos
+        if copyThrottleNanos > 0 {
+            do {
+                try await Task.sleep(nanoseconds: copyThrottleNanos)
+            } catch {
+                return .cancelled
+            }
+            guard !shouldCancel else { return .cancelled }
+        }
+
         let destPath = buildDestinationPath(for: task)
         let destDir = destPath.deletingLastPathComponent()
         let startTime = Date()

@@ -39,6 +39,20 @@ enum UITestSeam {
       return false
     #endif
   }
+
+  /// Per-file copy throttle (nanoseconds) the backup worker honors so the UI
+  /// suite can cancel a backup mid-copy. ALWAYS 0 in release — the knob
+  /// compiles out (the `#else` returns a constant 0), so the production copy
+  /// path is unchanged and the throttle branch is dead. In DEBUG it reflects
+  /// `--testCopyDelayMs` (stored under "TestCopyDelayMs" by bootstrap).
+  static var perFileCopyDelayNanos: UInt64 {
+    #if DEBUG
+      let ms = UserDefaults.standard.integer(forKey: "TestCopyDelayMs")
+      return ms > 0 ? UInt64(ms) * 1_000_000 : 0
+    #else
+      return 0
+    #endif
+  }
 }
 
 #if DEBUG
@@ -142,6 +156,18 @@ enum UITestSeam {
       return Spec(
         sourceCount: sourceCount, destCount: destCount, prefill: prefill,
         failureCount: failureCount)
+    }
+
+    /// Parses `--testCopyDelayMs <0...60000>` — a DEBUG-only per-file copy
+    /// throttle that holds a backup in the copy phase long enough for the
+    /// cancel-mid-copy UI test. Returns nil if the flag is absent, non-numeric,
+    /// or out of range. Pure, for unit testing; the value is stored under
+    /// "TestCopyDelayMs" and read by UITestSeam.perFileCopyDelayNanos.
+    static func parseCopyDelayMs(arguments: [String]) -> Int? {
+      guard let raw = value(after: "--testCopyDelayMs", in: arguments),
+        let ms = Int(raw), (0...60000).contains(ms)
+      else { return nil }
+      return ms
     }
 
     // MARK: - Generation
@@ -256,6 +282,11 @@ enum UITestSeam {
           defaults: .standard,
           domainName: Bundle.main.bundleIdentifier ?? "com.tonalphoto.tech.ImageIntact",
           fixturesRoot: defaultRoot)
+      }
+      // Stored AFTER reset so the hermetic wipe doesn't clear it. Read per-file
+      // by UITestSeam.perFileCopyDelayNanos to throttle the copy phase.
+      if let delayMs = parseCopyDelayMs(arguments: arguments) {
+        UserDefaults.standard.set(delayMs, forKey: "TestCopyDelayMs")
       }
       do {
         let applied = try applyLaunchSeam(
