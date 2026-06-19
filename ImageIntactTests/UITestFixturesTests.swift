@@ -211,4 +211,100 @@ final class UITestFixturesTests: XCTestCase {
       FileManager.default.fileExists(atPath: unmarked.path),
       "reset must never delete a directory that lacks the imageintact-uitest marker")
   }
+
+  // MARK: - Failure injection (failures=N)
+
+  func testParseSpec_parsesFailuresField() {
+    let spec = UITestFixtures.parseSpec("src=6,failures=2")
+    XCTAssertEqual(
+      spec, UITestFixtures.Spec(sourceCount: 6, destCount: 1, prefill: .none, failureCount: 2))
+  }
+
+  func testParseSpec_failuresDefaultsToZero() {
+    XCTAssertEqual(UITestFixtures.parseSpec("src=3")?.failureCount, 0)
+  }
+
+  func testParseSpec_rejectsFailuresExceedingSource() {
+    XCTAssertNil(UITestFixtures.parseSpec("src=2,failures=3"))
+  }
+
+  func testParseSpec_rejectsGarbageFailures() {
+    XCTAssertNil(UITestFixtures.parseSpec("src=6,failures=-1"))
+    XCTAssertNil(UITestFixtures.parseSpec("src=6,failures=two"))
+  }
+
+  func testGenerate_failuresMakesFirstNSourceFilesUnreadable() throws {
+    let paths = try UITestFixtures.generate(
+      into: markedRoot, spec: .init(sourceCount: 4, destCount: 1, prefill: .none, failureCount: 2))
+    let sources = try FileManager.default.contentsOfDirectory(
+      at: paths.source, includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "jpg" }
+      .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    XCTAssertEqual(sources.count, 4)
+    // fix-01, fix-02 unreadable; the rest readable.
+    for file in sources.prefix(2) {
+      let mode =
+        try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
+      XCTAssertEqual(mode, 0, "\(file.lastPathComponent) should be mode 000")
+      XCTAssertFalse(
+        FileManager.default.isReadableFile(atPath: file.path),
+        "\(file.lastPathComponent) should not be readable")
+    }
+    for file in sources.dropFirst(2) {
+      XCTAssertTrue(
+        FileManager.default.isReadableFile(atPath: file.path),
+        "\(file.lastPathComponent) should remain readable")
+    }
+    // Restore so tearDown's removeItem is unhindered even if FileManager balks.
+    for file in sources.prefix(2) {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+    }
+  }
+
+  func testGenerate_prefillCopiesStayReadableWhenFailuresSet() throws {
+    // Prefill copies are made BEFORE the source chmod, so they must be intact.
+    let paths = try UITestFixtures.generate(
+      into: markedRoot,
+      spec: .init(sourceCount: 3, destCount: 1, prefill: .exact, failureCount: 1),
+      organizationName: "Org")
+    let seeded = try FileManager.default.contentsOfDirectory(
+      at: paths.dests[0].appendingPathComponent("Org"), includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "jpg" }
+    XCTAssertEqual(seeded.count, 3)
+    for file in seeded {
+      XCTAssertTrue(
+        FileManager.default.isReadableFile(atPath: file.path),
+        "prefill copy \(file.lastPathComponent) must be readable")
+    }
+    // Restore source perms for clean teardown.
+    let sources = try FileManager.default.contentsOfDirectory(
+      at: paths.source, includingPropertiesForKeys: nil)
+    for file in sources {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+    }
+  }
+
+  func testGenerate_regeneratesOverTreeWithUnreadableFiles() throws {
+    _ = try UITestFixtures.generate(
+      into: markedRoot, spec: .init(sourceCount: 3, destCount: 1, prefill: .none, failureCount: 2))
+    // Second generate must not throw despite the prior tree holding 000 files.
+    let paths = try UITestFixtures.generate(
+      into: markedRoot, spec: .init(sourceCount: 2, destCount: 1, prefill: .none))
+    let sources = try FileManager.default.contentsOfDirectory(
+      at: paths.source, includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "jpg" }
+    XCTAssertEqual(sources.count, 2)
+    for file in sources {
+      XCTAssertTrue(FileManager.default.isReadableFile(atPath: file.path))
+    }
+  }
+
+  func testReset_deletesTreeContainingUnreadableFiles() throws {
+    _ = try UITestFixtures.generate(
+      into: markedRoot, spec: .init(sourceCount: 3, destCount: 1, prefill: .none, failureCount: 2))
+    UITestFixtures.reset(defaults: defaults, domainName: suiteName, fixturesRoot: markedRoot)
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: markedRoot.path),
+      "reset must delete the tree even when it contains mode-000 files")
+  }
 }

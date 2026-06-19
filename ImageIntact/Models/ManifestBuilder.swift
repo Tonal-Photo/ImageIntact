@@ -11,6 +11,16 @@ actor ManifestBuilder {
     /// Callback for failed files
     private var onFileError: ((String, String, String) -> Void)?
 
+    /// Manifest entries plus the per-file failures (e.g. unreadable source
+    /// files) collected during the same build. Returned as a value so the
+    /// failures travel with the result — no shared instance state to corrupt
+    /// under actor re-entrancy, and deterministically available to the caller
+    /// (unlike `onFileError`, which is dispatched asynchronously to MainActor).
+    struct Result {
+        let entries: [FileManifestEntry]
+        let failures: [(file: String, error: String)]
+    }
+
     /// Batch processor for optimized file operations
     private let batchProcessor = BatchFileProcessor()
 
@@ -189,6 +199,25 @@ actor ManifestBuilder {
         filter: FileTypeFilter = FileTypeFilter(),
         includeSubdirectories: Bool = true
     ) async -> [FileManifestEntry]? {
+        await buildReportingFailures(
+            source: source, shouldCancel: shouldCancel, filter: filter,
+            includeSubdirectories: includeSubdirectories)?.entries
+    }
+
+    /// Build the manifest and also return the per-file failures collected during
+    /// the build (e.g. unreadable source files dropped from the manifest), so a
+    /// caller can surface them instead of silently losing the files.
+    func buildReportingFailures(
+        source: URL,
+        shouldCancel: @escaping () -> Bool,
+        filter: FileTypeFilter = FileTypeFilter(),
+        includeSubdirectories: Bool = true
+    ) async -> Result? {
+        // Per-build failure accumulator. Local (not instance state) so a
+        // concurrent call on the same actor instance cannot clobber this
+        // build's result across an await suspension.
+        var buildFailures: [(file: String, error: String)] = []
+
         // Phase 1: Collect all files
         var filesToProcess: [(url: URL, relativePath: String, size: Int64)] = []
 
@@ -386,6 +415,7 @@ actor ManifestBuilder {
                     "No checksum for \(url.lastPathComponent): \(error.localizedDescription)",
                     category: .fileSystem
                 )
+                buildFailures.append((file: url.lastPathComponent, error: error.localizedDescription))
                 if let callback = onFileError {
                     Task { @MainActor in
                         callback(url.lastPathComponent, "manifest", error.localizedDescription)
@@ -401,6 +431,7 @@ actor ManifestBuilder {
                     "Missing checksum result for \(url.lastPathComponent) — BatchFileProcessor returned no entry for this URL despite no cancellation",
                     category: .fileSystem
                 )
+                buildFailures.append((file: url.lastPathComponent, error: "Missing checksum result"))
                 if let callback = onFileError {
                     Task { @MainActor in
                         callback(url.lastPathComponent, "manifest", "Missing checksum result")
@@ -410,7 +441,7 @@ actor ManifestBuilder {
         }
 
         ApplicationLogger.shared.debug("Manifest built with \(manifest.count) files", category: .fileSystem)
-        return manifest
+        return Result(entries: manifest, failures: buildFailures)
     }
 
     // MARK: - Private Methods
