@@ -1,0 +1,3 @@
+Test-support base classes (BaseBackupManagerTestCase, IsolatedDefaultsTestCase).
+Exercised by the test classes that subclass them, not by standalone unit tests.
+Design-first still applies (see ../../.planning/design/Helpers.md).

@@ -14,7 +14,7 @@ import XCTest
 @testable import ImageIntact
 
 @MainActor
-final class BackupManagerSetDestinationTests: XCTestCase {
+final class BackupManagerSetDestinationTests: IsolatedDefaultsTestCase {
 
     // MARK: - Helpers
 
@@ -25,12 +25,8 @@ final class BackupManagerSetDestinationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-
-        // Clear bookmark state so init doesn't restore stale data.
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        // Bookmark isolation handled by IsolatedDefaultsTestCase — store is a
+        // fresh suite; no manual removeObject needed.
 
         mockFileOps = MockFileOperations()
         mockPresenter = MockDestinationAlertPresenter()
@@ -45,11 +41,6 @@ final class BackupManagerSetDestinationTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-
         backupManager = nil
         mockPresenter = nil
         mockFileOps = nil

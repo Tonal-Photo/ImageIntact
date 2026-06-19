@@ -20,7 +20,7 @@ import XCTest
 @testable import ImageIntact
 
 @MainActor
-final class PreferencesProvidingTests: XCTestCase {
+final class PreferencesProvidingTests: IsolatedDefaultsTestCase {
 
     // MARK: - Protocol contract — read/write surface
 
@@ -235,13 +235,9 @@ final class PreferencesProvidingTests: XCTestCase {
     /// destinations". The test asserts the convergent outcome, which is the
     /// only externally observable shape without a destinationManager mock.
     func testBackupManager_init_restoreLastSession_false_initializesEmpty() {
-        // Clear any bookmark state from prior sessions (defensive — the test
-        // base classes also do this, but PreferencesProvidingTests is a
-        // plain XCTestCase).
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
-        for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        // Bookmark isolation is handled by IsolatedDefaultsTestCase — the
+        // inherited defaults suite is fresh and empty; BookmarkManager.store
+        // points there, so BackupManager.init sees no stale bookmarks.
         let prefs = InMemoryPreferencesProvider(restoreLastSession: false)
 
         let bm = BackupManager(

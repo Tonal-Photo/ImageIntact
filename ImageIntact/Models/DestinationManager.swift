@@ -236,7 +236,7 @@ class DestinationManager {
         destinationItems[index] = DestinationItem(url: nil)
 
         if index < BookmarkManager.destinationKeys.count {
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[index])
+            BookmarkManager.clearBookmark(forKey: BookmarkManager.destinationKeys[index])
         }
     }
 
@@ -249,7 +249,7 @@ class DestinationManager {
             let oldID = destinationItems[0].id
             destinationDriveInfo.removeValue(forKey: oldID)
             destinationItems[0] = DestinationItem(url: nil)
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[0])
+            BookmarkManager.clearBookmark(forKey: BookmarkManager.destinationKeys[0])
             return
         }
 
@@ -266,14 +266,14 @@ class DestinationManager {
                 if let url = item.url {
                     BookmarkManager.saveBookmark(url: url, key: BookmarkManager.destinationKeys[i])
                 } else {
-                    UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
+                    BookmarkManager.clearBookmark(forKey: BookmarkManager.destinationKeys[i])
                 }
             }
         }
 
         // Clear trailing keys
         for i in destinationItems.count..<BookmarkManager.destinationKeys.count {
-            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[i])
+            BookmarkManager.clearBookmark(forKey: BookmarkManager.destinationKeys[i])
         }
 
         logInfo("Removed destination at index \(index), new count: \(destinationItems.count)")
@@ -404,7 +404,7 @@ class DestinationManager {
                         self.destinationDriveInfo.removeValue(forKey: itemID)
                         self.destinationItems[currentIndex] = DestinationItem(url: nil)
                         if currentIndex < BookmarkManager.destinationKeys.count {
-                            UserDefaults.standard.removeObject(forKey: BookmarkManager.destinationKeys[currentIndex])
+                            BookmarkManager.clearBookmark(forKey: BookmarkManager.destinationKeys[currentIndex])
                         }
                     }
                     return
@@ -443,7 +443,7 @@ class DestinationManager {
             destinationDriveInfo.removeValue(forKey: item.id)
         }
         for key in BookmarkManager.destinationKeys {
-            UserDefaults.standard.removeObject(forKey: key)
+            BookmarkManager.clearBookmark(forKey: key)
         }
         destinationItems = [DestinationItem(url: nil)]
     }

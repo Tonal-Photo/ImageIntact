@@ -15,20 +15,18 @@ import XCTest
 @testable import ImageIntact
 
 @MainActor
-final class SourceManagerTests: XCTestCase {
+final class SourceManagerTests: IsolatedDefaultsTestCase {
 
     // MARK: - Lifecycle
 
     override func setUp() async throws {
         try await super.setUp()
-        // Clear the source bookmark so loadFromSession tests start clean.
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+        // Bookmark isolation handled by IsolatedDefaultsTestCase.
         // Reset file-type-filter preference to a known baseline.
         PreferencesManager.shared.resetToDefaults()
     }
 
     override func tearDown() async throws {
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
         PreferencesManager.shared.resetToDefaults()
         try await super.tearDown()
     }
@@ -136,7 +134,7 @@ final class SourceManagerTests: XCTestCase {
     /// BookmarkManager.sourceKey — the common "fresh launch" path.
     func testLoadFromSession_returnsNilWhenNoBookmark() {
         // setUp already clears the key; confirm baseline.
-        XCTAssertNil(UserDefaults.standard.data(forKey: BookmarkManager.sourceKey),
+        XCTAssertNil(defaults.data(forKey: BookmarkManager.sourceKey),
                      "Precondition: no bookmark data in UserDefaults")
         let manager = SourceManager(fileOperations: MockFileOperations())
         let result = manager.loadFromSession()
@@ -162,7 +160,7 @@ final class SourceManagerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         BookmarkManager.saveBookmark(url: tempDir, key: BookmarkManager.sourceKey)
-        XCTAssertNotNil(UserDefaults.standard.data(forKey: BookmarkManager.sourceKey),
+        XCTAssertNotNil(defaults.data(forKey: BookmarkManager.sourceKey),
                         "Precondition: bookmark data must be present before calling loadFromSession")
 
         let manager = SourceManager(fileOperations: MockFileOperations())
@@ -172,7 +170,7 @@ final class SourceManagerTests: XCTestCase {
         // In a sandboxed runner where access succeeds, result is the URL (success path).
         // Either outcome is valid; we assert the invariant: if nil is returned the key is gone.
         if result == nil {
-            XCTAssertNil(UserDefaults.standard.data(forKey: BookmarkManager.sourceKey),
+            XCTAssertNil(defaults.data(forKey: BookmarkManager.sourceKey),
                          "When loadFromSession returns nil, it must clear the stale bookmark key")
             XCTAssertNil(manager.sourceURL,
                          "sourceURL must not be set when loadFromSession returns nil")

@@ -165,7 +165,7 @@ class BackupManager {
         sourceManager.sourceURL = nil
         sourceManager.sourceFileTypes = [:]
         sourceManager.scanProgress = ""
-        UserDefaults.standard.removeObject(forKey: BookmarkManager.sourceKey)
+        BookmarkManager.clearBookmark(forKey: BookmarkManager.sourceKey)
         destinationManager.clearAll()
     }
 

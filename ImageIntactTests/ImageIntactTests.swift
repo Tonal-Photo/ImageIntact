@@ -9,31 +9,28 @@ import XCTest
 @testable import ImageIntact
 
 @MainActor
-class ImageIntactTests: XCTestCase {
-    
+class ImageIntactTests: IsolatedDefaultsTestCase {
+
     override class func setUp() {
         super.setUp()
         // Set environment variable for logging
         setenv("IDEPreferLogStreaming", "YES", 1)
     }
-    
-    override func setUp() {
-        super.setUp()
-        // Clear all saved bookmarks before each test
-        clearAllBookmarks()
-        
+
+    override func setUp() async throws {
+        try await super.setUp()
+        // Bookmark isolation is handled by IsolatedDefaultsTestCase.
+        // The inherited `defaults` suite is fresh and empty for each test.
+
         // Add a small delay to prevent timeout issues
         Thread.sleep(forTimeInterval: 0.1)
     }
-    
-    override func tearDown() {
-        // Clean up after tests
-        clearAllBookmarks()
-        
+
+    override func tearDown() async throws {
         // Clean up any test directories we created
         let fileManager = FileManager.default
         let tempDir = fileManager.temporaryDirectory
-        
+
         do {
             let contents = try fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
             for item in contents {
@@ -56,18 +53,8 @@ class ImageIntactTests: XCTestCase {
         } catch {
             print("Failed to clean up test directories: \(error)")
         }
-        
-        super.tearDown()
-    }
-    
-    // MARK: - Helper Methods
-    
-    func clearAllBookmarks() {
-        UserDefaults.standard.removeObject(forKey: "sourceBookmark")
-        UserDefaults.standard.removeObject(forKey: "dest1Bookmark")
-        UserDefaults.standard.removeObject(forKey: "dest2Bookmark")
-        UserDefaults.standard.removeObject(forKey: "dest3Bookmark")
-        UserDefaults.standard.removeObject(forKey: "dest4Bookmark")
+
+        try await super.tearDown()
     }
     
     func createTestDirectory(name: String) -> URL? {
@@ -99,7 +86,7 @@ class ImageIntactTests: XCTestCase {
         
         // Save bookmark
         let bookmarkData = try testDir.bookmarkData(options: .withSecurityScope)
-        UserDefaults.standard.set(bookmarkData, forKey: "testBookmark")
+        defaults.set(bookmarkData, forKey: "testBookmark")
         
         // Load bookmark
         let loadedURL = BookmarkManager.loadBookmark(forKey: "testBookmark")
@@ -122,8 +109,8 @@ class ImageIntactTests: XCTestCase {
         // Save bookmarks
         let bookmark1 = try testDir1.bookmarkData(options: .withSecurityScope)
         let bookmark2 = try testDir2.bookmarkData(options: .withSecurityScope)
-        UserDefaults.standard.set(bookmark1, forKey: "dest1Bookmark")
-        UserDefaults.standard.set(bookmark2, forKey: "dest2Bookmark")
+        defaults.set(bookmark1, forKey: "dest1Bookmark")
+        defaults.set(bookmark2, forKey: "dest2Bookmark")
         
         // Load destinations
         let destinations = BookmarkManager.loadDestinationBookmarks()
@@ -141,8 +128,8 @@ class ImageIntactTests: XCTestCase {
         // Save bookmarks with a gap (no dest2Bookmark)
         let bookmark1 = try testDir1.bookmarkData(options: .withSecurityScope)
         let bookmark3 = try testDir3.bookmarkData(options: .withSecurityScope)
-        UserDefaults.standard.set(bookmark1, forKey: "dest1Bookmark")
-        UserDefaults.standard.set(bookmark3, forKey: "dest3Bookmark")
+        defaults.set(bookmark1, forKey: "dest1Bookmark")
+        defaults.set(bookmark3, forKey: "dest3Bookmark")
         
         // Load destinations - should only load first one
         let destinations = BookmarkManager.loadDestinationBookmarks()
