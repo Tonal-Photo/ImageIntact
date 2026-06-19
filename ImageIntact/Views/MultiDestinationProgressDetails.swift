@@ -392,6 +392,9 @@ private func uiTestPhaseLabel(_ phase: BackupPhase) -> String {
 
 /// Grammar:
 /// `phase=<raw>;name=<label>;overall=<0-100>;processed=N;verified=V;total=M;dests=name:done/total,...`
+/// `@MainActor` because it reads the main-actor-isolated ProgressTracker /
+/// BackupManager state; always invoked from the (main-actor) SwiftUI body.
+@MainActor
 private func uiTestLiveProgressValue(_ backupManager: BackupManager) -> String {
   guard UITestSeam.isActive else { return "" }
   let pt = backupManager.progressTracker
@@ -402,7 +405,10 @@ private func uiTestLiveProgressValue(_ backupManager: BackupManager) -> String {
     let total = pt.destinationTotalFiles[name] ?? pt.totalFiles
     return "\(name):\(done)/\(total)"
   }.joined(separator: ",")
-  let overall = Int((pt.overallProgress * 100).rounded())
+  // Guard against a non-finite ratio (e.g. a 0-file / 0-byte edge case) so the
+  // DEBUG marker can never trap on Int(NaN).
+  let safeProgress = pt.overallProgress.isFinite ? pt.overallProgress : 0.0
+  let overall = Int((safeProgress * 100).rounded())
   return "phase=\(phase.rawValue);name=\(uiTestPhaseLabel(phase));overall=\(overall);"
     + "processed=\(pt.processedFiles);verified=\(pt.verifiedFiles);total=\(pt.totalFiles);dests=\(destPairs)"
 }
@@ -410,7 +416,7 @@ private func uiTestLiveProgressValue(_ backupManager: BackupManager) -> String {
 extension View {
   /// Attaches the `progress.live` marker — only under `--uitest`, so production
   /// builds add no identifier/value and the accessibility tree is unchanged.
-  @ViewBuilder
+  @MainActor @ViewBuilder
   func uiTestLiveProgressMarker(_ backupManager: BackupManager) -> some View {
     if UITestSeam.isActive {
       accessibilityIdentifier("progress.live")
