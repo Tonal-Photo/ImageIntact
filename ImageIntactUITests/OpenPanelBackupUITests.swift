@@ -104,7 +104,11 @@ final class OpenPanelBackupUITests: ImageIntactUITestCase {
 
         button.click()
 
-        let panel = app.windows["open-panel"]
+        // ImageIntact opens the picker app-modally (NSOpenPanel.runModal), so it
+        // surfaces as a Dialog carrying the system identifier "open-panel" - not
+        // a Window, which is what a modeless begin{} panel (Palomino) would be.
+        // Verified against the xcresult UI hierarchy.
+        let panel = app.dialogs["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 15), "open panel did not appear")
 
         // Go-To-Folder is a sheet ON the panel. The panel runs out of process
