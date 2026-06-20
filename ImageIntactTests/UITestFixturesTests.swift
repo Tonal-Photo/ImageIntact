@@ -328,4 +328,75 @@ final class UITestFixturesTests: XCTestCase {
       FileManager.default.fileExists(atPath: markedRoot.path),
       "reset must delete the tree even when it contains mode-000 files")
   }
+
+  // MARK: - Mixed file types (videos=N)
+
+  func testParseSpec_parsesVideosField() {
+    let spec = UITestFixtures.parseSpec("src=4,videos=2")
+    XCTAssertEqual(
+      spec,
+      UITestFixtures.Spec(sourceCount: 4, destCount: 1, prefill: .none, videoCount: 2))
+  }
+
+  func testParseSpec_videosDefaultsToZero() {
+    XCTAssertEqual(UITestFixtures.parseSpec("src=3")?.videoCount, 0)
+  }
+
+  func testParseSpec_videosCombinesWithOtherFields() {
+    let spec = UITestFixtures.parseSpec("src=4,dests=2,prefill=exact,videos=3")
+    XCTAssertEqual(
+      spec,
+      UITestFixtures.Spec(
+        sourceCount: 4, destCount: 2, prefill: .exact, videoCount: 3))
+  }
+
+  func testParseSpec_rejectsGarbageVideos() {
+    XCTAssertNil(UITestFixtures.parseSpec("src=4,videos=-1"))
+    XCTAssertNil(UITestFixtures.parseSpec("src=4,videos=two"))
+  }
+
+  func testParseSpec_boundsVideos() {
+    XCTAssertNil(UITestFixtures.parseSpec("src=4,videos=10000"))
+  }
+
+  func testGenerate_videosWritesMovFilesAlongsidePhotos() throws {
+    let paths = try UITestFixtures.generate(
+      into: markedRoot, spec: .init(sourceCount: 4, destCount: 1, prefill: .none, videoCount: 2))
+    let contents = try FileManager.default.contentsOfDirectory(
+      at: paths.source, includingPropertiesForKeys: nil)
+    let jpgs = contents.filter { $0.pathExtension == "jpg" }
+    let movs = contents.filter { $0.pathExtension == "mov" }
+    XCTAssertEqual(jpgs.count, 4, "expected 4 photo fixtures")
+    XCTAssertEqual(movs.count, 2, "expected 2 video fixtures")
+    // Videos are non-empty and byte-distinct (distinct checksums, so duplicate
+    // detection — if ever enabled — never collapses them).
+    let movData = try movs.map { try Data(contentsOf: $0) }
+    for d in movData { XCTAssertFalse(d.isEmpty, "video fixture must be non-empty") }
+    if movData.count == 2 {
+      XCTAssertNotEqual(movData[0], movData[1], "video fixtures must be byte-distinct")
+    }
+  }
+
+  func testGenerate_videosAreSourceOnly_notPrefilled() throws {
+    let paths = try UITestFixtures.generate(
+      into: markedRoot,
+      spec: .init(sourceCount: 2, destCount: 1, prefill: .exact, videoCount: 2),
+      organizationName: "Org")
+    // Prefill seeds only the photos into the org folder; videos are source-only.
+    let orgDir = paths.dests[0].appendingPathComponent("Org")
+    let seeded = try FileManager.default.contentsOfDirectory(
+      at: orgDir, includingPropertiesForKeys: nil)
+    XCTAssertEqual(seeded.filter { $0.pathExtension == "jpg" }.count, 2)
+    XCTAssertTrue(
+      seeded.filter { $0.pathExtension == "mov" }.isEmpty, "videos must not be prefilled")
+  }
+
+  func testGenerate_zeroVideosWritesNoMovFiles() throws {
+    let paths = try UITestFixtures.generate(
+      into: markedRoot, spec: .init(sourceCount: 3, destCount: 1, prefill: .none))
+    let movs = try FileManager.default.contentsOfDirectory(
+      at: paths.source, includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "mov" }
+    XCTAssertTrue(movs.isEmpty, "videos default to none")
+  }
 }
