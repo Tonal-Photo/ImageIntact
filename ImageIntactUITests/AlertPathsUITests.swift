@@ -125,10 +125,22 @@ final class AlertPathsUITests: ImageIntactUITestCase {
     XCTAssertTrue(waitUntilHittable(main.runBackupButton), "Run Backup never became clickable")
     main.runBackupButton.click()
 
+    // The completion sheet presents first; the trash `.alert` is deferred behind
+    // it (a `.sheet` and an `.alert` can't present at once). Dismiss completion
+    // to reveal the trash prompt — this mirrors the real flow: see the report,
+    // close it, then get asked whether to trash the source.
+    let completion = CompletionSheet(app: a)
+    if !completion.marker.waitForExistence(timeout: 60) {
+      dumpElementTree(a, label: "alert-trash-no-completion")
+      XCTFail("backup did not complete before the trash prompt; element tree dumped")
+    }
+    XCTAssertTrue(waitUntilHittable(completion.closeButton), "completion Close not clickable")
+    completion.closeButton.click()
+
     let moveBtn = a.sheets.buttons["Move to Trash"]
-    if !moveBtn.waitForExistence(timeout: 60) {
+    if !moveBtn.waitForExistence(timeout: 15) {
       dumpElementTree(a, label: "alert-trash-no-confirmation")
-      XCTFail("trash confirmation alert never appeared; element tree dumped")
+      XCTFail("trash confirmation alert never appeared after closing completion; tree dumped")
     }
     return (a, moveBtn)
   }
