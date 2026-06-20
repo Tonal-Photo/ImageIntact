@@ -17,22 +17,11 @@ import XCTest
 
 final class AlertPathsUITests: ImageIntactUITestCase {
 
-  /// The seam's source fixture dir inside the (sandboxed) app container. The
-  /// UI-test runner is not sandboxed, so it can stat this path directly — the
-  /// observable for the Move-to-Trash path (the runner cannot see the Trash).
-  private var containerSourceDir: URL {
-    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-      "Library/Containers/com.tonalphoto.tech.ImageIntact/Data/tmp/imageintact-uitest/source")
-  }
-
-  private func waitForGone(_ url: URL, timeout: TimeInterval) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
-      if !FileManager.default.fileExists(atPath: url.path) { return true }
-      Thread.sleep(forTimeInterval: 0.2)
-    }
-    return !FileManager.default.fileExists(atPath: url.path)
-  }
+  // The UI-test runner is sandboxed to its own .xctrunner container, so it
+  // cannot stat the app's source dir or the Trash. The observable for the
+  // Move-to-Trash path is instead the UI: SourceManager.trashCurrentSource()
+  // sets sourceURL = nil ONLY on a successful trash, so the source folder row
+  // disappears iff the source was actually moved to the Trash.
 
   // MARK: - Large-backup alert
 
@@ -147,32 +136,34 @@ final class AlertPathsUITests: ImageIntactUITestCase {
 
   func testTrashSource_Keep_LeavesSourceInPlace() throws {
     let (a, _) = launchToTrashConfirmation()
-    XCTAssertTrue(
-      FileManager.default.fileExists(atPath: containerSourceDir.path),
-      "source fixture dir missing before the trash decision")
+    let main = MainScreen(app: a)
 
     let keep = a.sheets.buttons["Keep"]
     XCTAssertTrue(keep.waitForExistence(timeout: 5), "Keep button missing from trash alert")
     keep.click()
 
-    // Keep must leave the source in place.
-    XCTAssertFalse(
-      waitForGone(containerSourceDir, timeout: 5),
-      "source fixture dir was removed despite choosing Keep")
+    // Keep does not trash, so the source selection (and its folder row) remains.
+    XCTAssertTrue(
+      main.folderRow("source").waitForExistence(timeout: 8),
+      "source folder row vanished despite choosing Keep")
   }
 
   func testTrashSource_MoveToTrash_RemovesSourceDir() throws {
-    let (_, moveBtn) = launchToTrashConfirmation()
-    XCTAssertTrue(
-      FileManager.default.fileExists(atPath: containerSourceDir.path),
-      "source fixture dir missing before Move to Trash")
+    let (a, moveBtn) = launchToTrashConfirmation()
+    let main = MainScreen(app: a)
+
+    // Source is still selected at the decision point.
+    XCTAssertTrue(main.folderRow("source").exists, "source folder row missing before Move to Trash")
 
     moveBtn.click()
 
-    // Move-to-Trash must remove the source dir from the container (it is moved
-    // to the Trash, which the runner cannot inspect — absence is the observable).
+    // A successful trash clears the source selection
+    // (SourceManager.trashCurrentSource sets sourceURL = nil only on success),
+    // so the source folder row disappears — the runner-observable proxy for
+    // "source moved to the Trash" (the sandboxed runner cannot stat the app
+    // container or the Trash directly).
     XCTAssertTrue(
-      waitForGone(containerSourceDir, timeout: 20),
-      "source fixture dir still present after Move to Trash")
+      main.folderRow("source").waitForNonExistence(timeout: 15),
+      "source folder row still present after Move to Trash (trash did not take)")
   }
 }
