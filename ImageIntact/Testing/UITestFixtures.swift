@@ -84,6 +84,12 @@ enum UITestSeam {
       /// hits real per-file read failures. Defaulted so existing positional
       /// call sites and the synthesized memberwise init keep compiling.
       var failureCount: Int = 0
+      /// Number of `.mov` video fixtures to write into the source IN ADDITION
+      /// to the `sourceCount` photos, so a photo/video file-type filter has a
+      /// measurable effect (a JPEG-only source can't be split). Source-only:
+      /// videos are never prefilled or failure-poisoned. Defaulted so existing
+      /// call sites and the synthesized memberwise init keep compiling.
+      var videoCount: Int = 0
     }
 
     enum Prefill: String {
@@ -129,12 +135,13 @@ enum UITestSeam {
 
     // MARK: - Spec parsing
 
-    /// Grammar: `src=<1...999>[,dests=<1...8>][,prefill=none|exact|loose][,failures=<0...src>]`
+    /// Grammar: `src=<1...999>[,dests=<1...8>][,prefill=none|exact|loose][,failures=<0...src>][,videos=<0...999>]`
     static func parseSpec(_ raw: String) -> Spec? {
       var sourceCount: Int?
       var destCount = 1
       var prefill = Prefill.none
       var failureCount = 0
+      var videoCount = 0
 
       for field in raw.split(separator: ",") {
         let pair = field.split(separator: "=", maxSplits: 1)
@@ -153,6 +160,9 @@ enum UITestSeam {
         case "failures":
           guard let n = Int(value), (0...999).contains(n) else { return nil }
           failureCount = n
+        case "videos":
+          guard let n = Int(value), (0...999).contains(n) else { return nil }
+          videoCount = n
         default:
           return nil
         }
@@ -163,7 +173,7 @@ enum UITestSeam {
       guard (0...sourceCount).contains(failureCount) else { return nil }
       return Spec(
         sourceCount: sourceCount, destCount: destCount, prefill: prefill,
-        failureCount: failureCount)
+        failureCount: failureCount, videoCount: videoCount)
     }
 
     // MARK: - Generation
@@ -191,6 +201,17 @@ enum UITestSeam {
           hue: CGFloat(i - 1) / CGFloat(spec.sourceCount),
           exifDate: String(format: "2026:01:01 12:%02d:00", min(i, 59)))
         sourceFiles.append(url)
+      }
+
+      // Video fixtures (source-only): a JPEG-only source can't exercise a
+      // photo/video filter, so write `videoCount` `.mov` files alongside the
+      // photos. They are not added to `sourceFiles`, so prefill and failure
+      // injection (below) touch only the photos.
+      if spec.videoCount > 0 {
+        for i in 1...spec.videoCount {
+          let url = source.appendingPathComponent(String(format: "vid-%02d.mov", i))
+          try writeVideoBlob(to: url, index: i)
+        }
       }
 
       var dests: [URL] = []
@@ -265,6 +286,16 @@ enum UITestSeam {
       ]
       CGImageDestinationAddImage(dest, image, props as CFDictionary)
       guard CGImageDestinationFinalize(dest) else { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    /// Write a `.mov` fixture: 512 deterministic, index-varied bytes. Not a real
+    /// QuickTime container — the scanner classifies by extension and the backup
+    /// only hashes/copies bytes, so arbitrary content suffices. Index-varied so
+    /// distinct files have distinct checksums.
+    private static func writeVideoBlob(to url: URL, index: Int) throws {
+      var bytes = [UInt8](repeating: 0, count: 512)
+      for j in 0..<bytes.count { bytes[j] = UInt8((j &+ index) & 0xFF) }
+      try Data(bytes).write(to: url)
     }
 
     // MARK: - Launch seam
