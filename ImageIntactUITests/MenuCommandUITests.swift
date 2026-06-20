@@ -95,11 +95,18 @@ final class MenuCommandUITests: ImageIntactUITestCase {
     }
 
     // The standard About panel opens as a separate window/dialog (its title is
-    // not the main content window's), so assert a new top-level surface appears.
-    let appeared = a.dialogs.firstMatch.waitForExistence(timeout: 8) || a.windows.count > 1
+    // not the main content window's). Assert the surface COUNT increases after
+    // the click — a bare `count > 1` can pass on a pre-existing extra window.
+    let baselineSurfaces = a.windows.count + a.dialogs.count
+    let deadline = Date().addingTimeInterval(10)
+    var appeared = false
+    while Date() < deadline {
+      if a.windows.count + a.dialogs.count > baselineSurfaces { appeared = true; break }
+      Thread.sleep(forTimeInterval: 0.2)
+    }
     if !appeared {
       dumpElementTree(a, label: "about-no-panel")
-      XCTFail("About panel did not appear")
+      XCTFail("About panel did not appear (no new window/dialog after the menu click)")
       return
     }
     a.typeKey("w", modifierFlags: .command)  // close the panel
@@ -236,14 +243,18 @@ final class MenuCommandUITests: ImageIntactUITestCase {
       return XCTFail("Help > ImageIntact Help not clickable")
     }
 
-    // HelpWindowManager opens an NSWindow titled "ImageIntact Help".
-    let helpWindow = a.windows["ImageIntact Help"]
-    if !helpWindow.waitForExistence(timeout: 10) {
+    // HelpWindowManager opens an NSWindow whose NSWindow.title is "ImageIntact
+    // Help", but HelpWindowView shows its default "What's New" section, so the
+    // displayed window title is version-dependent ("What's New – Version x").
+    // Identify the window by its unique "Search Help" field instead.
+    let helpSearch = a.searchFields.matching(
+      NSPredicate(format: "placeholderValue == %@", "Search Help")).firstMatch
+    if !helpSearch.waitForExistence(timeout: 10) {
       dumpElementTree(a, label: "help-no-window")
-      XCTFail("ImageIntact Help window did not appear")
+      XCTFail("Help window (Search Help field) did not appear")
       return
     }
-    helpWindow.typeKey("w", modifierFlags: .command)
+    a.typeKey("w", modifierFlags: .command)  // close the help window
   }
 
   // MARK: - Custom ImageIntact menu: Run Backup matches the button/File command
