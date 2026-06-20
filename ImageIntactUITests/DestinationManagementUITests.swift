@@ -61,13 +61,17 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
   }
 
   /// Clicks a destination Remove button reliably. It is a plain 11pt "Remove"
-  /// text button (~42x14) hard against the window's right edge and the Run Backup
-  /// button; XCUITest intermittently reports it "Not hittable" or lands a near-miss
-  /// `.click()` that never fires `onClear`. A center-coordinate click hits the
-  /// exact target and bypasses the flaky hittability gate.
-  private func clickRemove(_ button: XCUIElement) {
+  /// text button (~42x14) hard against the window's right edge; on a window that
+  /// is not key the first click is swallowed by app activation, so `onClear`
+  /// never fires and the destination is not removed. Activating the app, moving
+  /// the cursor onto the button (also scrolls it into view), and waiting until it
+  /// is genuinely hittable before the click makes removal deterministic.
+  private func clickRemove(_ a: XCUIApplication, _ button: XCUIElement) {
+    a.activate()
     XCTAssertTrue(button.waitForExistence(timeout: 5), "destination Remove button not present")
-    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    button.hover()
+    XCTAssertTrue(waitUntilHittable(button), "destination Remove button never became hittable")
+    button.click()
   }
 
   // MARK: - Add grows rows, capped at the real max (4)
@@ -126,7 +130,7 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
 
     // Remove one filled destination. Exactly one of the two folder rows survives
     // (which one depends on AX ordering — assert the shrink, not the identity).
-    clickRemove(removes.firstMatch)
+    clickRemove(a, removes.firstMatch)
 
     // With one filled row, count==1, so it no longer shows a Remove button.
     let deadline = Date().addingTimeInterval(10)
@@ -176,7 +180,7 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
     let removes = destRemoveButtons(a)
     XCTAssertTrue(removes.firstMatch.waitForExistence(timeout: 5), "filled row has no Remove button")
     XCTAssertEqual(removes.count, 1, "only the filled row should show a Remove button")
-    clickRemove(removes.firstMatch)
+    clickRemove(a, removes.firstMatch)
 
     // Discriminator: confirm the filled row was actually removed (vs. a wrong-row
     // removal leaving dest1, which would correctly keep Run Backup enabled).
