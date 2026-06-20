@@ -79,6 +79,7 @@ enum UITestSeam {
 
 #if DEBUG
   import AppKit
+  import CoreData
   import ImageIO
   import UniformTypeIdentifiers
 
@@ -114,6 +115,14 @@ enum UITestSeam {
       /// Copies of the source files at the destination ROOT with no
       /// organization folder — triggers the migration-dialog path.
       case loose
+      /// Same content as the source but recorded at the destination under a
+      /// DIFFERENT name — triggers the renamed-duplicate path. Detection is
+      /// Core-Data-backed (DuplicateDetector reads EventLogger's "copy" events,
+      /// not the destination filesystem), so this mode seeds a copy event per
+      /// file with a matching checksum but a differing fileName. The source
+      /// files use distinct content (a different EXIF year) so their checksums
+      /// never collide with the standard fixtures' accumulated records.
+      case renamed
     }
 
     struct GeneratedPaths {
@@ -149,7 +158,7 @@ enum UITestSeam {
 
     // MARK: - Spec parsing
 
-    /// Grammar: `src=<1...999>[,dests=<1...8>][,prefill=none|exact|loose][,failures=<0...src>][,videos=<0...999>]`
+    /// Grammar: `src=<1...999>[,dests=<1...8>][,prefill=none|exact|loose|renamed][,failures=<0...src>][,videos=<0...999>]`
     static func parseSpec(_ raw: String) -> Spec? {
       var sourceCount: Int?
       var destCount = 1
@@ -220,12 +229,17 @@ enum UITestSeam {
       let source = dir.appendingPathComponent("source")
       try fm.createDirectory(at: source, withIntermediateDirectories: true)
       var sourceFiles: [URL] = []
+      // Renamed-duplicate fixtures use distinct content (a different EXIF year)
+      // so their checksums never collide with the standard (2026) fixtures whose
+      // "copy" records accumulate in the shared EventLogger store — otherwise a
+      // colliding same-name record could classify them exact instead of renamed.
+      let exifYear = spec.prefill == .renamed ? "2024" : "2026"
       for i in 1...spec.sourceCount {
         let url = source.appendingPathComponent(String(format: "fix-%02d.jpg", i))
         try writeJPEG(
           to: url,
           hue: CGFloat(i - 1) / CGFloat(spec.sourceCount),
-          exifDate: String(format: "2026:01:01 12:%02d:00", min(i, 59)))
+          exifDate: String(format: "\(exifYear):01:01 12:%02d:00", min(i, 59)))
         sourceFiles.append(url)
       }
 
@@ -257,6 +271,19 @@ enum UITestSeam {
           for file in sourceFiles {
             try fm.copyItem(at: file, to: dest.appendingPathComponent(file.lastPathComponent))
           }
+        case .renamed:
+          // Disk: place same-content copies under DIFFERENT names in the org
+          // folder (faithful to a renamed-on-disk duplicate).
+          let orgDir = dest.appendingPathComponent(organizationName)
+          try fm.createDirectory(at: orgDir, withIntermediateDirectories: true)
+          for (idx, file) in sourceFiles.enumerated() {
+            let renamedName = String(format: "renamed-%02d.jpg", idx + 1)
+            try fm.copyItem(at: file, to: orgDir.appendingPathComponent(renamedName))
+          }
+          // Detection reads Core Data, not the disk, so seed a "copy" event per
+          // file: matching checksum, DIFFERENT fileName -> classified renamed.
+          try seedRenamedDuplicateRecords(
+            sourceFiles: sourceFiles, destination: dest, organizationName: organizationName)
         }
         dests.append(dest)
       }
@@ -290,6 +317,40 @@ enum UITestSeam {
         }
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
       }
+    }
+
+    /// Seeds the duplicate detector's Core Data store with one "copy" event per
+    /// source file: a MATCHING checksum (so it is a duplicate) but a DIFFERENT
+    /// fileName (so `DuplicateDetector` classifies it renamed, not exact).
+    ///
+    /// `DuplicateDetector.queryExistingFiles` reads EventLogger's store (NOT the
+    /// destination filesystem) and matches on the destination's volume UUID, then
+    /// compares the stored `fileName` to the source filename. So we mirror exactly
+    /// what a real backup records (`BatchEventLogger`): eventType=copy,
+    /// severity=info, checksum, fileName, driveUUID. `session` is optional in the
+    /// model, so it is omitted. The checksum is computed with the same
+    /// `ChecksumService` the manifest uses, guaranteeing the match.
+    private static func seedRenamedDuplicateRecords(
+      sourceFiles: [URL], destination: URL, organizationName: String
+    ) throws {
+      let driveUUID = (try? destination.resourceValues(forKeys: [.volumeUUIDStringKey]))?
+        .volumeUUIDString
+      let orgDir = destination.appendingPathComponent(organizationName)
+      let context = EventLogger.shared.container.viewContext
+      for (idx, file) in sourceFiles.enumerated() {
+        let checksum = try ChecksumService.sha256(for: file, shouldCancel: { false })
+        let renamedName = String(format: "renamed-%02d.jpg", idx + 1)
+        let event = BackupEvent(context: context)
+        event.id = UUID()
+        event.timestamp = Date()
+        event.eventType = EventType.copy.rawValue
+        event.severity = EventSeverity.info.rawValue
+        event.checksum = checksum
+        event.fileName = renamedName
+        event.driveUUID = driveUUID
+        event.destinationPath = orgDir.appendingPathComponent(renamedName).path
+      }
+      try context.save()
     }
 
     private static func writeJPEG(to url: URL, hue: CGFloat, exifDate: String) throws {
