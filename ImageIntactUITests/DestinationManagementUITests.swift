@@ -168,8 +168,14 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
     XCTAssertEqual(removes.count, 1, "only the filled row should show a Remove button")
     removes.firstMatch.click()
 
-    // The filled row is gone; the empty survivor leaves zero usable destinations,
-    // so canRunBackup() is false → Run Backup disabled.
+    // Discriminator: confirm the filled row was actually removed (vs. a wrong-row
+    // removal leaving dest1, which would correctly keep Run Backup enabled).
+    let dest1Gone = main.folderRow("dest1").waitForNonExistence(timeout: 10)
+    dumpElementTree(a, label: "remove-last-after-click")
+    XCTAssertTrue(dest1Gone, "dest1 (filled) row should be gone after clicking its Remove")
+
+    // The empty survivor leaves zero usable destinations, so canRunBackup() is
+    // false → Run Backup disabled.
     let deadline = Date().addingTimeInterval(10)
     while Date() < deadline, main.runBackupButton.isEnabled {
       Thread.sleep(forTimeInterval: 0.15)
