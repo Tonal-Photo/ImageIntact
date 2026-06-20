@@ -60,6 +60,16 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
     a.windows.buttons.matching(identifier: "dest.remove")
   }
 
+  /// Clicks a destination Remove button reliably. It is a plain 11pt "Remove"
+  /// text button (~42x14) hard against the window's right edge and the Run Backup
+  /// button; XCUITest intermittently reports it "Not hittable" or lands a near-miss
+  /// `.click()` that never fires `onClear`. A center-coordinate click hits the
+  /// exact target and bypasses the flaky hittability gate.
+  private func clickRemove(_ button: XCUIElement) {
+    XCTAssertTrue(button.waitForExistence(timeout: 5), "destination Remove button not present")
+    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+  }
+
   // MARK: - Add grows rows, capped at the real max (4)
 
   func testAddDestination_GrowsRows_AndCapsAtMax() throws {
@@ -116,7 +126,7 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
 
     // Remove one filled destination. Exactly one of the two folder rows survives
     // (which one depends on AX ordering — assert the shrink, not the identity).
-    removes.firstMatch.click()
+    clickRemove(removes.firstMatch)
 
     // With one filled row, count==1, so it no longer shows a Remove button.
     let deadline = Date().addingTimeInterval(10)
@@ -166,12 +176,12 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
     let removes = destRemoveButtons(a)
     XCTAssertTrue(removes.firstMatch.waitForExistence(timeout: 5), "filled row has no Remove button")
     XCTAssertEqual(removes.count, 1, "only the filled row should show a Remove button")
-    removes.firstMatch.click()
+    clickRemove(removes.firstMatch)
 
     // Discriminator: confirm the filled row was actually removed (vs. a wrong-row
     // removal leaving dest1, which would correctly keep Run Backup enabled).
     let dest1Gone = main.folderRow("dest1").waitForNonExistence(timeout: 10)
-    dumpElementTree(a, label: "remove-last-after-click")
+    if !dest1Gone { dumpElementTree(a, label: "remove-last-dest1-not-removed") }
     XCTAssertTrue(dest1Gone, "dest1 (filled) row should be gone after clicking its Remove")
 
     // The empty survivor leaves zero usable destinations, so canRunBackup() is
