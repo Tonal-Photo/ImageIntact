@@ -56,6 +56,9 @@ struct SimpleBackupProgress: View {
         }
         .buttonStyle(.plain)
         .help("Cancel backup")
+        // Test affordance: identifier (invisible to VoiceOver) for the cancel
+        // button shown only while copying. See ui-test-cancel-backup.md.
+        .accessibilityIdentifier("backup.cancel.copying")
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -197,6 +200,9 @@ struct MultiDestinationProgress: View {
         }
         .buttonStyle(.plain)
         .help("Cancel backup")
+        // Test affordance: identifier (invisible to VoiceOver) for the cancel
+        // button shown only while copying. See ui-test-cancel-backup.md.
+        .accessibilityIdentifier("backup.cancel.copying")
       }
 
       // Overall progress bar (shows total progress across all phases)
