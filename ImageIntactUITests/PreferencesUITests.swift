@@ -89,9 +89,13 @@ final class PreferencesUITests: ImageIntactUITestCase {
       return
     }
     appMenu.click()
-    // Trailing "..." may render as the ellipsis glyph; match by prefix.
-    let prefsItem = a.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Preferences"))
-      .firstMatch
+    // The app hardcodes Button("Preferences..."), so this box shows
+    // "Preferences..."; match "Settings" too in case it ever adopts a
+    // Settings scene (auto-renamed on macOS 13+). Trailing "..." may render as
+    // the ellipsis glyph, so match by prefix.
+    let prefsItem = a.menuItems.matching(
+      NSPredicate(format: "title BEGINSWITH %@ OR title BEGINSWITH %@", "Preferences", "Settings")
+    ).firstMatch
     if !prefsItem.waitForExistence(timeout: 5) {
       dumpElementTree(a, label: "appmenu-no-prefs-item")
       XCTFail("'Preferences…' item not found in the app menu; tree dumped")
@@ -151,19 +155,23 @@ final class PreferencesUITests: ImageIntactUITestCase {
       expected[rt.toggle] = !before
     }
     closeButton(a).click()
-    // Let @AppStorage flush, then terminate cleanly so the write persists.
-    Thread.sleep(forTimeInterval: 1.0)
-    a.terminate()
+    // Quit cleanly via ⌘Q so the SwiftUI scene tears down properly (a hard
+    // terminate left the next launch windowless) and @AppStorage flushes, then
+    // relaunch WITHOUT --uitest-reset so the persisted toggles survive.
+    a.typeKey("q", modifierFlags: .command)
     _ = a.wait(for: .notRunning, timeout: 10)
 
-    // Relaunch WITHOUT --uitest-reset: the persisted (application-domain)
-    // toggle values must survive. -hasSeenWelcome via the ARGUMENT domain keeps
-    // the welcome sheet out of the way without masking the persisted toggles.
+    // -hasSeenWelcome via the ARGUMENT domain keeps the welcome sheet out of the
+    // way without masking the persisted (application-domain) toggle values.
     let b = XCUIApplication()
     b.launchArguments += ["-ApplePersistenceIgnoreState", "YES", "--uitest", "-hasSeenWelcome", "YES"]
     b.launchEnvironment["TZ"] = "UTC"
     b.launch()
     app = b  // tearDown terminates `app`
+
+    // Discriminating probe: if the relaunch is windowless the clean quit was not
+    // the fix; if a window is present the remaining work is just reopening prefs.
+    XCTAssertTrue(b.windows.firstMatch.waitForExistence(timeout: 15), "relaunch came up windowless")
 
     b.typeKey(",", modifierFlags: .command)
     if !closeButton(b).waitForExistence(timeout: 10) {

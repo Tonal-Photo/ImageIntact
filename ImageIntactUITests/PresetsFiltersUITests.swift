@@ -85,8 +85,10 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
     let a = launchApp(fixtures: "src=4,videos=2,dests=1")
     let main = MainScreen(app: a)
     XCTAssertTrue(main.folderRow("source").waitForExistence(timeout: 10), "seam source not shown")
+    XCTAssertTrue(main.folderRow("dest1").waitForExistence(timeout: 10), "seam dest not shown")
 
-    XCTAssertTrue(waitUntilHittable(main.runBackupButton), "Run Backup not clickable")
+    XCTAssertTrue(
+      waitUntilHittable(main.runBackupButton, timeout: 20), "Run Backup not clickable")
     main.runBackupButton.click()
 
     let completion = CompletionSheet(app: a)
@@ -108,6 +110,7 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
     let a = launchApp(fixtures: "src=4,videos=2,dests=1")
     let main = MainScreen(app: a)
     XCTAssertTrue(main.folderRow("source").waitForExistence(timeout: 10), "seam source not shown")
+    XCTAssertTrue(main.folderRow("dest1").waitForExistence(timeout: 10), "seam dest not shown")
 
     if !openMenu(a, title: "Filter", dump: "filter-menu-missing") {
       XCTFail("Filter menu not found; tree dumped")
@@ -121,7 +124,8 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
     }
     photosOnly.click()
 
-    XCTAssertTrue(waitUntilHittable(main.runBackupButton), "Run Backup not clickable")
+    XCTAssertTrue(
+      waitUntilHittable(main.runBackupButton, timeout: 20), "Run Backup not clickable")
     main.runBackupButton.click()
 
     let completion = CompletionSheet(app: a)
@@ -136,6 +140,45 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
       stats.contains("inSource=4"), "expected inSource=4 (2 videos filtered out): \(stats)")
     XCTAssertTrue(
       stats.contains("dest1:c4/s0/f0"), "expected only 4 photos copied: \(stats)")
+    completion.closeButton.click()
+  }
+
+  /// "Videos Only" is the inverse: it keeps only the 2 `.mov` files. Together
+  /// with the Photos-Only run this proves the filter SELECTS by type rather
+  /// than globally dropping videos.
+  func testVideosOnlyFilterSelectsOnlyVideos() throws {
+    let a = launchApp(fixtures: "src=4,videos=2,dests=1")
+    let main = MainScreen(app: a)
+    XCTAssertTrue(main.folderRow("source").waitForExistence(timeout: 10), "seam source not shown")
+    XCTAssertTrue(main.folderRow("dest1").waitForExistence(timeout: 10), "seam dest not shown")
+
+    if !openMenu(a, title: "Filter", dump: "filter-menu-missing-videos") {
+      XCTFail("Filter menu not found; tree dumped")
+      return
+    }
+    let videosOnly = menuItem(a, title: "Videos Only")
+    if !videosOnly.waitForExistence(timeout: 5) {
+      dumpElementTree(a, label: "videos-only-item-missing")
+      XCTFail("'Videos Only' menu item not found; tree dumped")
+      return
+    }
+    videosOnly.click()
+
+    XCTAssertTrue(
+      waitUntilHittable(main.runBackupButton, timeout: 20), "Run Backup not clickable")
+    main.runBackupButton.click()
+
+    let completion = CompletionSheet(app: a)
+    if !completion.marker.waitForExistence(timeout: 120) {
+      dumpElementTree(a, label: "videos-filtered-no-completion")
+      XCTFail("completion sheet never appeared; tree dumped")
+      return
+    }
+    let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
+    XCTAssertTrue(
+      stats.contains("inSource=2"), "expected inSource=2 (4 photos filtered out): \(stats)")
+    XCTAssertTrue(
+      stats.contains("dest1:c2/s0/f0"), "expected only 2 videos copied: \(stats)")
     completion.closeButton.click()
   }
 }

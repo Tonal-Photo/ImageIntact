@@ -292,6 +292,8 @@ enum UITestSeam {
     /// QuickTime container — the scanner classifies by extension and the backup
     /// only hashes/copies bytes, so arbitrary content suffices. Index-varied so
     /// distinct files have distinct checksums.
+    /// TODO: if the scanner ever moves to UTType/AVFoundation header sniffing,
+    /// replace these bytes with a minimal valid `.mov` atom structure.
     private static func writeVideoBlob(to url: URL, index: Int) throws {
       var bytes = [UInt8](repeating: 0, count: 512)
       for j in 0..<bytes.count { bytes[j] = UInt8((j &+ index) & 0xFF) }
