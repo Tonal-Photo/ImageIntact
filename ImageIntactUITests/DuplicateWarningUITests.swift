@@ -179,8 +179,9 @@ final class DuplicateWarningUITests: ImageIntactUITestCase {
       duplicate.button("Continue with Selection").exists, "Continue with Selection button missing")
     XCTAssertTrue(duplicate.button("Cancel Backup").exists, "Cancel Backup button missing")
 
-    // Cancel rather than proceed: this test only asserts detection, and
-    // cancelling copies nothing, so it leaves no copy records behind.
+    // Cancel rather than proceed: this test only asserts detection. Cancelling
+    // copies nothing, so it adds no NEW copy records beyond the ones the fixture
+    // seam already seeded for renamed-duplicate detection.
     duplicate.button("Cancel Backup").click()
     XCTAssertTrue(
       duplicate.marker.waitForNonExistence(timeout: 10),
@@ -190,8 +191,8 @@ final class DuplicateWarningUITests: ImageIntactUITestCase {
   func testSkipRenamedDuplicates_TogglesCheckbox_ProceedsWithoutLooping() throws {
     let (a, duplicate) = launchToRenamedDuplicateSheet()
 
-    // Turn ON "Skip renamed duplicates" (defaults off). The custom checkbox-style
-    // Toggle surfaces as an app.checkBox; match it by its "renamed" label.
+    // Turn ON "Skip renamed duplicates". The custom checkbox-style Toggle
+    // surfaces as an app.checkBox; match it by its "renamed" label.
     let skipRenamed = a.sheets.checkBoxes
       .matching(NSPredicate(format: "label CONTAINS[c] %@", "renamed")).firstMatch
     if !skipRenamed.waitForExistence(timeout: 5) {
@@ -199,7 +200,11 @@ final class DuplicateWarningUITests: ImageIntactUITestCase {
       XCTFail("Skip renamed duplicates checkbox not found; element tree dumped")
       return
     }
-    if (skipRenamed.value as? String) != "1" { skipRenamed.click() }
+    // It defaults OFF on a fresh (hermetic) launch, so a single click turns it
+    // on. We click unconditionally rather than reading `.value` — a macOS
+    // checkbox's value can be an NSNumber, not a String, so an `as? String`
+    // guard would misfire.
+    skipRenamed.click()
 
     duplicate.button("Continue with Selection").click()
 
