@@ -126,7 +126,10 @@ struct ContentView: View {
     }
     .frame(
       minWidth: 600, idealWidth: 700, maxWidth: .infinity,
-      minHeight: 450, idealHeight: 550, maxHeight: .infinity
+      // UI suite: open tall so destination rows clear the Run Backup action bar
+      // (a short window scrolls them under it, occluding their Remove buttons).
+      minHeight: UITestSeam.isActive ? 900 : 450,
+      idealHeight: UITestSeam.isActive ? 900 : 550, maxHeight: .infinity
     )
     .background(Color(NSColor.windowBackgroundColor))
     .onAppear {

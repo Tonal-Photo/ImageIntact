@@ -60,16 +60,12 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
     a.windows.buttons.matching(identifier: "dest.remove")
   }
 
-  /// Clicks a destination Remove button reliably. It is a plain 11pt "Remove"
-  /// text button (~42x14) hard against the window's right edge; on a window that
-  /// is not key the first click is swallowed by app activation, so `onClear`
-  /// never fires and the destination is not removed. Activating the app, moving
-  /// the cursor onto the button (also scrolls it into view), and waiting until it
-  /// is genuinely hittable before the click makes removal deterministic.
+  /// Clicks a destination Remove button. The app opens a tall window under the UI
+  /// suite so these rows clear the Run Backup action bar; activating the app
+  /// (key after a menu interaction) and waiting until the button is genuinely
+  /// hittable before clicking makes removal deterministic.
   private func clickRemove(_ a: XCUIApplication, _ button: XCUIElement) {
     a.activate()
-    XCTAssertTrue(button.waitForExistence(timeout: 5), "destination Remove button not present")
-    button.hover()
     XCTAssertTrue(waitUntilHittable(button), "destination Remove button never became hittable")
     button.click()
   }
