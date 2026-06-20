@@ -58,7 +58,8 @@ struct DestinationSection: View {
                                 // Validation handled in backupManager.setDestination()
                             },
                             showRemoveButton: backupManager.destinationItems.count > 1,
-                            defaultDirectory: item.url?.deletingLastPathComponent()
+                            defaultDirectory: item.url?.deletingLastPathComponent(),
+                            removeButtonIdentifier: "dest.remove"
                         )
                         .focused($focusedField, equals: .destination(index))
                         .onTapGesture {

@@ -30,9 +30,21 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
   /// Adds an empty destination row through the File-menu "Add Destination"
   /// item — the only powerbox-free way to grow the list. The in-panel "Add"
   /// button opens an NSOpenPanel and would hang the test.
+  ///
+  /// macOS menu items only populate/become hittable once their parent menu is
+  /// opened (see PreferencesUITests), so open the File menu first, then click
+  /// the item. "Add Destination" is duplicated in BOTH the File menu
+  /// (CommandGroup(replacing: .newItem)) and the custom "ImageIntact" menu, so
+  /// a bare `app.menuItems["Add Destination"]` is ambiguous ("multiple matching
+  /// elements"). Scope the query to the File menu bar item's descendants.
   private func menuAddDestination(_ a: XCUIApplication) {
-    let item = a.menuBars.menuItems["Add Destination"]
-    XCTAssertTrue(item.waitForExistence(timeout: 5), "File > Add Destination menu item missing")
+    let fileMenu = a.menuBars.menuBarItems["File"]
+    XCTAssertTrue(fileMenu.waitForExistence(timeout: 10), "File menu bar item not found")
+    fileMenu.click()
+
+    let item = fileMenu.menuItems["Add Destination"]
+    XCTAssertTrue(
+      item.waitForExistence(timeout: 5), "File > Add Destination menu item missing")
     item.click()
   }
 
@@ -102,13 +114,9 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
       "no destination Remove button shown for filled rows")
     XCTAssertEqual(removes.count, 2, "expected a Remove button on each of the 2 filled rows")
 
-    // Removing index 0 deletes dest1; dest2 remains as the sole row.
+    // Remove one filled destination. Exactly one of the two folder rows survives
+    // (which one depends on AX ordering — assert the shrink, not the identity).
     removes.firstMatch.click()
-
-    XCTAssertTrue(
-      main.folderRow("dest1").waitForNonExistence(timeout: 10),
-      "dest1 row should be gone after Remove")
-    XCTAssertTrue(main.folderRow("dest2").exists, "dest2 row should remain after removing dest1")
 
     // With one filled row, count==1, so it no longer shows a Remove button.
     let deadline = Date().addingTimeInterval(10)
@@ -117,7 +125,14 @@ final class DestinationManagementUITests: ImageIntactUITestCase {
     }
     XCTAssertEqual(
       destRemoveButtons(a).count, 0,
-      "the single remaining destination should not show a Remove button")
+      "the single remaining destination should not show a Remove button after shrink")
+
+    // The list shrank from two folder rows to one.
+    let dest1Present = main.folderRow("dest1").exists
+    let dest2Present = main.folderRow("dest2").exists
+    XCTAssertTrue(
+      dest1Present != dest2Present,
+      "exactly one of dest1/dest2 should remain after removing one (dest1=\(dest1Present), dest2=\(dest2Present))")
     XCTAssertTrue(
       main.runBackupButton.isEnabled,
       "Run Backup should stay enabled with one destination still selected")

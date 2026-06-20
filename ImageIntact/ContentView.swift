@@ -571,6 +571,11 @@ struct FolderRow: View {
   var onSelect: ((URL) -> Void)? = nil
   var showRemoveButton: Bool = true
   var defaultDirectory: URL? = nil
+  // Optional a11y id for the Remove button leaf. FolderRow is shared by the
+  // source row and every destination row; destinations set this so UI tests can
+  // target a destination's Remove without matching the source row's. (nil =
+  // source, keeps its plain label.)
+  var removeButtonIdentifier: String? = nil
 
   var body: some View {
     HStack(spacing: 12) {
@@ -600,6 +605,7 @@ struct FolderRow: View {
         .foregroundColor(.secondary)
         .font(.system(size: 11))
         .frame(width: 60)
+        .accessibilityIdentifier(removeButtonIdentifier ?? "")
       } else {
         // Invisible spacer to maintain width
         Color.clear
