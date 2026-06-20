@@ -161,16 +161,20 @@ final class PreferencesUITests: ImageIntactUITestCase {
     a.typeKey("q", modifierFlags: .command)
     _ = a.wait(for: .notRunning, timeout: 10)
 
-    // -hasSeenWelcome via the ARGUMENT domain keeps the welcome sheet out of the
-    // way without masking the persisted (application-domain) toggle values.
+    // Relaunch WITHOUT --uitest-reset so the persisted toggles survive, AND
+    // WITHOUT -ApplePersistenceIgnoreState so AppKit restores the cleanly-quit
+    // window: a no-reset launch that also ignores state comes up windowless,
+    // whereas restoration (enabled by default on the gate host) brings the main
+    // window back. -hasSeenWelcome via the ARGUMENT domain keeps the welcome
+    // sheet out of the way without masking the persisted toggle values.
     let b = XCUIApplication()
-    b.launchArguments += ["-ApplePersistenceIgnoreState", "YES", "--uitest", "-hasSeenWelcome", "YES"]
+    b.launchArguments += ["--uitest", "-hasSeenWelcome", "YES"]
     b.launchEnvironment["TZ"] = "UTC"
     b.launch()
     app = b  // tearDown terminates `app`
 
-    // Discriminating probe: if the relaunch is windowless the clean quit was not
-    // the fix; if a window is present the remaining work is just reopening prefs.
+    // Discriminating probe: a present window means restoration worked and the
+    // remaining work is just reopening prefs; windowless means pivot.
     XCTAssertTrue(b.windows.firstMatch.waitForExistence(timeout: 15), "relaunch came up windowless")
 
     b.typeKey(",", modifierFlags: .command)
