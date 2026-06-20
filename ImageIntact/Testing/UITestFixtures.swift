@@ -336,21 +336,35 @@ enum UITestSeam {
       let driveUUID = (try? destination.resourceValues(forKeys: [.volumeUUIDStringKey]))?
         .volumeUUIDString
       let orgDir = destination.appendingPathComponent(organizationName)
-      let context = EventLogger.shared.container.viewContext
+
+      // Compute checksums up front (file I/O), so the Core Data work below stays
+      // small and runs entirely on the context's own queue.
+      var seeds: [(checksum: String, fileName: String, destinationPath: String)] = []
       for (idx, file) in sourceFiles.enumerated() {
-        let checksum = try ChecksumService.sha256(for: file, shouldCancel: { false })
         let renamedName = String(format: "renamed-%02d.jpg", idx + 1)
-        let event = BackupEvent(context: context)
-        event.id = UUID()
-        event.timestamp = Date()
-        event.eventType = EventType.copy.rawValue
-        event.severity = EventSeverity.info.rawValue
-        event.checksum = checksum
-        event.fileName = renamedName
-        event.driveUUID = driveUUID
-        event.destinationPath = orgDir.appendingPathComponent(renamedName).path
+        let checksum = try ChecksumService.sha256(for: file, shouldCancel: { false })
+        seeds.append((checksum, renamedName, orgDir.appendingPathComponent(renamedName).path))
       }
-      try context.save()
+
+      // Always touch the main-queue viewContext through performAndWait so this is
+      // correct even if fixture generation is ever moved off the main thread.
+      let context = EventLogger.shared.container.viewContext
+      var saveError: Error?
+      context.performAndWait {
+        for seed in seeds {
+          let event = BackupEvent(context: context)
+          event.id = UUID()
+          event.timestamp = Date()
+          event.eventType = EventType.copy.rawValue
+          event.severity = EventSeverity.info.rawValue
+          event.checksum = seed.checksum
+          event.fileName = seed.fileName
+          event.driveUUID = driveUUID
+          event.destinationPath = seed.destinationPath
+        }
+        do { try context.save() } catch { saveError = error }
+      }
+      if let saveError { throw saveError }
     }
 
     private static func writeJPEG(to url: URL, hue: CGFloat, exifDate: String) throws {
