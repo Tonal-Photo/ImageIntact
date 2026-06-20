@@ -50,20 +50,36 @@ final class MenuCommandUITests: ImageIntactUITestCase {
     return true
   }
 
-  /// The custom CommandMenu("ImageIntact"), disambiguated from the bold app menu
-  /// (both titled "ImageIntact") by the custom-only "Verify Core Data Storage"
-  /// item it exposes. Leaves the menu open on success.
+  /// Opens `parent`, then clicks the descendant menu item titled `title`. Menu
+  /// items report a degenerate (offscreen/zero) frame until their menu is open
+  /// and rendered, so clicking before then throws an INFINITY-point exception;
+  /// waiting until the item is genuinely hittable avoids that. Returns false
+  /// (after a dump) if the item never becomes hittable.
+  @discardableResult
+  private func clickItem(
+    _ a: XCUIApplication, in parent: XCUIElement, _ title: String, label: String
+  ) -> Bool {
+    guard open(a, parent, label) else { return false }
+    let item = parent.menuItems[title]
+    guard item.waitForExistence(timeout: 5), waitUntilHittable(item, timeout: 5) else {
+      dumpElementTree(a, label: "menu-item-not-hittable-\(label)")
+      return false
+    }
+    item.click()
+    return true
+  }
+
+  /// The custom CommandMenu("ImageIntact") menu-bar item, disambiguated from the
+  /// bold app menu (both titled "ImageIntact") by the custom-only "Verify Core
+  /// Data Storage" command. The probe is SCOPED to each candidate's descendants:
+  /// an unscoped `a.menuItems[...]` query matches app-wide and so resolves true
+  /// for the wrong menu-bar item. Does not open the menu.
   private func customMenu(_ a: XCUIApplication) -> XCUIElement? {
     let candidates = a.menuBars.menuBarItems.matching(
       NSPredicate(format: "title == %@", "ImageIntact"))
     for i in 0..<candidates.count {
       let item = candidates.element(boundBy: i)
-      guard item.exists else { continue }
-      item.click()
-      if a.menuItems["Verify Core Data Storage"].waitForExistence(timeout: 2) {
-        return item
-      }
-      if item.isSelected { item.click() }  // close before trying the next
+      if item.menuItems["Verify Core Data Storage"].exists { return item }
     }
     return nil
   }
@@ -72,22 +88,21 @@ final class MenuCommandUITests: ImageIntactUITestCase {
 
   func testAppMenu_About_ShowsAboutPanel() throws {
     let a = launchApp(fixtures: nil)
-    guard open(a, appMenu(a), "app") else {
-      return XCTFail("application menu not found")
+    // "About ImageIntact" is the first item of the bold app menu. Scope the
+    // click to that menu — an app-wide query resolves a degenerate-frame item.
+    guard clickItem(a, in: appMenu(a), "About ImageIntact", label: "about") else {
+      return XCTFail("About item not clickable in the app menu")
     }
-    let about = a.menuItems.matching(
-      NSPredicate(format: "title BEGINSWITH %@", "About")).firstMatch
-    XCTAssertTrue(about.waitForExistence(timeout: 5), "About item missing from the app menu")
-    about.click()
 
-    // The standard About panel surfaces as a window titled "About ImageIntact".
-    let panel = a.windows["About ImageIntact"]
-    if !panel.waitForExistence(timeout: 10) {
+    // The standard About panel opens as a separate window/dialog (its title is
+    // not the main content window's), so assert a new top-level surface appears.
+    let appeared = a.dialogs.firstMatch.waitForExistence(timeout: 8) || a.windows.count > 1
+    if !appeared {
       dumpElementTree(a, label: "about-no-panel")
       XCTFail("About panel did not appear")
       return
     }
-    panel.typeKey("w", modifierFlags: .command)  // close it
+    a.typeKey("w", modifierFlags: .command)  // close the panel
   }
 
   // MARK: - App menu: Preferences
@@ -217,10 +232,9 @@ final class MenuCommandUITests: ImageIntactUITestCase {
     let a = launchApp(fixtures: nil)
     XCTAssertTrue(MainScreen(app: a).runBackupButton.waitForExistence(timeout: 10))
 
-    guard open(a, menu(a, "Help"), "help") else { return XCTFail("Help menu not found") }
-    let help = menu(a, "Help").menuItems["ImageIntact Help"]
-    XCTAssertTrue(help.waitForExistence(timeout: 5), "Help > ImageIntact Help missing")
-    help.click()
+    guard clickItem(a, in: menu(a, "Help"), "ImageIntact Help", label: "help") else {
+      return XCTFail("Help > ImageIntact Help not clickable")
+    }
 
     // HelpWindowManager opens an NSWindow titled "ImageIntact Help".
     let helpWindow = a.windows["ImageIntact Help"]
@@ -244,9 +258,9 @@ final class MenuCommandUITests: ImageIntactUITestCase {
       XCTFail("custom ImageIntact menu (with Verify Core Data Storage) not found")
       return
     }
-    let run = menuItem.menuItems["Run Backup"]
-    XCTAssertTrue(run.waitForExistence(timeout: 5), "ImageIntact > Run Backup missing")
-    run.click()
+    guard clickItem(a, in: menuItem, "Run Backup", label: "custom-run") else {
+      return XCTFail("ImageIntact > Run Backup not clickable")
+    }
 
     let completion = CompletionSheet(app: a)
     if !completion.marker.waitForExistence(timeout: 120) {
