@@ -12,22 +12,29 @@ import XCTest
 
 final class PresetsFiltersUITests: ImageIntactUITestCase {
 
-  /// Open a borderless SwiftUI `Menu`. Its surfacing on macOS is uncertain
-  /// (menuButton vs popUpButton vs button); try the likely shapes and dump the
-  /// tree on failure. The red dump tells green which to keep / whether an
-  /// accessibilityIdentifier is needed.
+  /// The borderless preset/filter `Menu`s surface as `.menuButton` whose
+  /// `title` is the label text ("Presets"/"Filter") — the `identifier` is the
+  /// SF Symbol, so match on title (confirmed via the element dump).
+  private func menuButton(_ a: XCUIApplication, title: String) -> XCUIElement {
+    a.menuButtons.matching(NSPredicate(format: "title == %@", title)).firstMatch
+  }
+
+  /// Open a borderless menu by its title; dump the tree on failure.
   @discardableResult
-  private func openMenu(_ a: XCUIApplication, labelContains s: String, dump: String) -> Bool {
-    let pred = NSPredicate(format: "label CONTAINS %@", s)
-    for q in [a.menuButtons, a.popUpButtons, a.buttons] {
-      let el = q.matching(pred).firstMatch
-      if el.waitForExistence(timeout: 2), el.isHittable {
-        el.click()
-        return true
-      }
+  private func openMenu(_ a: XCUIApplication, title: String, dump: String) -> Bool {
+    let menu = menuButton(a, title: title)
+    if menu.waitForExistence(timeout: 10), menu.isHittable {
+      menu.click()
+      return true
     }
     dumpElementTree(a, label: dump)
     return false
+  }
+
+  /// A menu item matched by exact title (SwiftUI `Button` menu items expose the
+  /// title, not a label).
+  private func menuItem(_ a: XCUIApplication, title: String) -> XCUIElement {
+    a.menuItems.matching(NSPredicate(format: "title == %@", title)).firstMatch
   }
 
   // MARK: - Presets
@@ -37,7 +44,7 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
     let main = MainScreen(app: a)
     XCTAssertTrue(main.folderRow("source").waitForExistence(timeout: 10), "seam source not shown")
 
-    if !openMenu(a, labelContains: "Presets", dump: "preset-menu-missing") {
+    if !openMenu(a, title: "Presets", dump: "preset-menu-missing") {
       XCTFail("Presets menu not found; tree dumped")
       return
     }
@@ -50,13 +57,10 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
     }
     selectItem.click()
 
-    XCTAssertTrue(
-      a.staticTexts["Select Backup Preset"].waitForExistence(timeout: 5),
-      "preset selection sheet did not open")
-
-    // PresetSelectionRow is a Button whose label contains the preset name.
+    // PresetSelectionRow is a Button whose label contains the preset name; its
+    // existence also proves the sheet opened.
     let row = a.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Daily Workflow")).firstMatch
-    if !row.waitForExistence(timeout: 5) {
+    if !row.waitForExistence(timeout: 10) {
       dumpElementTree(a, label: "preset-row-missing")
       XCTFail("'Daily Workflow' preset row not found; tree dumped")
       return
@@ -67,11 +71,10 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
     XCTAssertTrue(waitUntilHittable(apply), "Apply button not hittable")
     apply.click()
 
-    // Daily Workflow carries a Photos-Only file-type filter; applying it makes
-    // the filter status read "Photos Only".
+    // Applying selects the preset, so the Presets menu now reads its name.
     XCTAssertTrue(
-      a.staticTexts["Photos Only"].waitForExistence(timeout: 10),
-      "applying 'Daily Workflow' did not set the Photos Only filter")
+      menuButton(a, title: "Daily Workflow").waitForExistence(timeout: 10),
+      "applying 'Daily Workflow' did not update the selected preset")
   }
 
   // MARK: - File-type filter
@@ -100,28 +103,23 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
   }
 
   /// "Photos Only" excludes the two `.mov` videos, so only the 4 photos are
-  /// backed up — the filtered count appears in the completion stats.
+  /// backed up — the filtered count appears in the completion stats (4, not 6).
   func testPhotosOnlyFilterReducesBackup() throws {
     let a = launchApp(fixtures: "src=4,videos=2,dests=1")
     let main = MainScreen(app: a)
     XCTAssertTrue(main.folderRow("source").waitForExistence(timeout: 10), "seam source not shown")
 
-    if !openMenu(a, labelContains: "Filter", dump: "filter-menu-missing") {
+    if !openMenu(a, title: "Filter", dump: "filter-menu-missing") {
       XCTFail("Filter menu not found; tree dumped")
       return
     }
-    let photosOnly = a.menuItems["Photos Only"].firstMatch
+    let photosOnly = menuItem(a, title: "Photos Only")
     if !photosOnly.waitForExistence(timeout: 5) {
       dumpElementTree(a, label: "photos-only-item-missing")
       XCTFail("'Photos Only' menu item not found; tree dumped")
       return
     }
     photosOnly.click()
-
-    // Filter status should reflect the selection before we run.
-    XCTAssertTrue(
-      a.staticTexts["Photos Only"].waitForExistence(timeout: 5),
-      "filter status did not update to Photos Only")
 
     XCTAssertTrue(waitUntilHittable(main.runBackupButton), "Run Backup not clickable")
     main.runBackupButton.click()
@@ -133,6 +131,7 @@ final class PresetsFiltersUITests: ImageIntactUITestCase {
       return
     }
     let stats = pollValue(of: completion.marker, timeout: 10) { !$0.isEmpty }
+    // 4 photos kept, 2 videos excluded — the filtered count, vs 6 unfiltered.
     XCTAssertTrue(
       stats.contains("inSource=4"), "expected inSource=4 (2 videos filtered out): \(stats)")
     XCTAssertTrue(

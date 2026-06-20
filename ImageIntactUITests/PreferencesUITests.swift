@@ -48,19 +48,16 @@ final class PreferencesUITests: ImageIntactUITestCase {
     return false
   }
 
-  /// Select a Preferences tab. macOS SwiftUI TabView tab items surface
-  /// unpredictably (button vs radioButton vs tabGroup child); try the likely
-  /// shapes. The red dump confirms which; green narrows this.
+  /// Select a Preferences tab. macOS SwiftUI TabView tab items surface as
+  /// `.tab` elements whose `label` is the tabItem title (confirmed via the
+  /// element dump); the `identifier` is the SF Symbol, so match on label.
   @discardableResult
   private func selectTab(_ a: XCUIApplication, _ name: String) -> Bool {
-    let candidates = [
-      a.sheets.radioButtons[name], a.sheets.buttons[name],
-      a.radioButtons[name], a.buttons[name], a.tabGroups.buttons[name],
-    ]
-    for el in candidates where el.waitForExistence(timeout: 1) {
-      if el.isHittable { el.click(); return true }
-    }
-    return false
+    let tab = a.descendants(matching: .tab)
+      .matching(NSPredicate(format: "label == %@", name)).firstMatch
+    guard tab.waitForExistence(timeout: 5) else { return false }
+    tab.click()
+    return true
   }
 
   private func toggle(_ a: XCUIApplication, _ title: String) -> XCUIElement {
@@ -77,8 +74,6 @@ final class PreferencesUITests: ImageIntactUITestCase {
       XCTFail("Preferences sheet (Close button) did not appear after ⌘,; tree dumped")
       return
     }
-    // Explore: one dump of the open sheet maps tabs + toggle surfacing.
-    dumpElementTree(a, label: "prefs-open-general")
     closeButton(a).click()
     XCTAssertTrue(
       closeButton(a).waitForNonExistence(timeout: 10), "Preferences sheet did not dismiss")
