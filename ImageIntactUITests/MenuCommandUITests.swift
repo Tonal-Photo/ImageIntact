@@ -94,19 +94,14 @@ final class MenuCommandUITests: ImageIntactUITestCase {
       return XCTFail("About item not clickable in the app menu")
     }
 
-    // The standard About panel opens as a separate window/dialog (its title is
-    // not the main content window's). Assert the surface COUNT increases after
-    // the click — a bare `count > 1` can pass on a pre-existing extra window.
-    let baselineSurfaces = a.windows.count + a.dialogs.count
-    let deadline = Date().addingTimeInterval(10)
-    var appeared = false
-    while Date() < deadline {
-      if a.windows.count + a.dialogs.count > baselineSurfaces { appeared = true; break }
-      Thread.sleep(forTimeInterval: 0.2)
-    }
-    if !appeared {
+    // The standard About panel (orderFrontStandardAboutPanel:) opens as a Dialog
+    // carrying a "Version x" static text. Assert that version text so the pass
+    // is specific to the About panel, not any incidental dialog.
+    let aboutVersion = a.dialogs.staticTexts.matching(
+      NSPredicate(format: "value BEGINSWITH %@", "Version")).firstMatch
+    if !aboutVersion.waitForExistence(timeout: 10) {
       dumpElementTree(a, label: "about-no-panel")
-      XCTFail("About panel did not appear (no new window/dialog after the menu click)")
+      XCTFail("About panel (version text) did not appear after the menu click")
       return
     }
     a.typeKey("w", modifierFlags: .command)  // close the panel
