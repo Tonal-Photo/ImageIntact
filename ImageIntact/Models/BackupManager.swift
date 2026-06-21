@@ -391,7 +391,23 @@ class BackupManager {
     }
 
     /// Force memory cleanup after backup completion or cancellation.
-    func cleanupMemory() {
+    ///
+    /// - Parameter expectedSessionID: when non-nil, the session this cleanup was
+    ///   scheduled for. If a newer backup has since replaced `state.sessionID`, the
+    ///   call bails entirely — a prior backup's deferred cleanup must not wipe the
+    ///   live run's progressTracker/statistics mid-copy (AMUX-488). `nil` (the
+    ///   synchronous `cancelOperation` caller) always runs.
+    func cleanupMemory(expectedSessionID: String? = nil) {
+        // AMUX-488: re-check the pinned session HERE, at execution time, because the
+        // QueueIntegration defer delays this call ~3s — long enough for a rerun to
+        // start and install its own session. If this cleanup belongs to a superseded
+        // backup, bail before touching any shared state (including the deferred
+        // resetAll that would zero the live run's global completion counters).
+        if let expectedSessionID, state.sessionID != expectedSessionID {
+            logInfo("cleanupMemory skipped: session changed (\(expectedSessionID) no longer current)", category: .performance)
+            return
+        }
+
         // Immediate cleanup — clear large data structures.
         state.logEntries.removeAll(keepingCapacity: false)
         state.debugLog.removeAll(keepingCapacity: false)

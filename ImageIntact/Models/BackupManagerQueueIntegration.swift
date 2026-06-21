@@ -37,6 +37,11 @@ extension BackupManager {
 
         // Reset state
         resetBackupState()
+        // AMUX-488: pin THIS backup's session (resetBackupState just assigned it) so the
+        // deferred cleanup below cannot wipe a later rerun's live state. Captured at the
+        // top — NOT inside the defer — to avoid a MainActor interleaving race where a
+        // rerun's resetBackupState runs before this backup's defer executes.
+        let backupSessionID = state.sessionID
 
         // Build manifest once for all preflight checks
         // This is more efficient than building it multiple times
@@ -203,7 +208,7 @@ extension BackupManager {
             // Schedule cleanup after a delay so UI can read the stats first
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds - give UI time to show stats
-                self?.cleanupMemory()
+                self?.cleanupMemory(expectedSessionID: backupSessionID)
                 ApplicationLogger.shared.debug("Memory cleanup completed after UI update", category: .backup)
             }
         }
