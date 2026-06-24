@@ -12,6 +12,18 @@ struct HelpWindowView: View {
   @State private var searchText = ""
   var scrollToSection: String? = nil
 
+  /// App version shown in help, read from the bundle at runtime so it never goes
+  /// stale. The pure mapping lives in `displayVersion(shortVersion:)` for testability.
+  static var currentVersion: String {
+    displayVersion(shortVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+  }
+
+  /// Maps an optional `CFBundleShortVersionString` to a display string.
+  static func displayVersion(shortVersion: String?) -> String {
+    guard let shortVersion, !shortVersion.isEmpty else { return "Unknown" }
+    return shortVersion
+  }
+
   enum HelpSectionID: String, CaseIterable {
     case whatsNew = "What's New"
     case gettingStarted = "Getting Started"
@@ -22,7 +34,7 @@ struct HelpWindowView: View {
     case fileTypes = "File Types"
     case performance = "Performance"
     case notifications = "Notifications"
-    case updates = "Auto Updates"
+    case updates = "Updates"
     case shortcuts = "Shortcuts"
     case manual = "User Manual"
     case faq = "FAQ"
@@ -111,7 +123,7 @@ struct HelpWindowView: View {
 
   func subtitleForSection(_ section: HelpSectionID) -> String {
     switch section {
-    case .whatsNew: return "Version 1.3.0"
+    case .whatsNew: return "Version \(Self.currentVersion)"
     case .gettingStarted: return "Quick start guide"
     case .organization: return "Automatic folder organization"
     case .duplicates: return "Smart duplicate handling"
@@ -819,49 +831,31 @@ struct NotificationsContent: View {
 struct UpdatesContent: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("Automatic Updates")
+      Text("Updates")
         .font(.title2)
         .fontWeight(.semibold)
 
-      Text("Stay up to date with the latest features and fixes.")
+      Text("ImageIntact updates automatically through the Mac App Store.")
         .font(.callout)
 
       GroupBox {
         VStack(alignment: .leading, spacing: 12) {
-          Label("Daily Checks", systemImage: "arrow.clockwise.circle")
+          Label("Automatic Delivery", systemImage: "arrow.down.circle")
             .font(.headline)
-          Text("Automatically checks once per day on launch")
+          Text("New versions install automatically when App Store updates are enabled on your Mac.")
             .font(.callout)
 
-          Label("Manual Check", systemImage: "hand.tap")
+          Label("Check Manually", systemImage: "magnifyingglass")
             .font(.headline)
-          Text("ImageIntact menu → Check for Updates")
+          Text("Open the App Store app and choose Updates to check at any time.")
             .font(.callout)
 
-          Label("Safe Downloads", systemImage: "lock.shield")
+          Label("Release Notes", systemImage: "doc.text")
             .font(.headline)
-          Text("Downloads from GitHub with progress tracking")
-            .font(.callout)
-
-          Label("Version Skipping", systemImage: "forward")
-            .font(.headline)
-          Text("Skip specific versions if desired")
+          Text("Each update's What's New appears on the ImageIntact page in the App Store.")
             .font(.callout)
         }
       }
-
-      Text("Update Settings")
-        .font(.title3)
-        .fontWeight(.medium)
-        .padding(.top)
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("**Auto-check**: Preferences → Check for updates daily")
-        Text("**Channel**: Choose stable or beta releases")
-        Text("**Downloads**: Saved to your Downloads folder")
-        Text("**Installation**: Double-click downloaded DMG to install")
-      }
-      .font(.callout)
 
       Divider()
         .padding(.vertical)
@@ -869,7 +863,7 @@ struct UpdatesContent: View {
       HStack {
         Image(systemName: "sparkles")
           .foregroundColor(.yellow)
-        Text("Current version: 1.3.0")
+        Text("Current version: \(HelpWindowView.currentVersion)")
           .font(.callout)
           .fontWeight(.medium)
       }
