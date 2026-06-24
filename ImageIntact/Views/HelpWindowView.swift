@@ -12,7 +12,12 @@ struct HelpWindowView: View {
   @State private var searchText = ""
   var scrollToSection: String? = nil
 
-  /// App version shown in help, read from the bundle at runtime so it never goes
+  /// The app version whose features the "What's New" section describes. Update this
+  /// together with `WhatsNewContent` each release. Distinct from `currentVersion`
+  /// (the running app's version), which can advance past the documented content.
+  static let whatsNewVersion = "1.4.0"
+
+  /// The running app's version, read from the bundle at runtime so it never goes
   /// stale. The pure mapping lives in `displayVersion(shortVersion:)` for testability.
   static var currentVersion: String {
     displayVersion(shortVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
@@ -123,7 +128,7 @@ struct HelpWindowView: View {
 
   func subtitleForSection(_ section: HelpSectionID) -> String {
     switch section {
-    case .whatsNew: return "Version \(Self.currentVersion)"
+    case .whatsNew: return "Version \(Self.whatsNewVersion)"
     case .gettingStarted: return "Quick start guide"
     case .organization: return "Automatic folder organization"
     case .duplicates: return "Smart duplicate handling"
