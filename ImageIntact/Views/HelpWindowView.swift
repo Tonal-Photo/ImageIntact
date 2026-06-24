@@ -190,29 +190,29 @@ struct WhatsNewContent: View {
       GroupBox {
         VStack(alignment: .leading, spacing: 12) {
           HelpFeatureRow(
-            icon: "doc.on.doc.fill",
-            title: "Duplicate Detection",
-            description: "Intelligently skip files that already exist at destinations")
+            icon: "trash",
+            title: "Move to Trash After Backup",
+            description: "Optionally move the source folder to the Trash once every file is copied and verified")
 
           HelpFeatureRow(
-            icon: "arrow.triangle.2.circlepath",
-            title: "Enhanced Error Handling",
-            description: "Automatic retry with exponential backoff for transient errors")
+            icon: "rectangle.2.swap",
+            title: "Separate Folder Memory",
+            description: "Source and destination pickers each remember their own last-used folder")
 
           HelpFeatureRow(
-            icon: "photo.badge.plus",
-            title: "Capture One Sessions",
-            description: "Full support for .cosessiondb files with cache exclusion")
+            icon: "camera",
+            title: "Hasselblad Support",
+            description: "Recognizes Hasselblad 3FR raw files and their .phos sidecars")
 
           HelpFeatureRow(
-            icon: "folder.badge.gear",
-            title: "Smart Organization",
-            description: "Organize backups into a named folder structure")
+            icon: "checkmark.shield",
+            title: "Stronger Verification",
+            description: "Post-copy verification reads each file from the drive instead of a cached copy")
 
           HelpFeatureRow(
-            icon: "star.fill",
-            title: "Backup Presets",
-            description: "Save and quickly apply backup configurations")
+            icon: "list.bullet.indent",
+            title: "Subdirectory Scanning Control",
+            description: "Choose whether scanning a source descends into subfolders")
         }
       }
 
@@ -222,11 +222,11 @@ struct WhatsNewContent: View {
         .padding(.top)
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("• Independent destination processing for maximum speed")
-        Text("• Real-time ETA calculations per destination")
-        Text("• Sleep prevention during backups")
-        Text("• Completion notifications")
-        Text("• Memory card detection and warnings")
+        Text("• Verbose logging toggle in Preferences")
+        Text("• Smart Organization remembers recent folder names")
+        Text("• More reliable cancellation of large backups")
+        Text("• Per-destination duplicate handling fixes")
+        Text("• Privacy and security hardening")
       }
       .font(.callout)
     }
