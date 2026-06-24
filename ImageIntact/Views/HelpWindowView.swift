@@ -12,6 +12,23 @@ struct HelpWindowView: View {
   @State private var searchText = ""
   var scrollToSection: String? = nil
 
+  /// The app version whose features the "What's New" section describes. Update this
+  /// together with `WhatsNewContent` each release. Distinct from `currentVersion`
+  /// (the running app's version), which can advance past the documented content.
+  static let whatsNewVersion = "1.4.0"
+
+  /// The running app's version, read from the bundle at runtime so it never goes
+  /// stale. The pure mapping lives in `displayVersion(shortVersion:)` for testability.
+  static var currentVersion: String {
+    displayVersion(shortVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+  }
+
+  /// Maps an optional `CFBundleShortVersionString` to a display string.
+  static func displayVersion(shortVersion: String?) -> String {
+    guard let shortVersion, !shortVersion.isEmpty else { return "Unknown" }
+    return shortVersion
+  }
+
   enum HelpSectionID: String, CaseIterable {
     case whatsNew = "What's New"
     case gettingStarted = "Getting Started"
@@ -22,7 +39,7 @@ struct HelpWindowView: View {
     case fileTypes = "File Types"
     case performance = "Performance"
     case notifications = "Notifications"
-    case updates = "Auto Updates"
+    case updates = "Updates"
     case shortcuts = "Shortcuts"
     case manual = "User Manual"
     case faq = "FAQ"
@@ -111,7 +128,7 @@ struct HelpWindowView: View {
 
   func subtitleForSection(_ section: HelpSectionID) -> String {
     switch section {
-    case .whatsNew: return "Version 1.3.0"
+    case .whatsNew: return "Version \(Self.whatsNewVersion)"
     case .gettingStarted: return "Quick start guide"
     case .organization: return "Automatic folder organization"
     case .duplicates: return "Smart duplicate handling"
@@ -178,29 +195,29 @@ struct WhatsNewContent: View {
       GroupBox {
         VStack(alignment: .leading, spacing: 12) {
           HelpFeatureRow(
-            icon: "doc.on.doc.fill",
-            title: "Duplicate Detection",
-            description: "Intelligently skip files that already exist at destinations")
+            icon: "trash",
+            title: "Move to Trash After Backup",
+            description: "Optionally move the source folder to the Trash once every file is copied and verified")
 
           HelpFeatureRow(
-            icon: "arrow.triangle.2.circlepath",
-            title: "Enhanced Error Handling",
-            description: "Automatic retry with exponential backoff for transient errors")
+            icon: "rectangle.2.swap",
+            title: "Separate Folder Memory",
+            description: "Source and destination pickers each remember their own last-used folder")
 
           HelpFeatureRow(
-            icon: "photo.badge.plus",
-            title: "Capture One Sessions",
-            description: "Full support for .cosessiondb files with cache exclusion")
+            icon: "camera",
+            title: "Hasselblad Support",
+            description: "Recognizes Hasselblad 3FR raw files and their .phos sidecars")
 
           HelpFeatureRow(
-            icon: "folder.badge.gear",
-            title: "Smart Organization",
-            description: "Organize backups into a named folder structure")
+            icon: "checkmark.shield",
+            title: "Stronger Verification",
+            description: "Post-copy verification reads each file from the drive instead of a cached copy")
 
           HelpFeatureRow(
-            icon: "star.fill",
-            title: "Backup Presets",
-            description: "Save and quickly apply backup configurations")
+            icon: "list.bullet.indent",
+            title: "Subdirectory Scanning Control",
+            description: "Choose whether scanning a source descends into subfolders")
         }
       }
 
@@ -210,11 +227,11 @@ struct WhatsNewContent: View {
         .padding(.top)
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("• Independent destination processing for maximum speed")
-        Text("• Real-time ETA calculations per destination")
-        Text("• Sleep prevention during backups")
-        Text("• Completion notifications")
-        Text("• Memory card detection and warnings")
+        Text("• Verbose logging toggle in Preferences")
+        Text("• Smart Organization remembers recent folder names")
+        Text("• More reliable cancellation of large backups")
+        Text("• Per-destination duplicate handling fixes")
+        Text("• Privacy and security hardening")
       }
       .font(.callout)
     }
@@ -819,49 +836,31 @@ struct NotificationsContent: View {
 struct UpdatesContent: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("Automatic Updates")
+      Text("Updates")
         .font(.title2)
         .fontWeight(.semibold)
 
-      Text("Stay up to date with the latest features and fixes.")
+      Text("ImageIntact updates automatically through the Mac App Store.")
         .font(.callout)
 
       GroupBox {
         VStack(alignment: .leading, spacing: 12) {
-          Label("Daily Checks", systemImage: "arrow.clockwise.circle")
+          Label("Automatic Delivery", systemImage: "arrow.down.circle")
             .font(.headline)
-          Text("Automatically checks once per day on launch")
+          Text("New versions install automatically when App Store updates are enabled on your Mac.")
             .font(.callout)
 
-          Label("Manual Check", systemImage: "hand.tap")
+          Label("Check Manually", systemImage: "magnifyingglass")
             .font(.headline)
-          Text("ImageIntact menu → Check for Updates")
+          Text("Open the App Store app and choose Updates to check at any time.")
             .font(.callout)
 
-          Label("Safe Downloads", systemImage: "lock.shield")
+          Label("Release Notes", systemImage: "doc.text")
             .font(.headline)
-          Text("Downloads from GitHub with progress tracking")
-            .font(.callout)
-
-          Label("Version Skipping", systemImage: "forward")
-            .font(.headline)
-          Text("Skip specific versions if desired")
+          Text("Each update's What's New appears on the ImageIntact page in the App Store.")
             .font(.callout)
         }
       }
-
-      Text("Update Settings")
-        .font(.title3)
-        .fontWeight(.medium)
-        .padding(.top)
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("**Auto-check**: Preferences → Check for updates daily")
-        Text("**Channel**: Choose stable or beta releases")
-        Text("**Downloads**: Saved to your Downloads folder")
-        Text("**Installation**: Double-click downloaded DMG to install")
-      }
-      .font(.callout)
 
       Divider()
         .padding(.vertical)
@@ -869,7 +868,7 @@ struct UpdatesContent: View {
       HStack {
         Image(systemName: "sparkles")
           .foregroundColor(.yellow)
-        Text("Current version: 1.3.0")
+        Text("Current version: \(HelpWindowView.currentVersion)")
           .font(.callout)
           .fontWeight(.medium)
       }
